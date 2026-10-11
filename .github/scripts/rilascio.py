@@ -4,7 +4,8 @@
 Numero della versione:
   - quello di VERSION.txt, se non è ancora uscito;
   - altrimenti l'ultima release + 1 sull'ultima cifra (2.0.0 → 2.0.1). Con «[minor]» o
-    «[major]» in un messaggio di commit sale la cifra di mezzo (2.1.0) o la prima (3.0.0).
+    «[major]» nel titolo di un commit (la prima riga, non il resto del messaggio) sale la
+    cifra di mezzo (2.1.0) o la prima (3.0.0).
 
 Note della release, nell'ordine:
   - docs/releases/<versione>.md, se c'è (note scritte a mano);
@@ -14,6 +15,9 @@ Note della release, nell'ordine:
 
 Se VERSION.txt o CHANGELOG.md vanno aggiornati, il commit «Versione X.Y.Z [skip ci]» lo
 fa il workflow: il numero in fondo al portale resta quello della release.
+
+Release ritirate: i numeri elencati in docs/releases/ritirate.txt (uno per riga, col motivo
+dopo) perdono release e tag al giro successivo.
 
 Variabili: COMMIT (il commit verificato dai test), REPO (proprietario/nome), GH_TOKEN,
 NOME (titolo delle release, di serie CataSync), PROVA=1 per non pubblicare niente.
@@ -44,8 +48,10 @@ def testo_versione(v: tuple[int, int, int]) -> str:
     return "%d.%d.%d" % v
 
 
-def prossima(da_file: str, uscite: list[str], messaggi: list[str]) -> tuple[str, bool]:
-    """(versione, automatica). Automatica = VERSION.txt va aggiornato."""
+def prossima(da_file: str, uscite: list[str], titoli: list[str]) -> tuple[str, bool]:
+    """(versione, automatica). Automatica = VERSION.txt va aggiornato.
+    I segnali [minor] / [major] si cercano solo nei titoli dei commit (la prima riga): nel resto
+    del messaggio possono comparire per altri motivi, per esempio spiegandoli."""
     nf = numero(da_file)
     if nf is None:
         raise ValueError(f"VERSION.txt non contiene un numero valido (X.Y.Z): {da_file!r}")
@@ -54,7 +60,7 @@ def prossima(da_file: str, uscite: list[str], messaggi: list[str]) -> tuple[str,
     if nf not in gia and (ultima is None or nf > ultima):
         return testo_versione(nf), False
     base = max(nf, ultima) if ultima else nf
-    tutto = "\n".join(messaggi).lower()
+    tutto = "\n".join(titoli).lower()
     if "[major]" in tutto:
         nuova = (base[0] + 1, 0, 0)
     elif "[minor]" in tutto:
@@ -104,6 +110,16 @@ def pulisci_oggetto(oggetto: str) -> str:
     return re.sub(r"\s*\[(?:minor|major)\]", "", oggetto, flags=re.I).strip()
 
 
+def ritirate(testo: str) -> list[str]:
+    """I numeri di docs/releases/ritirate.txt: il primo pezzo di ogni riga, commenti esclusi."""
+    numeri = []
+    for riga in testo.splitlines():
+        riga = riga.split("#", 1)[0].strip()
+        if riga and numero(riga.split()[0]):
+            numeri.append(riga.split()[0])
+    return numeri
+
+
 def piede(repo: str, versione: str, precedente: str | None) -> str:
     confronto = (f"https://github.com/{repo}/compare/{precedente}...{versione}" if precedente
                  else f"https://github.com/{repo}/commits/{versione}")
@@ -126,15 +142,15 @@ def out(*args: str) -> str:
 
 
 def commit_da(precedente: str | None, fino: str) -> list[tuple[str, str, str]]:
-    """(sha, oggetto, messaggio intero) dei commit dopo l'ultima release, senza quelli del bot."""
+    """(sha, titolo pulito, titolo originale) dei commit dopo l'ultima release, senza quelli del bot."""
     intervallo = f"{precedente}..{fino}" if precedente else fino
-    grezzo = out("log", "--no-merges", "--format=%H%x1f%ae%x1f%s%x1f%B%x1e", intervallo)
+    grezzo = out("log", "--no-merges", "--format=%H%x1f%ae%x1f%s%x1e", intervallo)
     voci = []
     for blocco in grezzo.split("\x1e"):
         parti = blocco.strip("\n").split("\x1f")
-        if len(parti) < 4 or parti[1] == BOT_EMAIL:
+        if len(parti) < 3 or parti[1] == BOT_EMAIL:
             continue
-        voci.append((parti[0], pulisci_oggetto(parti[2]), parti[3].strip()))
+        voci.append((parti[0], pulisci_oggetto(parti[2]), parti[2].strip()))
     return voci
 
 
@@ -146,6 +162,20 @@ def release_esiste(repo: str, tag: str) -> bool:
     except FileNotFoundError:
         sys.exit("manca il comando gh (GitHub CLI)")
     return r.returncode == 0
+
+
+def ritira(repo: str, versione: str) -> None:
+    """Toglie release e tag di una versione uscita per errore."""
+    print(f"Ritiro {versione}: tolgo release e tag (docs/releases/ritirate.txt).")
+    if os.getenv("PROVA") == "1":
+        if os.getenv("PROVA_PUSH") == "1":
+            git("push", "origin", f":refs/tags/{versione}", check=False)
+    else:
+        r = subprocess.run(["gh", "release", "delete", versione, "--repo", repo, "--cleanup-tag", "--yes"],
+                           capture_output=True, text=True)
+        if r.returncode:  # senza release: resta da togliere il tag
+            git("push", "origin", f":refs/tags/{versione}", check=False)
+    git("tag", "-d", versione, check=False)
 
 
 def pubblica_release(repo: str, tag: str, titolo: str, note: str) -> None:
@@ -182,6 +212,12 @@ def main() -> int:
     if punta != commit:
         print(f"main è andata avanti ({punta[:7]}): la release la fa il giro di quel commit.")
         return 0
+
+    elenco = radice / "docs" / "releases" / "ritirate.txt"
+    if elenco.is_file():
+        for versione in ritirate(elenco.read_text(encoding="utf-8")):
+            if git("rev-parse", "-q", "--verify", f"refs/tags/{versione}", check=False).returncode == 0:
+                ritira(repo, versione)
 
     uscite = [t for t in out("tag", "--list").splitlines() if numero(t)]
     sul_commit = [t for t in out("tag", "--points-at", commit).splitlines() if numero(t)]

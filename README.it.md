@@ -236,7 +236,7 @@ giorno intero.
 Ogni modifica di `main` che passa i controlli esce come
 [release](https://github.com/Giuseppe-sciarra/CataSync/releases). La versione sta in
 `VERSION.txt` e in fondo a ogni pagina: un numero nuovo in `VERSION.txt` si usa così com'è,
-altrimenti sale di uno l'ultima cifra; `[minor]` o `[major]` nel messaggio di commit fanno
+altrimenti sale di uno l'ultima cifra; `[minor]` o `[major]` nel titolo del commit fanno
 salire la cifra di mezzo o la prima.
 
 ## Backup

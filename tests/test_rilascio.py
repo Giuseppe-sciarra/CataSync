@@ -1,6 +1,9 @@
 """Regole delle release automatiche (.github/scripts/rilascio.py) e versione del portale."""
 import importlib.util
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 import _ambiente  # noqa: F401
@@ -36,6 +39,37 @@ class Numero(unittest.TestCase):
             rilascio.prossima("due", [], [])
 
 
+class SegnaliNeiCommit(unittest.TestCase):
+    """[minor] e [major] valgono solo nel titolo del commit, non nel resto del messaggio."""
+
+    def setUp(self):
+        self.prima = os.getcwd()
+        self.cartella = tempfile.mkdtemp(prefix="rilascio-")
+        os.chdir(self.cartella)
+        for comando in (["init", "-q"], ["config", "user.name", "Prova"], ["config", "user.email", "prova@example.com"]):
+            subprocess.run(["git", *comando], check=True)
+
+    def tearDown(self):
+        os.chdir(self.prima)
+        shutil.rmtree(self.cartella, ignore_errors=True)
+
+    def commit(self, *messaggio):
+        args = [x for m in messaggio for x in ("-m", m)]
+        subprocess.run(["git", "commit", "-q", "--allow-empty", *args], check=True)
+
+    def test_solo_il_titolo_conta(self):
+        self.commit("Prima versione")
+        subprocess.run(["git", "tag", "2.0.0"], check=True)
+        self.commit("Guida delle release", "Spiega [minor] e [major] nel messaggio di commit.")
+        voci = rilascio.commit_da("2.0.0", "HEAD")
+        self.assertEqual([v[1] for v in voci], ["Guida delle release"])
+        self.assertEqual(rilascio.prossima("2.0.0", ["2.0.0"], [v[2] for v in voci]), ("2.0.1", True))
+        self.commit("Esportazione CSV [minor]")
+        voci = rilascio.commit_da("2.0.0", "HEAD")
+        self.assertEqual(rilascio.prossima("2.0.0", ["2.0.0"], [v[2] for v in voci]), ("2.1.0", True))
+        self.assertEqual(voci[0][1], "Esportazione CSV")
+
+
 class Changelog(unittest.TestCase):
     def test_voce_della_versione(self):
         self.assertEqual(rilascio.sezione(CHANGELOG, "2.0.0"), "### Added\n- Tutto.")
@@ -52,6 +86,10 @@ class Changelog(unittest.TestCase):
     def test_voce_dai_commit_in_cima(self):
         nuovo = rilascio.aggiungi_voce(CHANGELOG, "2.0.1", "2026-10-12", ["README sistemato"])
         self.assertTrue(nuovo.startswith("# Changelog\n\n## 2.0.1 — 2026-10-12\n\n- README sistemato\n\n## 2.0.0"))
+
+    def test_elenco_delle_ritirate(self):
+        testo = "# commento\n3.0.0  uscita per errore\n\nnon-un-numero\n2.9.9 # altro\n"
+        self.assertEqual(rilascio.ritirate(testo), ["3.0.0", "2.9.9"])
 
     def test_oggetto_senza_segnali(self):
         self.assertEqual(rilascio.pulisci_oggetto("Esportazione CSV [minor]"), "Esportazione CSV")

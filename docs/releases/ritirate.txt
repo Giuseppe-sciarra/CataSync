@@ -1,0 +1,3 @@
+# Release ritirate: al giro successivo il workflow delle release toglie release e tag di
+# queste versioni, se ci sono ancora. Una per riga, col motivo dopo il numero.
+3.0.0  uscita per errore al posto della 2.0.1: lo script leggeva i segnali di versione anche nel corpo del commit

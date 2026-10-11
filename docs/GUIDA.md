@@ -327,8 +327,8 @@ stanno in `.github/scripts/rilascio.py`.
 - Se in `VERSION.txt` c'è un numero che non è ancora uscito, esce quello: per una 2.1.0 basta
   scriverlo lì.
 - Altrimenti sale di uno l'ultima cifra: 2.0.0 → 2.0.1 → 2.0.2.
-- `[minor]` o `[major]` nel messaggio di commit fanno salire la cifra di mezzo (2.1.0) o la
-  prima (3.0.0).
+- `[minor]` o `[major]` nel titolo del commit (la prima riga) fanno salire la cifra di mezzo
+  (2.1.0) o la prima (3.0.0). Nel resto del messaggio non contano.
 - `[skip ci]` nel messaggio di commit: niente controlli e niente release.
 
 **Le note.** Si usa, nell'ordine:
@@ -346,3 +346,7 @@ successiva fai `git pull`.
 
 Se una release non parte (controlli falliti, per esempio), si rilancia da *Actions → Release →
 Run workflow* dopo aver sistemato.
+
+**Ritirare una release.** Se ne esce una sbagliata, scrivi il suo numero in
+`docs/releases/ritirate.txt`, col motivo: al giro successivo il workflow toglie release e tag.
+Il numero giusto lo rimetti in `VERSION.txt`.

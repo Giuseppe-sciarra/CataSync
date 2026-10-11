@@ -232,8 +232,8 @@ versions lack some engines and suspend an engine for a whole day at the first CA
 Every change to `main` that passes the checks is published as a
 [release](https://github.com/Giuseppe-sciarra/CataSync/releases). The version is in
 `VERSION.txt` and at the bottom of every page: a new number in `VERSION.txt` is used as it is,
-otherwise the last digit goes up by one; `[minor]` or `[major]` in a commit message raise the
-middle or the first digit.
+otherwise the last digit goes up by one; `[minor]` or `[major]` in the title of a commit raise
+the middle or the first digit.
 
 ## Backups
 

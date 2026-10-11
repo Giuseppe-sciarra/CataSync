@@ -1,9 +1,15 @@
 # Changelog
 
-## 3.0.0 — 2026-10-11
+## 2.0.1 — 2026-10-11
 
 ### Added
 - Guida: come nascono numeri e note delle release automatiche (`docs/GUIDA.md`, capitolo 14).
+- Release ritirate: i numeri elencati in `docs/releases/ritirate.txt` perdono release e tag al
+  giro successivo del workflow.
+
+### Fixed
+- Release automatiche: `[minor]` e `[major]` contano solo nel titolo del commit. Letti anche nel
+  resto del messaggio, avevano fatto uscire per errore una 3.0.0 al posto della 2.0.1 (ritirata).
 
 ## 2.0.0 — Ricerca sul web come unica fonte, schede in più lingue
 
@@ -52,7 +58,7 @@ produttore, e ogni «non trovato» dice perché.
   tests/i18n.test.cjs`) e verifica su GitHub Actions, compresa la build dell'immagine.
 - **Release automatiche**: a ogni modifica di `main` che passa i test esce una release. Il
   numero è quello di `VERSION.txt` se è nuovo, altrimenti l'ultima release + 1 sull'ultima
-  cifra; `[minor]` o `[major]` nel messaggio di commit fanno salire la seconda o la prima.
+  cifra; `[minor]` o `[major]` nel titolo del commit fanno salire la seconda o la prima.
   `VERSION.txt` e `CHANGELOG.md` li aggiorna il workflow, e il portale legge la versione da
   `VERSION.txt`.
 

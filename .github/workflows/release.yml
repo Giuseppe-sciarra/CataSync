@@ -5,8 +5,9 @@ name: Release
 # .github/scripts/rilascio.py: leggi lì le regole.
 #   - VERSION.txt con un numero nuovo  → esce quel numero
 #   - altrimenti                       → ultima release + 1 (2.0.0 → 2.0.1)
-#   - «[minor]» / «[major]» nel commit → 2.1.0 / 3.0.0
-#   - «[skip ci]» nel commit           → niente controlli e niente release
+#   - «[minor]» / «[major]» nel titolo del commit → 2.1.0 / 3.0.0
+#   - «[skip ci]» nel commit → niente controlli e niente release
+#   - numeri in docs/releases/ritirate.txt → release e tag tolti
 
 on:
   workflow_run:
