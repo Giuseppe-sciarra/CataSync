@@ -5,6 +5,8 @@ produttore, CataSync trova le pagine che pubblicano quei prodotti, controlla che
 davvero quel codice e prepara nome, marca, foto, descrizione e specifiche nella lingua del
 negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 
+🌐 Sito: [tastieredigitali.tech/casi-studio/td-sync-catalog](https://tastieredigitali.tech/casi-studio/td-sync-catalog/)
+
 🇬🇧 [Read in English](README.md)
 
 ![Prodotti](docs/screenshots/it/01-products.png)

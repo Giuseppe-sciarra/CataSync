@@ -5,6 +5,8 @@ finds the pages that publish those products, checks that they really show that c
 name, brand, photos, description and specifications in your shop's language. Self-hosted,
 multi-client, nothing to install on the shops.
 
+🌐 Website (in Italian): [tastieredigitali.tech/casi-studio/td-sync-catalog](https://tastieredigitali.tech/casi-studio/td-sync-catalog/)
+
 🇮🇹 [Leggi in italiano](README.it.md)
 
 ![Products](docs/screenshots/en/01-products.png)
