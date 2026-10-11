@@ -315,3 +315,34 @@ riconoscere i prodotti già pubblicati).
 - Marchio bianco completo: dominio del rivenditore (nome e logo ci sono già).
 - Report dei consumi scaricabile: quanti prodotti al mese, per sito.
 - Campi SEO: titolo e descrizione trovati mappati su Yoast o Rank Math, senza inventare niente.
+
+## 14. Versioni e release
+
+Ogni modifica che arriva su `main` diventa una release da sola, appena i controlli di GitHub
+(test e build dell'immagine) sono passati. Lo fa `.github/workflows/release.yml`, le regole
+stanno in `.github/scripts/rilascio.py`.
+
+**Il numero.**
+
+- Se in `VERSION.txt` c'è un numero che non è ancora uscito, esce quello: per una 2.1.0 basta
+  scriverlo lì.
+- Altrimenti sale di uno l'ultima cifra: 2.0.0 → 2.0.1 → 2.0.2.
+- `[minor]` o `[major]` nel messaggio di commit fanno salire la cifra di mezzo (2.1.0) o la
+  prima (3.0.0).
+- `[skip ci]` nel messaggio di commit: niente controlli e niente release.
+
+**Le note.** Si usa, nell'ordine:
+
+1. `docs/releases/<versione>.md`, se c'è: note scritte a mano (quelle della 2.0.0 sono lì);
+2. la voce `## <versione>` del `CHANGELOG.md`;
+3. la voce `## Non rilasciato` del `CHANGELOG.md`: alla release prende numero e data;
+4. altrimenti l'elenco dei messaggi di commit dall'ultima release, che finisce anche nel
+   `CHANGELOG.md`.
+
+**Il commit del workflow.** Quando il numero sale da solo, o il `CHANGELOG.md` va aggiornato,
+il workflow aggiunge un commit «Versione X.Y.Z [skip ci]» su `main`: così il numero in fondo
+alle pagine è sempre quello della release. Se lavori su una copia locale, prima della modifica
+successiva fai `git pull`.
+
+Se una release non parte (controlli falliti, per esempio), si rilancia da *Actions → Release →
+Run workflow* dopo aver sistemato.

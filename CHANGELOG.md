@@ -1,5 +1,10 @@
 # Changelog
 
+## Non rilasciato
+
+### Added
+- Guida: come nascono numeri e note delle release automatiche (`docs/GUIDA.md`, capitolo 14).
+
 ## 2.0.0 — Ricerca sul web come unica fonte, schede in più lingue
 
 Prima versione pubblica. Le schede si cercano sul web partendo dall'EAN o dal codice
