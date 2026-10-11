@@ -1,0 +1,803 @@
+/* TD Sync Catalog — console di back-office.
+   Gli identificativi macchina (EAN, MPN, ID) sono sempre in monospace:
+   sono codici, non parole, e si leggono a colpo d'occhio.
+
+   Tema: chiaro e scuro. Senza scelta esplicita segue il sistema operativo;
+   il selettore in alto scrive data-theme su <html> e vince sul sistema. */
+
+:root {
+  /* I controlli nativi del browser (caselle di spunta, menu, barre di
+     scorrimento) seguono il tema SCELTO, non quello del sistema: con il
+     sistema scuro e il tema chiaro le caselle venivano quadrati neri. */
+  color-scheme: light;
+  /* Stile "Shopify admin": sfondo grigio-caldo, card bianche morbide, verde
+     come colore d'azione, testi neri-non-neri. Niente linee dure. */
+  --ink: #202223;
+  --ink-2: #303030;
+  --muted: #6d7175;
+  --canvas: #f1f2f4;
+  --surface: #ffffff;
+  --surface-2: #f6f6f7;
+  --line: #e1e3e5;
+  --line-soft: #ebedef;
+  --accent: #008060;
+  --accent-ink: #006e52;
+  --accent-soft: #e3f1ec;
+  --ok: #008060;
+  --warn: #b98900;
+  --err: #d72c0d;
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 0 rgba(0,0,0,.05), 0 1px 3px rgba(0,0,0,.06);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.10);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --topbar-bg: #ffffff;
+  --topbar-ink: #202223;
+  --topbar-muted: #6d7175;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ink: #e3e5e7;
+    --ink-2: #c9ccd0;
+    --muted: #8c9196;
+    --canvas: #0f1114;
+    --surface: #1a1c1f;
+    --surface-2: #232628;
+    --line: #2f3336;
+    --line-soft: #292c2f;
+    --accent: #2ec092;
+    --accent-ink: #43d3a5;
+    --accent-soft: #163d31;
+    --ok: #2ec092;
+    --warn: #e0b341;
+    --err: #f06a4d;
+    --shadow: 0 1px 0 rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.5);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
+    --topbar-bg: #1a1c1f;
+    --topbar-ink: #e3e5e7;
+    --topbar-muted: #8c9196;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e3e5e7;
+  --ink-2: #c9ccd0;
+  --muted: #8c9196;
+  --canvas: #0f1114;
+  --surface: #1a1c1f;
+  --surface-2: #232628;
+  --line: #2f3336;
+  --line-soft: #292c2f;
+  --accent: #2ec092;
+  --accent-ink: #43d3a5;
+  --accent-soft: #163d31;
+  --ok: #2ec092;
+  --warn: #e0b341;
+  --err: #f06a4d;
+  --shadow: 0 1px 0 rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.5);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
+  --topbar-bg: #1a1c1f;
+  --topbar-ink: #e3e5e7;
+  --topbar-muted: #8c9196;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+[x-cloak] { display: none !important; }
+
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 19px; }
+h2 { font-size: 16px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+
+a { color: var(--accent); }
+
+code, .mono, .gtin { font-family: var(--mono); font-size: .92em; font-variant-numeric: tabular-nums; }
+.gtin { letter-spacing: .02em; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------- struttura */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 24px; height: 58px;
+  background: var(--topbar-bg); color: var(--topbar-ink);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .brand { font-weight: 700; letter-spacing: -.01em; font-size: 15px; }
+.topbar .brand span { color: var(--topbar-muted); font-weight: 400; }
+.topbar nav { display: flex; gap: 2px; margin-left: 16px; }
+.topbar nav button {
+  background: none; border: 0; color: var(--topbar-muted); font: inherit; font-weight: 500;
+  height: 36px; padding: 0 12px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.topbar nav button:hover { color: var(--topbar-ink); background: var(--surface-2); }
+.topbar nav button.on { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+.topbar .spacer { flex: 1; }
+.topbar .who { color: var(--topbar-muted); font-size: 13px; }
+
+/* Quasi tutta la pagina: le tabelle con categoria, prezzi e azioni respirano.
+   Un tetto alto evita righe chilometriche sui monitor ultrawide. */
+.wrap { width: 96%; max-width: 1900px; margin: 0 auto; padding: 22px 0 64px; }
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.card > header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--line-soft);
+}
+.card > header h2 { font-size: 17px; }
+.card > .body { padding: 20px; }
+.card > .body.tight { padding: 0; }
+
+/* ------------------------------------------------------------- controlli */
+label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 5px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+input[type=text], input[type=search], input[type=email], input[type=password], input[type=number], select, textarea {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); font: inherit;
+}
+textarea { resize: vertical; min-height: 92px; font-family: var(--mono); font-size: 13px; }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent);
+}
+.field { margin-bottom: 12px; display: flex; flex-direction: column; }
+/* L'etichetta resta in alto e il controllo si allinea con quello accanto anche
+   quando uno dei due ha un suggerimento sotto e l'altro no: senza questo, in una
+   riga a due o tre colonne i campi si sfalsano. */
+.field > label { flex: 0 0 auto; }
+.field > input, .field > select, .field > textarea { margin-top: auto; }
+.field > .hint { margin-bottom: 0; }
+
+.grid-2, .grid-3 { display: grid; gap: 12px; align-items: start; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Sotto i 640px le colonne affiancate diventano illeggibili: si impilano. */
+@media (max-width: 640px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+
+button, .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1;
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0,0,0,.05);
+}
+button:hover, .btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.ghost, .btn.ghost { background: var(--surface); color: var(--ink-2); border-color: var(--line); }
+button.ghost:hover, .btn.ghost:hover { background: var(--surface-2); color: var(--ink); }
+button.danger { background: var(--surface); color: var(--err); border-color: var(--line); }
+button.danger:hover { background: #fdeeea; border-color: #f2b8ab; }
+button.warn { background: var(--surface); color: var(--warn); border-color: #ead9a0; }
+button.warn:hover { background: #fdf8e8; }
+button.sm, .btn.sm { height: 30px; padding: 0 11px; font-size: 12.5px; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ------------------------------------------------------------- tabelle */
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 12px; text-transform: none; letter-spacing: 0;
+  color: var(--muted); font-weight: 600; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+td { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+tbody tr:hover td { background: var(--surface-2); }
+td.right, th.right { text-align: right; }
+
+/* ------------------------------------------------------------- badge */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600;
+  border: 1px solid; white-space: nowrap;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.b-ok      { color: var(--ok);   border-color: #b9dfcb; background: #f0f9f4; }
+.b-wait    { color: var(--muted);border-color: var(--line); background: var(--surface-2); }
+.b-run     { color: var(--accent); border-color: #b6d5df; background: #eff7fa; }
+.b-warn    { color: var(--warn); border-color: #e6d3a8; background: #fdf8ec; }
+.b-err     { color: var(--err);  border-color: #e3bcbc; background: #fbf1f1; }
+
+/* -------------------------------------------- barcode: una barra per EAN */
+.barcode {
+  display: flex; height: 12px; border-radius: 6px;
+  background: var(--line-soft); border: 1px solid var(--line);
+  overflow: hidden;
+}
+.barcode i { display: block; height: 100%; background: var(--line); transition: width .3s; }
+.barcode i.s-pushed   { background: var(--ok); }
+.barcode i.s-ready    { background: var(--accent); }
+.barcode i.s-pending  { background: #c3cbd4; }
+.barcode i.s-error    { background: var(--err); }
+.barcode i.s-not_found{ background: #d9b48a; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend b { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+
+/* ------------------------------------------------------------- messaggi */
+.notice {
+  padding: 10px 13px; border-radius: var(--radius); font-size: 13px;
+  border: 1px solid; margin-bottom: 12px;
+}
+.n-err  { color: #7a1a1a; background: #fbf1f1; border-color: #e3bcbc; }
+.n-ok   { color: #0b5c3b; background: #f0f9f4; border-color: #b9dfcb; }
+.n-warn { color: #6b4700; background: #fdf8ec; border-color: #e6d3a8; }
+
+.empty { padding: 34px 20px; text-align: center; color: var(--muted); }
+.empty p { margin: 0 0 12px; }
+
+.kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+
+.specs { max-height: 260px; overflow: auto; border: 1px solid var(--line-soft); border-radius: var(--radius); }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumbs img {
+  width: 72px; height: 72px; object-fit: contain;
+  border: 1px solid var(--line-soft); border-radius: var(--radius); background: #fff;
+}
+
+/* ------------------------------------------------------------- modale */
+.overlay {
+  position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; background: rgba(23,26,33,.42); overflow: auto;
+}
+.modal {
+  width: 94vw; max-width: 1180px; max-height: 92vh; display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius); box-shadow: 0 24px 60px rgba(0,0,0,.25);
+}
+.modal > .body { overflow: auto; flex: 1 1 auto; }
+.modal textarea { min-height: 180px; }
+.modal > header { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+.modal > .body { padding: 18px; }
+.modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
+
+/* ------------------------------------------------------------- login */
+.login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-card { width: 100%; max-width: 380px; }
+.login-card .mark {
+  font-family: var(--mono); font-size: 12px; letter-spacing: .18em;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 6px;
+}
+
+@media (max-width: 720px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .wrap { padding: 16px 12px 48px; }
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar .who { display: none; }
+  th, td { padding: 8px 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+
+/* --------------------------------------------------------------- tema scuro */
+:root[data-theme="dark"] .topbar { background: #0b0e13; border-bottom: 1px solid var(--line); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .topbar { background: #0b0e13; border-bottom: 1px solid var(--line); }
+  :root:not([data-theme="light"]) .topbar nav button.on { background: var(--surface-2); color: var(--ink); }
+  :root:not([data-theme="light"]) tbody tr:hover td { background: var(--surface-2); }
+  :root:not([data-theme="light"]) .thumbs img { background: #fff; }
+  :root:not([data-theme="light"]) input, :root:not([data-theme="light"]) select,
+  :root:not([data-theme="light"]) textarea { background: var(--surface-2); color: var(--ink); }
+  :root:not([data-theme="light"]) .b-ok   { background: rgba(76,189,138,.12); border-color: rgba(76,189,138,.35); }
+  :root:not([data-theme="light"]) .b-run  { background: rgba(79,166,192,.12); border-color: rgba(79,166,192,.35); }
+  :root:not([data-theme="light"]) .b-warn { background: rgba(217,164,65,.12); border-color: rgba(217,164,65,.35); }
+  :root:not([data-theme="light"]) .b-err  { background: rgba(229,115,115,.12); border-color: rgba(229,115,115,.35); }
+  :root:not([data-theme="light"]) .n-err  { color: #f0b4b4; background: rgba(229,115,115,.10); border-color: rgba(229,115,115,.32); }
+  :root:not([data-theme="light"]) .n-ok   { color: #a8e0c6; background: rgba(76,189,138,.10); border-color: rgba(76,189,138,.32); }
+  :root:not([data-theme="light"]) .n-warn { color: #eccb8f; background: rgba(217,164,65,.10); border-color: rgba(217,164,65,.32); }
+}
+:root[data-theme="dark"] .topbar nav button.on { background: var(--surface-2); color: var(--ink); }
+:root[data-theme="dark"] tbody tr:hover td { background: var(--surface-2); }
+:root[data-theme="dark"] .thumbs img { background: #fff; }
+:root[data-theme="dark"] input, :root[data-theme="dark"] select, :root[data-theme="dark"] textarea {
+  background: var(--surface-2); color: var(--ink);
+}
+:root[data-theme="dark"] .b-ok   { background: rgba(76,189,138,.12); border-color: rgba(76,189,138,.35); }
+:root[data-theme="dark"] .b-run  { background: rgba(79,166,192,.12); border-color: rgba(79,166,192,.35); }
+:root[data-theme="dark"] .b-warn { background: rgba(217,164,65,.12); border-color: rgba(217,164,65,.35); }
+:root[data-theme="dark"] .b-err  { background: rgba(229,115,115,.12); border-color: rgba(229,115,115,.35); }
+:root[data-theme="dark"] .n-err  { color: #f0b4b4; background: rgba(229,115,115,.10); border-color: rgba(229,115,115,.32); }
+:root[data-theme="dark"] .n-ok   { color: #a8e0c6; background: rgba(76,189,138,.10); border-color: rgba(76,189,138,.32); }
+:root[data-theme="dark"] .n-warn { color: #eccb8f; background: rgba(217,164,65,.10); border-color: rgba(217,164,65,.32); }
+
+/* ------------------------------------------------------ selettore del tema */
+.theme-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--topbar-ink);
+  width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: var(--radius);
+}
+.theme-btn:hover { background: var(--surface-2); border-color: var(--muted); color: var(--topbar-ink); }
+.theme-btn svg { width: 16px; height: 16px; }
+
+/* --------------------------------------------------- intestazione cliente */
+.client-badge { display: flex; align-items: center; gap: 9px; }
+.client-badge img { height: 26px; max-width: 110px; object-fit: contain; border-radius: 3px; background: #fff; padding: 2px; }
+.client-badge span { color: var(--topbar-ink); font-weight: 600; }
+
+/* ------------------------------------------------------------ abbonamento */
+.sub-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--surface);
+}
+.sub-bar .meter { flex: 1; min-width: 140px; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.sub-bar .meter i { display: block; height: 100%; background: var(--accent); }
+.sub-bar .meter i.full { background: var(--err); }
+
+.logo-drop {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius); background: var(--surface-2);
+}
+.logo-drop img { height: 54px; max-width: 180px; object-fit: contain; background: #fff; border-radius: 4px; padding: 4px; }
+
+/* Favicon: com'è grande e com'è nella scheda del browser. */
+.favicon-anteprime { display: flex; align-items: center; gap: 12px; }
+.logo-drop img.favicon-anteprima { width: 48px; height: 48px; padding: 6px; }
+.favicon-scheda {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 200px;
+  padding: 7px 12px; border-radius: 8px 8px 0 0; border: 1px solid var(--line); border-bottom: 0;
+  background: var(--surface); font-size: 12px; color: var(--ink, inherit); white-space: nowrap; overflow: hidden;
+}
+.favicon-scheda img { width: 16px; height: 16px; padding: 0; background: transparent; border-radius: 0; flex: none; }
+.favicon-scheda span { overflow: hidden; text-overflow: ellipsis; }
+
+/* Stati aggiunti dopo: schede da completare e bloccate dall'abbonamento. */
+.barcode i.s-incomplete { background: var(--warn); }
+.barcode i.s-blocked    { background: var(--err); }
+
+
+/* ------------------------------------------------- revisione una a una */
+.review { border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.review-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.review-bar { width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.review-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+
+.review-body { display: grid; grid-template-columns: 160px 1fr; gap: 18px; padding: 16px; }
+.review-pic { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.review-pic img {
+  width: 100%; aspect-ratio: 1; object-fit: contain;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px;
+}
+.review-main { min-width: 0; }
+
+/* Il prezzo è l'unica cosa che si digita davvero: si vede e si centra. */
+.prezzi {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-top: 6px; padding: 12px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line);
+}
+input.big { font-size: 18px; font-weight: 600; padding: 10px 12px; }
+
+.review-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line-soft); }
+.review .specs { max-height: 260px; overflow: auto; margin-top: 10px; }
+
+@media (max-width: 720px) {
+  .review-body { grid-template-columns: 1fr; }
+  .review-pic img { max-width: 200px; }
+  .prezzi { grid-template-columns: 1fr; }
+}
+
+
+/* ------------------------------------------------------ marca del portale */
+.brand-logo { height: 26px; max-width: 190px; object-fit: contain; display: block; }
+.login-logo { max-height: 54px; max-width: 220px; object-fit: contain; margin: 0 auto 14px; display: block; }
+
+
+/* ------------------------------------------------- guida all'importazione */
+.guida {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface-2); padding: 12px 14px; margin-bottom: 18px;
+}
+.guida > summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.guida > summary::marker { color: var(--muted); }
+.guida ol { margin: 12px 0 4px; padding-left: 20px; }
+.guida li { margin-bottom: 10px; line-height: 1.5; color: var(--ink-2); }
+.guida li strong { color: var(--ink); }
+.guida em { font-style: normal; font-weight: 600; color: var(--accent-ink); }
+.guida .hint { margin-bottom: 0; }
+
+
+/* --------------------------------------------------- fase dell'importazione */
+.fase {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+}
+.fase strong { font-size: 14px; }
+.fase .barcode { flex: 1 1 200px; }
+
+
+/* ============================================================ gerarchia dei pulsanti
+   Prima erano tutti bianchi e non si capiva dove cliccare. Ora ogni pulsante dice
+   da solo che ruolo ha: pieno = l'azione da fare, contorno = alternativa,
+   verde = conferma che chiude un passo, giallo = qualcosa da sistemare. */
+button.ok, .btn.ok {
+  background: var(--ok); border-color: var(--ok); color: #fff;
+}
+button.ok:hover, .btn.ok:hover { filter: brightness(.94); }
+
+button.warn, .btn.warn {
+  background: var(--warn); border-color: var(--warn); color: #3d2c05;
+}
+button.warn:hover { filter: brightness(.95); }
+
+/* ------------------------------------------------------- filtri degli stati */
+.filtro { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-weight: 500; }
+.filtro:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--surface); }
+.filtro.vuoto { color: var(--muted); opacity: .55; }
+.filtro.on { background: var(--ink); border-color: var(--ink); color: var(--canvas); }
+
+/* Un filtro che ha qualcosa dentro si tinge del colore del suo stato. */
+.filtro.f-ready      { border-color: var(--accent); color: var(--accent-ink); }
+.filtro.f-pushed     { border-color: var(--ok); color: var(--ok); }
+.filtro.f-incomplete { border-color: var(--warn); color: #9a6f10; }
+.filtro.f-not_found  { border-color: #d9b48a; color: #a06b2c; }
+.filtro.f-error,
+.filtro.f-blocked    { border-color: var(--err); color: var(--err); }
+.filtro.on.f-ready, .filtro.on.f-pushed, .filtro.on.f-incomplete,
+.filtro.on.f-not_found, .filtro.on.f-error, .filtro.on.f-blocked {
+  background: var(--ink); border-color: var(--ink); color: var(--canvas);
+}
+:root[data-theme="dark"] .filtro.f-incomplete { color: #eccb8f; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .filtro.f-incomplete { color: #eccb8f; }
+}
+
+
+/* ==================================================== pulsanti: una sola taglia
+   .sm non rimpicciolisce più niente: resta solo per compatibilità con il markup.
+   La differenza fra un pulsante e l'altro la fa il colore, non la dimensione. */
+button.sm, .btn.sm { height: 34px; padding: 0 14px; font-size: 13.5px; }
+.theme-btn, .theme-btn.sm { width: 34px; height: 34px; padding: 0; }
+
+/* Contorno: le azioni secondarie. Grigie a riposo, accese al passaggio. */
+button.ghost, .btn.ghost {
+  background: transparent; border-color: var(--line); color: var(--ink-2);
+}
+button.ghost:hover { border-color: var(--accent); color: var(--accent-ink); background: transparent; }
+
+/* Verde: chiude un passaggio. Rosso: distrugge qualcosa. */
+button.ok, .btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+button.ok:hover { filter: brightness(.93); }
+
+button.danger, .btn.danger {
+  background: transparent; border-color: var(--err); color: var(--err);
+}
+button.danger:hover { background: var(--err); color: #fff; }
+
+button.warn, .btn.warn { background: var(--warn); border-color: var(--warn); color: #3b2a04; }
+button.warn:hover { filter: brightness(.95); }
+
+button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+
+/* I filtri sono pulsanti anche loro: stessa altezza, colore per stato. */
+.filtro { font-weight: 600; }
+
+
+/* ------------------------------------------------- modulo di importazione */
+button.grande { height: 44px; padding: 0 24px; font-size: 15px; }
+.ok-hint { color: var(--ok); font-weight: 600; }
+
+.opzioni {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px; margin-top: 16px; background: var(--surface-2);
+}
+.opzioni > summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; }
+.opzioni > summary:hover { color: var(--ink-2); }
+.opzioni[open] > summary { margin-bottom: 4px; }
+
+
+/* ------------------------------------------------- campi obbligatori e righe */
+/* Il campo che manca si vede: bordo rosso finché non è compilato. */
+select.manca, input.manca { border-color: var(--err); }
+select.manca:focus, input.manca:focus { outline-color: var(--err); border-color: var(--err); }
+
+/* Etichetta «obbligatoria» accanto al nome del campo. */
+.obbl {
+  color: var(--err); font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; margin-left: 6px;
+}
+
+/* Riga campo+pulsante che non va mai a capo: prima il «Togli» finiva sotto
+   l'input e sembrava un pulsante orfano. */
+.row.riga { flex-wrap: nowrap; }
+.row.riga input { flex: 1 1 auto; width: auto; min-width: 0; }
+.row.riga button { flex: 0 0 auto; }
+
+/* Chiusura della modale: una X, non un pulsante che fa a botte con «Annulla». */
+button.x {
+  width: 34px; padding: 0; font-size: 22px; font-weight: 400; line-height: 1;
+  background: transparent; border-color: transparent; color: var(--muted);
+}
+button.x:hover { background: var(--surface-2); border-color: var(--line); color: var(--ink); }
+
+/* ------------------------------------------------------------ fonti dati */
+.fonti { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.fonte {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.fonte.attiva { border-color: var(--ok); background: var(--surface-2); }
+.fonte-testa { display: flex; align-items: center; gap: 8px; }
+.fonte-testa strong { flex: 1; }
+.fonte p.hint { flex: 1; margin: 0; }
+.fonte .row { margin-top: auto; }
+
+
+/* ============================================================ CATALOGO */
+/* La vista principale del cliente: contatori cliccabili, tabella con campi
+   modificabili in riga, pill di stato in parole povere. */
+.cat-head { flex-wrap: wrap; }
+
+.kpis {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 14px 20px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+}
+.kpi {
+  height: auto; padding: 8px 14px; gap: 8px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink-2); border: 1px solid var(--line);
+  box-shadow: none; font-weight: 500;
+}
+.kpi:hover { background: var(--surface); border-color: var(--muted); color: var(--ink); }
+.kpi.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.kpi-n { font-size: 17px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.kpi-l { font-size: 12.5px; }
+.kpi.k-da_completare .kpi-n { color: var(--warn); }
+.kpi.k-non_trovato .kpi-n, .kpi.k-problema .kpi-n { color: var(--err); }
+.kpi.k-pronto .kpi-n, .kpi.k-sul_sito .kpi-n { color: var(--ok); }
+.kpi.k-in_corso .kpi-n { color: var(--muted); }
+.cerca { max-width: 280px; height: 36px; border-radius: var(--radius-sm); }
+
+.selbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 10px 20px; background: var(--accent-soft); border-bottom: 1px solid var(--line-soft);
+}
+
+.tab-cat { min-width: 1040px; table-layout: auto; }
+.tab-cat td { padding: 10px 12px; vertical-align: middle; }
+.tab-cat .col-prodotto, .tab-cat td:nth-child(3) { min-width: 280px; }
+.tab-cat th:first-child, .tab-cat td:first-child { padding-left: 20px; }
+.tab-cat th:last-child, .tab-cat td:last-child { padding-right: 20px; }
+.tab-cat .titolo { font-weight: 600; color: var(--ink); }
+.tab-cat .hint { margin-top: 2px; }
+.tab-cat .hint.avviso { color: var(--warn); }
+.tab-cat .fonte-riga { opacity: .78; }
+.tab-cat select, .tab-cat input[type=text] { height: 34px; padding: 0 10px; border-radius: var(--radius-sm); }
+.tab-cat input.manca, .tab-cat select.manca { border-color: #f0c36b; background: #fffbf0; }
+:root[data-theme="dark"] .tab-cat input.manca, :root[data-theme="dark"] .tab-cat select.manca { background: #2a2416; }
+.tab-cat tr.sul_sito td { opacity: .85; }
+.tab-cat tr.in_corso td { color: var(--muted); }
+/* Azioni: pulsanti AFFIANCATI su una riga, allineati a destra, mai impilati.
+   La colonna ha larghezza fissa generosa: con la pagina larga lo spazio c'è. */
+.tab-cat .azioni { white-space: nowrap; min-width: 380px; }
+.tab-cat .azioni > span { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.tab-cat .azioni > * { margin: 0 0 0 6px; vertical-align: middle; }
+.tab-cat .azioni > *:first-child { margin-left: 0; }
+.tab-cat td.azioni { text-align: right; }
+/* Stato: una riga sola, leggibile; la colonna è larga apposta. */
+.tab-cat .pill {
+  white-space: nowrap !important; line-height: 1.4; display: inline-block; max-width: none !important;
+  font-size: 13px; padding: 7px 16px; border-radius: 999px;
+}
+/* Stato: contenuto verso destra, vicino alle azioni; il nome prodotto respira a sinistra. */
+.tab-cat td.col-stato, .tab-cat th.col-stato { text-align: right; padding-right: 24px; }
+.tab-cat td.col-stato .hint { text-align: right; }
+.tab-cat { width: 100%; }
+.tab-cat .col-prodotto, .tab-cat td:nth-child(3) { min-width: 260px; }
+.tab-cat select { width: 100%; }
+.price-stack input { width: 100%; }
+/* Prezzi su UNA riga: pieno e scontato affiancati, stessa altezza, leggibili. */
+.price-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.price-stack input.sale { font-size: 13px; opacity: .9; }
+
+.thumb {
+  width: 44px; height: 44px; object-fit: contain; border-radius: 8px;
+  background: #fff; border: 1px solid var(--line-soft); display: block;
+}
+.thumb.vuoto { background: var(--surface-2); }
+
+/* pill di stato: sfondo tenue + testo pieno, come i badge di Shopify */
+.pill {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+/* (la pill in tabella sta su una riga: regola unica più sotto) */
+.p-sul_sito      { background: #e3f1ec; color: #0a5c43; }
+.p-pronto        { background: #e3f1ec; color: #0a5c43; }
+.p-da_completare { background: #fff4d6; color: #7a5b00; }
+.p-non_trovato   { background: #fde8e4; color: #8f2a15; }
+.p-problema      { background: #fde8e4; color: #8f2a15; }
+.p-in_corso      { background: var(--surface-2); color: var(--muted); }
+:root[data-theme="dark"] .p-sul_sito, :root[data-theme="dark"] .p-pronto { background: #163d31; color: #7ee0bf; }
+:root[data-theme="dark"] .p-da_completare { background: #3d3212; color: #f0d06c; }
+:root[data-theme="dark"] .p-non_trovato, :root[data-theme="dark"] .p-problema { background: #44201a; color: #ffa08a; }
+
+/* banner in cima al catalogo: ricerca in corso / finita */
+.banner {
+  padding: 14px 18px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.banner.b-run { border-color: #b6d5df; background: #eff7fa; }
+.banner.b-ok  { border-color: #b9dfcb; background: #f0f9f4; }
+:root[data-theme="dark"] .banner.b-run { background: #172a30; border-color: #2a4a55; }
+:root[data-theme="dark"] .banner.b-ok  { background: #163d31; border-color: #245a48; }
+.spin {
+  width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: gira .8s linear infinite;
+}
+@keyframes gira { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .card .body.tight { overflow-x: auto; }
+}
+
+:root[data-theme="dark"] .b-ok   { background: #163d31; border-color: #245a48; }
+:root[data-theme="dark"] .b-run  { background: #172a30; border-color: #2a4a55; }
+:root[data-theme="dark"] .b-warn { background: #3d3212; border-color: #5a4a1a; }
+:root[data-theme="dark"] .b-err  { background: #44201a; border-color: #6a2e22; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .b-ok   { background: #163d31; border-color: #245a48; }
+  :root:not([data-theme="light"]) .b-run  { background: #172a30; border-color: #2a4a55; }
+  :root:not([data-theme="light"]) .b-warn { background: #3d3212; border-color: #5a4a1a; }
+  :root:not([data-theme="light"]) .b-err  { background: #44201a; border-color: #6a2e22; }
+  :root:not([data-theme="light"]) .p-sul_sito, :root:not([data-theme="light"]) .p-pronto { background: #163d31; color: #7ee0bf; }
+  :root:not([data-theme="light"]) .p-da_completare { background: #3d3212; color: #f0d06c; }
+  :root:not([data-theme="light"]) .p-non_trovato, :root:not([data-theme="light"]) .p-problema { background: #44201a; color: #ffa08a; }
+  :root:not([data-theme="light"]) .banner.b-run { background: #172a30; border-color: #2a4a55; }
+  :root:not([data-theme="light"]) .banner.b-ok  { background: #163d31; border-color: #245a48; }
+  :root:not([data-theme="light"]) .tab-cat input.manca, :root:not([data-theme="light"]) .tab-cat select.manca { background: #2a2416; }
+}
+
+
+/* ------------------------------------------------ riquadro Aggiungi prodotti */
+.aggiungi-grid {
+  display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start;
+}
+.aggiungi textarea { min-height: 96px; font-family: var(--mono); font-size: 14px; }
+.aggiungi-azione button.grande { width: 100%; height: 44px; font-size: 15px; }
+.aggiungi .opzioni { margin-top: 12px; }
+.aggiungi .opzioni summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+@media (max-width: 800px) { .aggiungi-grid { grid-template-columns: 1fr; } }
+
+/* diario della prova admin: una riga per sito aperto */
+.esiti { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.esiti li { padding: 5px 8px; border-left: 3px solid var(--line); margin-bottom: 3px; color: var(--muted); }
+.esiti li.ok { border-left-color: var(--ok); color: var(--ink); }
+
+/* ----------------------------------------------------------- legenda */
+.legenda .passi { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.legenda .passi li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; }
+.legenda .n {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 13px;
+}
+.stati-legenda { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.stati-legenda .voce { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.stati-legenda .pill { flex: 0 0 auto; min-width: 150px; text-align: center; }
+.cat-head select.vista { max-width: 230px; height: 36px; margin-left: 6px; }
+button.aiuto { width: 32px; padding: 0; font-weight: 700; }
+@media (max-width: 900px) {
+  .legenda .passi { grid-template-columns: 1fr 1fr; }
+  .stati-legenda { grid-template-columns: 1fr; }
+}
+
+/* Storico: esito del carico in pill, azioni affiancate */
+.storico .esito-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.storico .azioni > span { display: inline-flex; gap: 6px; }
+
+/* modali larghe: i campi affiancati in 3 colonne dove ha senso */
+.modal .grid-2 { gap: 16px; }
+.modal .prezzi { grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) { .modal { width: 100vw; max-width: none; height: 100vh; max-height: none; border-radius: 0; } .wrap { width: 100%; padding: 16px 12px 48px; } }
+
+
+/* ======================================================= barra in alto
+   Nel tema chiaro la barra è bianca: nome del negozio, lingua ed «Esci»
+   avevano ancora i grigi chiari pensati per la barra scura e sparivano. */
+.topbar .esci {
+  background: transparent; color: var(--topbar-ink); border-color: var(--line);
+}
+.topbar .esci:hover { background: var(--surface-2); color: var(--topbar-ink); border-color: var(--muted); }
+html[data-project] .topbar #language-switcher {
+  --ls-bg: transparent; --ls-border: var(--line); --ls-text: var(--topbar-ink);
+  --ls-muted: var(--muted); --ls-soft: var(--accent-soft); --ls-accent: var(--accent-ink);
+  box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+html[data-project] .topbar #language-switcher select { color: var(--topbar-ink); background: transparent; border: 0; }
+.topbar #language-switcher option { background: var(--surface); color: var(--ink); }
+
+/* Caselle di spunta: col colore del portale, e mai nere nel tema chiaro. */
+input[type=checkbox], input[type=radio] {
+  accent-color: var(--accent); width: 16px; height: 16px; margin: 0; cursor: pointer; vertical-align: middle;
+}
+input[type=checkbox]:disabled { cursor: default; opacity: .45; }
+
+/* ======================================================= lingua delle schede */
+.lingua-schede { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.lingua-schede label { margin: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.lingua-schede select { width: auto; min-width: 150px; height: 34px; padding: 0 10px; }
+.lingua-fissa { font-size: 13px; }
+
+/* ======================================================= perché non si trova */
+.tab-cat .perche-breve { color: var(--err); }
+.diario-causa {
+  padding: 10px 12px; border-radius: var(--radius-sm); margin-bottom: 12px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+}
+.diario-causa.c-trovato { border-color: var(--ok); color: var(--ok); }
+.diario-causa.c-motori_bloccati, .diario-causa.c-siti_bloccati { border-color: var(--warn); }
+.diario-causa.c-sconosciuto, .diario-causa.c-non_confermato,
+.diario-causa.c-solo_somiglianza, .diario-causa.c-motori_irraggiungibili { border-color: var(--err); }
+h3.diario-h { margin: 14px 0 6px; }
+table.diario { font-size: 13px; }
+table.diario th, table.diario td { padding: 7px 10px; }
+table.diario td .mono { word-break: break-all; }
+.chip {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; margin: 1px 0;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); white-space: nowrap;
+}
+.chip.ok { border-color: var(--ok); color: var(--ok); }
+.chip.ko { border-color: var(--err); color: var(--err); }
+.esito { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap;
+         background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.esito.es-confermata { color: var(--ok); border-color: var(--ok); }
+.esito.es-bloccata, .esito.es-robots, .esito.es-http, .esito.es-rete { color: var(--warn); border-color: var(--warn); }
+.esito.es-altro_prodotto, .esito.es-non_conferma, .esito.es-incoerente { color: var(--err); border-color: var(--err); }
+.hint.err { color: var(--err); }
+.diario-fine { margin-top: 10px; }
+.diario-box { margin-top: 12px; }
+
+/* ======================================================= salute della ricerca */
+.come-funziona { line-height: 1.55; }
+.salute-numeri { display: flex; gap: 28px; margin-bottom: 14px; flex-wrap: wrap; }
+.salute-numeri > div { display: flex; flex-direction: column; }
+.salute-numeri .n { font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.salute-numeri .n.ok { color: var(--ok); }
+.lista-cause { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+.lista-cause li { padding: 7px 0; border-bottom: 1px solid var(--line-soft); display: grid;
+                  grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.lista-cause li.hint { display: block; }
+.lista-cause li .num { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.lista-cause li.motore { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.lista-cause .mono { word-break: break-all; }
+table.lotto td { vertical-align: top; }
+
+/* Piede: versione e codice sorgente (AGPL-3.0), discreto. */
+.piede { text-align: center; font-size: 12px; color: var(--muted, #8a8f98); padding: 18px 16px 28px; }
+.piede a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.piede a:hover { color: var(--ink); }
+.piede.piede-login { padding: 14px 0 0; margin: 0; }
+

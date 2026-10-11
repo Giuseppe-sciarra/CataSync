@@ -1,0 +1,47 @@
+# Variante per chi non vuole registry: Portainer costruisce l'immagine
+# direttamente dal repository, sul nodo Docker.
+#
+# Portainer → Stacks → Add stack → Repository
+#   Repository URL:  https://github.com/Giuseppe-sciarra/CataSync
+#   Reference:       refs/heads/main
+#   Compose path:    docker-compose.portainer-git.yml
+#   Environment variables: SECRET_KEY, FERNET_KEY, ADMIN_EMAIL, ADMIN_PASSWORD…
+#   (le stesse del .env.example)
+#
+# Solo il portale, con SQLite sul volume: per Postgres, SearXNG e LibreTranslate
+# usa il docker-compose.yml completo.
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: catasync-hub:local
+    container_name: catasync-hub
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?serve una stringa lunga e casuale (openssl rand -hex 32)}
+      FERNET_KEY: ${FERNET_KEY:?generala con openssl rand -base64 32 | tr '+/' '-_'}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/hub.db}
+      UPLOAD_DIR: /data/uploads
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
+      DEFAULT_LANG: ${DEFAULT_LANG:-IT}
+      CACHE_DAYS: ${CACHE_DAYS:-30}
+      SEARCH_PAUSE: ${SEARCH_PAUSE:-4}
+      SEARCH_MAX_DEFERRALS: ${SEARCH_MAX_DEFERRALS:-4}
+      SITE_TIMEOUT: ${SITE_TIMEOUT:-60}
+      SOURCE_URL: ${SOURCE_URL:-https://github.com/Giuseppe-sciarra/CataSync}
+      WORKER_ENABLED: "1"
+      SCHEDULER_ENABLED: "1"
+      WORKER_BATCH: ${WORKER_BATCH:-5}
+      TZ: ${TZ:-Europe/Rome}
+    volumes:
+      - hub_data:/data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8811}:8000"
+
+volumes:
+  hub_data:

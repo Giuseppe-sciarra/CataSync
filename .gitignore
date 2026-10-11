@@ -1,0 +1,33 @@
+# Configurazione e credenziali locali — MAI nel repository
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dati a runtime e backup (database, loghi, favicon e cache stanno nei volumi)
+data/
+uploads/
+backups/
+*.db
+*.db-*
+*.sqlite*
+*.sql
+*.dump
+*.backup
+*.bak*
+*.log
+*.zip
+
+# Modelli scaricati da LibreTranslate (cartella montata dal compose)
+libretranslate/
+
+# Python e varie
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.DS_Store
+Thumbs.db

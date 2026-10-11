@@ -1,0 +1,36 @@
+# Configurazione e credenziali locali
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dati a runtime e backup
+data/
+uploads/
+backups/
+libretranslate/
+*.db
+*.db-*
+*.sqlite*
+*.sql
+*.dump
+*.bak*
+*.log
+*.zip
+
+# Python e varie
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Non servono nell'immagine
+.git
+.github
+docs
+tests
+searxng

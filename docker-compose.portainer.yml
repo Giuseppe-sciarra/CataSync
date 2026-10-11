@@ -1,0 +1,48 @@
+# Stack per Portainer — Stacks → Add stack → Web editor.
+# Solo il portale, con SQLite sul volume: niente Postgres, SearXNG e
+# LibreTranslate (per quelli usa il docker-compose.yml completo).
+#
+# Il Web editor non costruisce immagini: prima falla sul nodo Docker, una volta
+# e a ogni aggiornamento:
+#   docker build -t catasync-hub:latest https://github.com/Giuseppe-sciarra/CataSync.git#main
+# Se la pubblichi su un registry, metti il suo nome in HUB_IMAGE.
+#
+# Le variabili si mettono nella sezione "Environment variables" di Portainer.
+
+services:
+  hub:
+    image: ${HUB_IMAGE:-catasync-hub:latest}
+    container_name: catasync-hub
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?serve una stringa lunga e casuale (openssl rand -hex 32)}
+      FERNET_KEY: ${FERNET_KEY:?generala con openssl rand -base64 32 | tr '+/' '-_'}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/hub.db}
+      UPLOAD_DIR: /data/uploads
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
+      DEFAULT_LANG: ${DEFAULT_LANG:-IT}
+      CACHE_DAYS: ${CACHE_DAYS:-30}
+      SEARCH_PAUSE: ${SEARCH_PAUSE:-4}
+      SEARCH_MAX_DEFERRALS: ${SEARCH_MAX_DEFERRALS:-4}
+      SITE_TIMEOUT: ${SITE_TIMEOUT:-60}
+      SOURCE_URL: ${SOURCE_URL:-https://github.com/Giuseppe-sciarra/CataSync}
+      WORKER_ENABLED: "1"
+      SCHEDULER_ENABLED: "1"
+      WORKER_BATCH: ${WORKER_BATCH:-5}
+      TZ: ${TZ:-Europe/Rome}
+    volumes:
+      - hub_data:/data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8811}:8000"    # reverse proxy davanti
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  hub_data:

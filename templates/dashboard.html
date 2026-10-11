@@ -1,0 +1,2131 @@
+<!doctype html>
+<html lang="it" data-project="catasync">
+<head>
+<meta charset="utf-8">
+  <script src="/static/i18n/catalog.js?v={{ static_v }}"></script>
+  <script src="/static/i18n/i18n.js?v={{ static_v }}"></script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ app_name }}</title>
+{% if portal_favicon %}
+<link rel="icon" href="{{ portal_favicon }}" type="{{ portal_favicon_type }}">
+{% if portal_favicon_raster %}<link rel="apple-touch-icon" href="{{ portal_favicon }}">{% endif %}
+{% else %}
+<link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
+<link rel="icon" href="/static/favicon-32.png?v={{ static_v }}" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ static_v }}">
+{% endif %}
+<script>
+/* Applica il tema prima del disegno, altrimenti si vede il lampo bianco. */
+(function () {
+  try {
+    var t = localStorage.getItem('tdic-theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
+<script defer src="/static/alpine.min.js?v={{ static_v }}"></script>
+
+  <link rel="stylesheet" href="/static/i18n/i18n.css?v={{ static_v }}">
+</head>
+<body x-data="hub({{ 'true' if is_admin else 'false' }})" x-init="boot()">
+
+<header class="topbar">
+  <div class="brand">
+    {% if portal_logo %}<img src="{{ portal_logo }}" alt="{{ app_name }}" class="brand-logo">
+    {% else %}{{ app_name }}{% endif %}
+  </div>
+  <template x-if="brand && (brand.logo || brand.name)">
+    <div class="client-badge">
+      <template x-if="brand.logo"><img :src="brand.logo" alt=""></template>
+      <span x-text="brand.name"></span>
+    </div>
+  </template>
+  <nav>
+    <template x-if="!isAdmin">
+      <button :class="(tab==='catalogo' || tab==='single') && 'on'" @click="go('catalogo')">Prodotti</button>
+    </template>
+    <template x-if="!isAdmin">
+      <button :class="tab==='jobs' && 'on'" @click="go('jobs')">Storico</button>
+    </template>
+    <template x-if="!isAdmin">
+      <button :class="tab==='categories' && 'on'" @click="go('categories')">Categorie</button>
+    </template>
+    <template x-if="!isAdmin"><button :class="tab==='shop' && 'on'" @click="go('shop')">Negozio</button></template>
+    <template x-if="isAdmin">
+      <span style="display:contents">
+        <button :class="tab==='clients' && 'on'" @click="go('clients')">Clienti</button>
+        <button :class="tab==='sites' && 'on'" @click="go('sites')">Siti</button>
+        <button :class="tab==='users' && 'on'" @click="go('users')">Utenti</button>
+        <button :class="tab==='impostazioni' && 'on'" @click="go('impostazioni')">Impostazioni</button>
+      </span>
+    </template>
+  </nav>
+  <div class="spacer"></div>
+  <div class="who">{{ user_email }}</div>
+  <button class="theme-btn" @click="cycleTheme()" :title="themeTitle()" :aria-label="themeTitle()">
+    <span x-show="theme==='auto'" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 010 16" fill="currentColor" stroke="none"/></svg>
+    </span>
+    <span x-show="theme==='light'" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+    </span>
+    <span x-show="theme==='dark'" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>
+    </span>
+  </button>
+  <button class="ghost sm esci" @click="logout()">Esci</button>
+</header>
+
+<main class="wrap stack" x-cloak>
+
+  <template x-if="flash.msg">
+    <div class="notice" :class="'n-' + flash.kind" x-text="flash.msg"></div>
+  </template>
+
+  <template x-if="sub && !isAdmin">
+    <div class="stack" style="gap:10px">
+      <template x-if="!sub.allowed">
+        <div class="notice n-err" style="margin:0">
+          <strong x-text="sub.status_label"></strong> — <span x-text="sub.reason"></span>
+        </div>
+      </template>
+      <div class="sub-bar">
+        <span class="badge" :class="sub.allowed ? 'b-ok' : 'b-err'" x-text="sub.status_label"></span>
+        <span x-text="sub.plan"></span>
+        <template x-if="sub.expires_at">
+          <span class="hint" x-text="'fino al ' + fmtDay(sub.expires_at)"></span>
+        </template>
+        <template x-if="sub.quota">
+          <span class="hint num" x-text="sub.used + ' / ' + sub.quota + ' prodotti questo mese'"></span>
+        </template>
+        <template x-if="sub.quota">
+          <span class="meter"><i :class="sub.remaining === 0 && 'full'"
+                :style="'width:' + Math.min(100, Math.round(sub.used * 100 / sub.quota)) + '%'"></i></span>
+        </template>
+        <template x-if="!sub.quota">
+          <span class="hint num" x-text="sub.used + ' prodotti pubblicati questo mese'"></span>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================ IMPORTA -->
+  <!-- ========================================================== CATALOGO -->
+  <template x-if="tab==='catalogo'">
+    <div class="stack">
+      <template x-if="!sites.length">
+        <div class="card"><div class="empty">
+          <p>Nessun sito collegato al tuo account.</p>
+          <p class="hint">Il collegamento lo attiva l'amministratore del portale.</p>
+        </div></div>
+      </template>
+
+      <template x-if="sites.length">
+        <div class="stack">
+
+          <!-- ================= 1. AGGIUNGI PRODOTTI: sempre in cima, sempre aperto -->
+          <div class="card aggiungi">
+            <header>
+              <h2>Aggiungi prodotti</h2>
+              <template x-if="sites.length > 1">
+                <select style="max-width:260px; margin-left:8px" x-model.number="form.site_id" @change="onSiteChange(); loadCatalogo()">
+                  <template x-for="s in sites" :key="'as'+s.id">
+                    <option :value="s.id" :selected="s.id == form.site_id" x-text="s.name"></option>
+                  </template>
+                </select>
+              </template>
+              <div class="grow"></div>
+              <button class="ghost sm" x-show="!legendaAperta" @click="apriLegenda()">📖 Come funziona</button>
+              <button class="ghost sm" @click="go('single')">Prova un solo codice</button>
+            </header>
+            <div class="body">
+              <div class="aggiungi-grid">
+                <div class="field" style="margin:0">
+                  <label for="eans">Incolla i codici, uno per riga: EAN oppure codice produttore</label>
+                  <textarea id="eans" x-ref="eans" x-model="form.eans" rows="4"
+                    placeholder="8059893356383&#10;97924465&#10;FAST 14 FI"></textarea>
+                  <div class="row" style="margin-top:8px">
+                    <span class="hint" :class="eanCount && 'ok-hint'"
+                          x-text="eanCount ? riepilogoCodici : 'EAN: le cifre sotto il codice a barre. Codice produttore: quello della marca che trovi sulla fattura del grossista (es. 97924465). Non il tuo codice di magazzino.'"></span>
+                    <div class="grow"></div>
+                    <label class="btn ghost sm" style="margin:0; cursor:pointer">
+                      Carica un CSV
+                      <input type="file" accept=".csv,text/csv" style="display:none" @change="uploadCsv($event)">
+                    </label>
+                  </div>
+                </div>
+                <div class="aggiungi-azione">
+                  <button class="grande" @click="createJob()" :disabled="busy || !eanCount"
+                          x-text="busy ? 'Un attimo…' : (eanCount ? ('Cerca le schede di ' + eanCount + ' prodotti') : 'Cerca le schede')"></button>
+                  <div class="lingua-schede">
+                    <label for="lang">Schede in</label>
+                    <template x-if="!linguaFissata">
+                      <select id="lang" x-model="form.lang" @change="linguaScelta = true" translate="no">
+                        <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+                        <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+                      </select>
+                    </template>
+                    <template x-if="linguaFissata">
+                      <span class="lingua-fissa"><strong translate="no" x-text="nomeLingua(linguaFissata)"></strong>
+                        <span class="hint">· impostata sul negozio</span></span>
+                    </template>
+                  </div>
+                  <p class="hint" style="margin-top:8px">
+                    Le schede compaiono qui sotto man mano. Poi metti categoria e prezzo in tabella e pubblichi.
+                    I codici già sul sito vengono aggiornati, non duplicati.
+                    Col codice produttore, se la pagina trovata riporta l'EAN, lo recuperiamo noi.
+                    Quello che trovo in un'altra lingua lo traduco nella lingua delle schede.
+                  </p>
+                  <details class="opzioni">
+                    <summary>Opzioni</summary>
+                    <div class="grid-2" style="margin-top:10px">
+                      <div class="field">
+                        <label for="label">Nome del carico</label>
+                        <input id="label" type="text" x-model="form.label" placeholder="lasciato vuoto: la data di oggi">
+                      </div>
+                      <div class="field">
+                        <label for="pstatus">Stato dei prodotti creati</label>
+                        <select id="pstatus" x-model="form.product_status">
+                          <option value="publish">Pubblicato</option>
+                          <option value="draft">Bozza</option>
+                        </select>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ================= LEGENDA: come funziona, in parole povere -->
+          <template x-if="legendaAperta">
+            <div class="card legenda">
+              <header>
+                <h2>Come funziona</h2>
+                <div class="grow"></div>
+                <button class="ghost sm" @click="chiudiLegenda()">Ho capito, nascondi</button>
+              </header>
+              <div class="body">
+                <ol class="passi">
+                  <li>
+                    <span class="n">1</span>
+                    <div><strong>Incolla i codici</strong> nel riquadro qui sopra: l'EAN (le cifre sotto il codice a barre)
+                      oppure il codice del produttore (es. <span class="mono">97924465</span>), uno per riga. Non il tuo codice di magazzino.</div>
+                  </li>
+                  <li>
+                    <span class="n">2</span>
+                    <div><strong>Premi «Cerca le schede»</strong>. Cerchiamo nome, foto, descrizione e specifiche sul web,
+                      nella lingua scelta. Ci vuole qualche secondo a prodotto: le righe compaiono qui sotto man mano.</div>
+                  </li>
+                  <li>
+                    <span class="n">3</span>
+                    <div><strong>Metti categoria e prezzo</strong> direttamente in tabella (quelli li sai solo tu).
+                      Seleziona più righe per assegnare la stessa categoria a tutte in un colpo.</div>
+                  </li>
+                  <li>
+                    <span class="n">4</span>
+                    <div><strong>Premi «Pubblica sul sito»</strong>: i prodotti pronti vanno online. I codici già sul sito vengono aggiornati, non duplicati.</div>
+                  </li>
+                </ol>
+
+                <div class="stati-legenda">
+                  <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>stiamo cercando la scheda, aspetta.</span></div>
+                  <div class="voce"><span class="pill p-da_completare">Manca: prezzo, categoria</span><span>scheda trovata, tocca a te: scrivi quello che manca nella riga.</span></div>
+                  <div class="voce"><span class="pill p-pronto">Pronto da pubblicare</span><span>tutto compilato: aspetta solo «Pubblica sul sito».</span></div>
+                  <div class="voce"><span class="pill p-sul_sito">Sul sito</span><span>pubblicato. «Vedi sul sito» lo apre; se lo modifichi qui, si aggiorna anche lì.</span></div>
+                  <div class="voce"><span class="pill p-non_trovato">Non trovato</span><span>nessun sito pubblica questo codice, o chi lo pubblica non si lascia leggere: «Perché?» ti dice cosa è successo, poi «Compila a mano» o prova col codice produttore.</span></div>
+                  <div class="voce"><span class="pill p-problema">Problema</span><span>qualcosa è andato storto nella ricerca: «Riprova».</span></div>
+                  <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>con la scritta «motori bloccati» sotto: i motori di ricerca ci hanno rallentati, riprovo da solo all'ora indicata.</span></div>
+                </div>
+
+                <p class="hint" style="margin-top:12px">
+                  <strong>Ultimo carico / Tutti i prodotti</strong>: la tabella mostra di norma solo i prodotti dell'ultimo carico, così quelli vecchi non sono sempre tra i piedi.
+                  Col menu in alto a sinistra passi a «Da sistemare» (tutto ciò che aspetta te, di qualunque carico) o a «Tutti i prodotti».
+                  Lo <strong>Storico</strong> in alto tiene i carichi passati uno per uno.
+                </p>
+              </div>
+            </div>
+          </template>
+
+          <!-- ================= 2. banner dell'importazione in corso / appena finita -->
+          <template x-if="ultimoJob">
+            <div class="banner" :class="ultimoJobFinito ? 'b-ok' : 'b-run'">
+              <template x-if="!ultimoJobFinito">
+                <div class="row" style="gap:12px">
+                  <span class="spin"></span>
+                  <div>
+                    <strong x-text="'Sto cercando le schede di ' + ultimoJob.total + ' prodotti…'"></strong>
+                    <div class="hint" x-text="riepilogoRicerca(ultimoJob)"></div>
+                  </div>
+                </div>
+              </template>
+              <template x-if="ultimoJobFinito">
+                <div class="row" style="gap:12px; flex-wrap:wrap">
+                  <div class="grow">
+                    <strong>Ricerca finita.</strong>
+                    <span x-text="riepilogoFinale(ultimoJob)"></span>
+                  </div>
+                  <button class="ghost sm" @click="ultimoJob=null">Ok, chiudi</button>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <div class="card">
+            <header class="cat-head">
+              <div>
+                <h2>I tuoi prodotti</h2>
+                <div class="hint" x-text="etichettaVista()"></div>
+              </div>
+              <select class="vista" x-model="catalogo.vista" @change="catalogo.filtro=null; catalogo.sel={}">
+                <option value="ultimo">Ultimo carico</option>
+                <template x-if="catalogo.caricoScelto">
+                  <option value="carico" x-text="'Carico: ' + catalogo.caricoScelto.label"></option>
+                </template>
+                <option value="da_fare">Da sistemare (tutti i carichi)</option>
+                <option value="tutti">Tutti i prodotti</option>
+              </select>
+              <button class="ghost sm" x-show="!legendaAperta" @click="apriLegenda()" title="Rimostra la guida «Come funziona»">📖 Guida</button>
+              <div class="grow"></div>
+              <button class="ghost" x-show="catalogo.da_arricchire" @click="riprovaSchedeIncomplete()"
+                      x-text="'Riprova schede incomplete' + (catalogo.da_arricchire ? ' (' + catalogo.da_arricchire + ')' : '')"></button>
+              <button class="ok" @click="pubblicaTutto()" :disabled="!(catalogo.conteggi.pronto||0) || (sub && !sub.allowed)"
+                      x-text="'Pubblica sul sito' + ((catalogo.conteggi.pronto||0) ? ' (' + catalogo.conteggi.pronto + ')' : '')"></button>
+            </header>
+
+            <!-- contatori-filtro -->
+            <div class="kpis">
+              <template x-for="k in kpiStati" :key="k.key">
+                <button class="kpi" :class="[catalogo.filtro===k.key ? 'on' : '', 'k-'+k.key]"
+                        @click="catalogo.filtro = (catalogo.filtro===k.key ? null : k.key)">
+                  <span class="kpi-n" x-text="conteggiVista[k.key] || 0"></span>
+                  <span class="kpi-l" x-text="k.label"></span>
+                </button>
+              </template>
+              <div class="grow"></div>
+              <input type="search" class="cerca" placeholder="Cerca per nome, marca o EAN" x-model="catalogo.cerca">
+            </div>
+
+            <!-- barra azioni sulla selezione -->
+            <template x-if="numSel > 0">
+              <div class="selbar">
+                <strong x-text="numSel + ' selezionati'"></strong>
+                <select style="max-width:260px" x-model.number="bulk.category_id">
+                  <option value="">— categoria da assegnare —</option>
+                  <template x-for="c in catValide" :key="'bk'+c.id">
+                    <option :value="c.id" :selected="c.id == bulk.category_id" x-text="c.name"></option>
+                  </template>
+                </select>
+                <button class="sm" @click="applicaBulk('categoria')" :disabled="!bulk.category_id">Assegna categoria</button>
+                <input type="text" class="mono" style="max-width:120px" placeholder="prezzo" x-model="bulk.regular_price">
+                <button class="sm" @click="applicaBulk('prezzo')" :disabled="!bulk.regular_price">Imposta prezzo</button>
+                <div class="grow"></div>
+                <button class="danger sm" x-show="numEliminabiliSel > 0" @click="eliminaSelezionati()"
+                        x-text="'Elimina selezionati (' + numEliminabiliSel + ')'">Elimina selezionati</button>
+                <button class="ghost sm" @click="catalogo.sel = {}">Annulla selezione</button>
+              </div>
+            </template>
+
+            <div class="body tight">
+              <template x-if="catalogo.busy && !catalogo.righe.length">
+                <div class="empty"><p>Carico il catalogo…</p></div>
+              </template>
+              <template x-if="!catalogo.busy && !catalogo.righe.length">
+                <div class="empty">
+                  <p>Ancora nessun prodotto su questo sito.</p>
+                  <p class="hint">Incolla i codici EAN nel riquadro qui sopra e premi «Cerca le schede».</p>
+                </div>
+              </template>
+
+              <template x-if="righeFiltrate.length">
+                <table class="tab-cat">
+                  <thead><tr>
+                    <th style="width:36px"><input type="checkbox" @change="selTutti($event.target.checked)" :checked="tuttiSel"></th>
+                    <th style="width:56px"></th>
+                    <th class="col-prodotto">Prodotto</th>
+                    <th style="width:270px">Categoria sul sito</th>
+                    <th style="width:290px">Prezzi</th>
+                    <th class="col-stato" style="width:290px">Stato</th>
+                    <th style="width:380px"></th>
+                  </tr></thead>
+                  <tbody>
+                    <template x-for="r in righeFiltrate" :key="'r'+r.item_id">
+                      <tr :class="r.stato">
+                        <td><input type="checkbox" :checked="!!catalogo.sel[r.item_id]" @change="catalogo.sel[r.item_id] = $event.target.checked" :disabled="r.stato==='in_corso'"></td>
+                        <td>
+                          <template x-if="r.image"><img class="thumb" :src="r.image" alt=""></template>
+                          <template x-if="!r.image"><div class="thumb vuoto"></div></template>
+                        </td>
+                        <td>
+                          <div class="titolo" x-text="r.title || 'Scheda non trovata'"></div>
+                          <div class="hint">
+                            <span x-text="r.brand"></span><span x-show="r.brand"> · </span>
+                            <span x-show="r.tipo_codice==='mpn'">cod. </span><span class="gtin" x-text="r.gtin"></span>
+                            <template x-if="r.ean_recuperato"><span> · EAN <span class="gtin" x-text="r.ean_recuperato"></span></span></template>
+                          </div>
+                          <div class="hint fonte-riga" x-show="r.source" x-text="tt('fonte: {0}', t(r.source))"></div>
+                          <div class="hint avviso" x-show="r.gia_sul_sito">già sul sito: verrà aggiornato</div>
+                          <div class="hint avviso" x-show="r.conferma==='debole'">⚠ trovato per somiglianza del nome: controlla che sia lui</div>
+                          <template x-if="r.riprova_alle">
+                            <div class="hint avviso" x-text="'Motori di ricerca bloccati: riprovo da solo alle ' + fmtOra(r.riprova_alle)"></div>
+                          </template>
+                          <template x-if="r.perche && r.perche.causa && (r.stato==='non_trovato' || r.stato==='problema')">
+                            <div class="hint perche-breve" x-text="causaBreve(r.perche.causa)"></div>
+                          </template>
+                        </td>
+                        <td>
+                          <template x-if="r.stato!=='in_corso'">
+                            <select x-model.number="r.category_id" :class="!r.category_id && 'manca'" @change="salvaRiga(r)">
+                              <option value="" disabled>— scegli —</option>
+                              <template x-for="c in catValide" :key="'rc'+r.item_id+'-'+c.id">
+                                <option :value="c.id" :selected="c.id == r.category_id" x-text="c.name"></option>
+                              </template>
+                            </select>
+                          </template>
+                        </td>
+                        <td>
+                          <template x-if="r.stato!=='in_corso'">
+                            <div class="price-stack">
+                              <input type="text" class="mono" :class="!r.regular_price && 'manca'" x-model="r.regular_price"
+                                     placeholder="Prezzo" @change="salvaRiga(r)" @keydown.enter="$event.target.blur()">
+                              <input type="text" class="mono sale" x-model="r.sale_price" placeholder="Scontato —"
+                                     @change="salvaRiga(r)" @keydown.enter="$event.target.blur()">
+                            </div>
+                          </template>
+                        </td>
+                        <td class="col-stato">
+                          <span class="pill" :class="'p-'+r.stato" x-text="statoLabel(r)"></span>
+                          <div class="hint" x-show="catalogo.salvando[r.item_id]"
+                               x-text="catalogo.salvando[r.item_id] === true ? 'salvo…' : catalogo.salvando[r.item_id]"></div>
+                        </td>
+                        <td class="right azioni">
+                          <template x-if="r.stato==='pronto'">
+                            <button class="ok sm" @click="pubblicaRiga(r)" :disabled="!!catalogo.salvando[r.item_id] || (sub && !sub.allowed)"
+                                    :title="sub && !sub.allowed ? sub.reason : 'Manda sul sito solo questo prodotto'">Pubblica</button>
+                          </template>
+                          <template x-if="r.ha_diagnosi && (r.stato==='non_trovato' || r.stato==='problema' || r.riprova_alle)">
+                            <button class="ghost sm" @click="apriPerche(r.item_id, r.title || r.gtin)" title="Cosa è successo cercando questo codice">Perché?</button>
+                          </template>
+                          <template x-if="r.stato==='non_trovato'">
+                            <button class="sm warn" @click="editItem(r.item_id)">Compila a mano</button>
+                          </template>
+                          <template x-if="r.stato==='problema'">
+                            <button class="sm" @click="riprovaRiga(r)">Riprova</button>
+                          </template>
+                          <template x-if="r.stato==='da_completare' && r.missing_source && r.missing_source.length">
+                            <button class="sm warn" @click="riprovaRiga(r)">Riprova dati</button>
+                          </template>
+                          <template x-if="r.url_sito && (r.stato==='sul_sito' || r.gia_sul_sito)">
+                            <a class="btn ghost sm" :href="r.url_sito" target="_blank" rel="noopener">Vedi sul sito</a>
+                          </template>
+                          <template x-if="r.title && r.stato!=='non_trovato'">
+                            <button class="ghost sm" @click="editItem(r.item_id)">Modifica</button>
+                          </template>
+                          <template x-if="r.can_delete">
+                            <button class="danger sm" @click="eliminaRiga(r)">Elimina</button>
+                          </template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </template>
+              <template x-if="catalogo.righe.length && !righeFiltrate.length">
+                <div class="empty"><p>Nessun prodotto con questo filtro.</p></div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- ====================================================== PROVA UN EAN -->
+  <template x-if="tab==='single'">
+    <div class="card">
+      <header>
+        <h2>Prova un codice</h2>
+        <div class="grow"></div>
+        <button class="ghost sm" @click="go('catalogo')">Torna ai prodotti</button>
+      </header>
+      <div class="body">
+        <div class="row" style="margin-bottom:14px">
+          <input type="text" class="mono" style="max-width:260px" x-model="single.gtin"
+                 placeholder="EAN o codice produttore" @keydown.enter="testEan()">
+          <template x-if="!linguaFissata">
+            <select style="max-width:160px" x-model="form.lang" @change="linguaScelta = true" translate="no">
+              <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+              <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+            </select>
+          </template>
+          <button @click="testEan()" :disabled="single.busy">
+            <span x-text="single.busy ? 'Interrogo le fonti…' : 'Cerca'"></span>
+          </button>
+        </div>
+
+        <template x-if="single.message">
+          <div class="notice n-warn">
+            <div x-text="single.diagnosi && single.diagnosi.causa ? causaTesto(single.diagnosi.causa) : single.message"></div>
+          </div>
+        </template>
+        <template x-if="single.diagnosi && !single.product">
+          <div x-html="renderDiagnosi(single.diagnosi)"></div>
+        </template>
+
+        <template x-if="single.product">
+          <div class="stack">
+            <template x-if="single.onSite && single.onSite.found">
+              <div class="notice n-warn">
+                Questo codice è già su un prodotto del sito
+                (<span x-text="single.onSite.title"></span>). Reimportandolo verrà aggiornato,
+                non duplicato.
+              </div>
+            </template>
+            <p class="hint" x-show="single.fonte">
+              Scheda trovata da: <strong x-text="single.fonte"></strong></p>
+            <div x-html="renderProduct(single.product)"></div>
+            <template x-if="single.diagnosi">
+              <details class="diario-box">
+                <summary class="hint">Come l'ho trovata (siti aperti, motori interrogati)</summary>
+                <div x-html="renderDiagnosi(single.diagnosi)"></div>
+              </details>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <!-- ======================================================= IMPORTAZIONI -->
+  <template x-if="tab==='jobs'">
+    <div class="stack">
+      <template x-if="!(soloJob && job)">
+      <div class="card">
+        <header>
+          <h2>Importazioni</h2>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="loadJobs()">Aggiorna</button>
+        </header>
+        <div class="body tight">
+          <template x-if="!jobs.length">
+            <div class="empty"><p>Ancora nessuna importazione.</p>
+              <button class="ghost" @click="go('catalogo')">Caricane una</button></div>
+          </template>
+          <template x-if="jobs.length">
+            <table class="storico">
+              <thead><tr>
+                <th>Carico</th><th x-show="isAdmin">Sito</th>
+                <th style="width:38%" x-text="isAdmin ? 'Avanzamento' : 'Com\'è andata'"></th>
+                <th class="right">Prodotti</th><th class="right" x-show="isAdmin">Stato</th><th></th>
+              </tr></thead>
+              <tbody>
+                <template x-for="j in jobs" :key="j.id">
+                  <tr>
+                    <td>
+                      <div class="row" style="gap:6px">
+                        <strong x-text="j.label"></strong>
+                        <span class="badge b-run" x-show="j.kind === 'resync'">notturno</span>
+                      </div>
+                      <div class="hint" x-text="fmtDate(j.created_at)"></div>
+                    </td>
+                    <td x-show="isAdmin" x-text="j.site_name"></td>
+                    <td>
+                      <!-- admin: barra tecnica; cliente: pill in parole povere -->
+                      <template x-if="isAdmin">
+                        <div>
+                          <div class="barcode" x-html="barcode(j)"></div>
+                          <div class="hint" x-text="fase(j) + ' · ' + countsLabel(j)"></div>
+                        </div>
+                      </template>
+                      <template x-if="!isAdmin">
+                        <div class="esito-pills">
+                          <span class="pill p-sul_sito" x-show="j.counts.pushed" x-text="j.counts.pushed + ' sul sito'"></span>
+                          <span class="pill p-pronto" x-show="j.counts.ready" x-text="j.counts.ready + ' pronti'"></span>
+                          <span class="pill p-da_completare" x-show="j.counts.incomplete" x-text="j.counts.incomplete + ' da completare'"></span>
+                          <span class="pill p-non_trovato" x-show="j.counts.not_found" x-text="j.counts.not_found + ' non trovati'"></span>
+                          <span class="pill p-problema" x-show="(j.counts.error||0)+(j.counts.blocked||0)" x-text="((j.counts.error||0)+(j.counts.blocked||0)) + ' problemi'"></span>
+                          <span class="pill p-in_corso" x-show="(j.counts.pending||0)+(j.counts.fetching||0)+(j.counts.pushing||0)" x-text="'in lavorazione'"></span>
+                        </div>
+                      </template>
+                    </td>
+                    <td class="right num" x-text="j.total"></td>
+                    <td class="right" x-show="isAdmin"><span class="badge" :class="jobBadge(j.status)" x-text="jobLabel(j.status)"></span></td>
+                    <td class="right azioni">
+                      <template x-if="!isAdmin">
+                        <span>
+                          <button class="sm" @click="mostraCarico(j)">Mostra nei Prodotti</button>
+                          <button class="ghost sm" @click="openJob(j.id)" title="Scheda tecnica e revisione guidata una a una">Dettagli</button>
+                        </span>
+                      </template>
+                      <template x-if="isAdmin">
+                        <button class="sm" @click="openJob(j.id)">Apri</button>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </template>
+        </div>
+      </div>
+      </template>
+
+      <template x-if="job">
+        <div class="card" id="job-card">
+          <header>
+            <h2 x-text="job.label"></h2>
+            <span class="badge" :class="jobBadge(job.status)" x-text="jobLabel(job.status)"></span>
+            <div class="grow"></div>
+            <button x-show="daRivedere > 0 && !review.on" @click="startReview()"
+                    x-text="'Rivedi una a una (' + daRivedere + ')'"></button>
+            <button class="ok sm" x-show="hasReady" @click="publishJob()"
+                    :disabled="sub && !sub.allowed"
+                    :title="sub && !sub.allowed ? sub.reason : ''">Pubblica sul sito</button>
+            <button class="ghost sm" x-show="(job.counts.error||0) + (job.counts.not_found||0) > 0" @click="retryJob()">Riprova quelli mancanti</button>
+            <button class="danger sm" @click="askPurge()">Elimina</button>
+            <button class="ghost sm" x-show="soloJob" @click="soloJob=false; loadJobs()">Tutte le importazioni</button>
+            <button class="ghost sm" x-show="!soloJob" @click="job=null; items=[]">Chiudi</button>
+          </header>
+          <div class="body tight">
+            <div class="fase">
+              <div>
+                <strong x-text="fase(job)"></strong>
+                <div class="hint" x-text="prossimoPasso(job)"></div>
+              </div>
+              <div class="grow"></div>
+              <div class="barcode" style="max-width:320px" x-html="barcode(job)"></div>
+            </div>
+
+            <template x-if="review.on">
+              <div class="review">
+                <div class="review-head">
+                  <div>
+                    <strong x-text="'Scheda ' + (review.i + 1) + ' di ' + review.ids.length"></strong>
+                    <div class="hint gtin" x-text="review.item ? review.item.gtin : ''"></div>
+                  </div>
+                  <div class="grow"></div>
+                  <div class="review-bar"><i :style="'width:' + Math.round(review.i * 100 / review.ids.length) + '%'"></i></div>
+                  <button class="ghost sm" @click="review.on = false">Chiudi</button>
+                </div>
+
+                <template x-if="review.item">
+                  <div class="review-body">
+                    <div class="review-pic">
+                      <template x-if="edit.images.length && edit.images[0]">
+                        <img :src="edit.images[0]" alt="">
+                      </template>
+                      <template x-if="!edit.images.length || !edit.images[0]">
+                        <div class="hint" style="text-align:center">nessuna immagine</div>
+                      </template>
+                      <div class="hint" x-text="edit.images.length + ' immagini'"></div>
+                    </div>
+
+                    <div class="review-main">
+                      <div class="row" style="margin-bottom:8px">
+                        <span class="badge" :class="itemBadge(review.item.status)"
+                              x-text="itemLabel(review.item.status)"></span>
+                        <span class="hint"
+                              x-text="review.item.source ? tt('fonte: {0}', t(review.item.source)) : 'nessuna fonte'"></span>
+                      </div>
+
+                      <div class="field"><label>Nome prodotto</label>
+                        <input type="text" x-model="edit.title"></div>
+
+                      <div class="grid-3">
+                        <div class="field"><label>Marca</label>
+                          <input type="text" x-model="edit.brand"></div>
+                        <div class="field"><label>Codice produttore</label>
+                          <input type="text" class="mono" x-model="edit.mpn"></div>
+                        <div class="field"><label>Categoria</label>
+                          <input type="text" x-model="edit.category_name"></div>
+                      </div>
+
+                      <div class="field"><label>Categoria sul sito <span class="obbl">obbligatoria</span></label>
+                        <select x-ref="rcat" x-model.number="edit.category_id"
+                                :class="!edit.category_id && 'manca'">
+                          <option value="" disabled>— scegli la categoria —</option>
+                          <template x-for="c in catValide" :key="'rc' + c.id">
+                            <option :value="c.id" :selected="c.id == edit.category_id" x-text="c.name + ' (' + c.count + ')'"></option>
+                          </template>
+                        </select>
+                        <p class="hint" x-show="!edit.category_id && edit.category_name"
+                           x-text="'La fonte lo classifica come «' + edit.category_name + '». Scegli la categoria del tuo sito.'"></p>
+                      </div>
+
+                      <div class="prezzi">
+                        <div class="field"><label>Prezzo</label>
+                          <input type="text" class="mono big" x-ref="prezzo" x-model="edit.regular_price"
+                                 placeholder="129,90" @keydown.enter="reviewSave()"></div>
+                        <div class="field"><label>Prezzo scontato</label>
+                          <input type="text" class="mono big" x-model="edit.sale_price"
+                                 placeholder="facoltativo" @keydown.enter="reviewSave()"></div>
+                      </div>
+
+                      <template x-if="review.err">
+                        <div class="notice n-err" style="margin:10px 0 0" x-text="review.err"></div>
+                      </template>
+                      <template x-if="!review.err && review.item.issues && review.item.issues.length">
+                        <div class="notice n-warn" style="margin:10px 0 0">
+                          Manca: <span x-text="review.item.issues.map(k => (review.labels || {})[k] || k).join(', ')"></span>
+                        </div>
+                      </template>
+
+                      <details style="margin-top:12px">
+                        <summary class="hint" x-text="'Descrizione e ' + edit.attributes.length + ' specifiche'"></summary>
+                        <div class="field" style="margin-top:10px"><label>Descrizione</label>
+                          <textarea x-model="edit.description" rows="6" style="font-family:var(--sans)"></textarea></div>
+                        <div class="specs">
+                          <table><tbody>
+                            <template x-for="(a, i) in edit.attributes" :key="'ra' + i">
+                              <tr><td x-text="a.name"></td><td x-text="a.value"></td></tr>
+                            </template>
+                          </tbody></table>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                </template>
+
+                <div class="review-foot">
+                  <button class="ghost" @click="reviewPrev()" :disabled="review.i === 0">Indietro</button>
+                  <button class="ghost" @click="reviewNext()">Salta</button>
+                  <button class="danger" x-show="review.item && review.item.can_delete" @click="eliminaReviewItem()">Elimina scheda</button>
+                  <div class="grow"></div>
+                  <span class="hint" x-show="review.saving">salvo…</span>
+                  <button class="ok" @click="reviewSave()"
+                          x-text="review.i + 1 >= review.ids.length ? 'Salva e pubblica i pronti' : 'Salva e vai avanti'"></button>
+                </div>
+              </div>
+            </template>
+
+            <div style="padding:12px 16px" class="row">
+              <template x-for="f in itemFilters" :key="f.key">
+                <button class="sm filtro" @click="itemFilter=f.key; loadItems()"
+                        :class="[itemFilter===f.key ? 'on' : '', (job.counts[f.key] || 0) > 0 ? 'f-' + f.key : 'vuoto']"
+                        x-text="f.label + ' (' + (job.counts[f.key] || 0) + ')'"></button>
+              </template>
+              <button class="ghost sm" @click="itemFilter=null; loadItems()">Tutti</button>
+              <div class="grow"></div>
+              <button class="ghost sm" @click="openPrices()">Prezzi in blocco</button>
+            </div>
+
+            <template x-if="pricesOpen">
+              <div style="padding:0 16px 16px">
+                <div class="notice n-warn" style="margin-bottom:10px">
+                  Una riga per prodotto: <code>EAN prezzo prezzo_scontato</code>. Il terzo valore è
+                  facoltativo. Vanno bene spazi, virgole, punto e virgola o una colonna incollata da Excel.
+                </div>
+                <textarea x-model="pricesText" rows="8" style="font-family:var(--mono)"></textarea>
+                <div class="row" style="margin-top:8px">
+                  <button @click="savePrices()">Applica i prezzi</button>
+                  <button class="ghost" @click="pricesOpen=false">Chiudi</button>
+                </div>
+              </div>
+            </template>
+            <table>
+              <thead><tr>
+                <th style="width:140px">EAN</th><th>Prodotto</th><th>Fonte</th>
+                <th class="right" style="width:110px">Prezzo</th>
+                <th style="width:130px">Esito</th><th style="width:150px"></th>
+              </tr></thead>
+              <tbody>
+                <template x-for="it in items" :key="it.id">
+                  <tr>
+                    <td class="gtin" x-text="it.gtin"></td>
+                    <td>
+                      <div x-text="it.title || '— nessuna scheda trovata —'"></div>
+                      <div class="hint" x-show="it.brand" x-text="it.brand"></div>
+                      <div class="hint" x-show="it.error || it.status==='not_found'"
+                           x-text="isAdmin ? it.error : erroreGentile(it)"></div>
+                    </td>
+                    <td class="hint" x-text="it.source || '—'"></td>
+                    <td class="right num">
+                      <div x-text="it.regular_price ? (it.regular_price + ' €') : '—'"></div>
+                      <div class="hint" x-show="it.sale_price" x-text="it.sale_price + ' € scontato'"></div>
+                    </td>
+                    <td><span class="badge" :class="itemBadge(it.status)" x-text="itemLabel(it.status)"></span></td>
+                    <td class="right">
+                      <button class="sm" @click="editItem(it.id)"
+                              :class="(it.status === 'not_found' || it.status === 'incomplete') ? 'warn' : 'ghost'"
+                              x-text="it.status === 'not_found' ? 'Compila' : 'Modifica'"></button>
+                      <button class="ghost sm" x-show="it.title" @click="preview(it.id)">Vedi</button>
+                      <button class="ghost sm" x-show="it.status === 'not_found' || it.status === 'error'"
+                              @click="apriPerche(it.id, it.title || it.gtin)">Perché?</button>
+                      <button class="danger sm" x-show="it.can_delete" @click="eliminaItemJob(it)">Elimina</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <template x-if="!items.length">
+              <div class="empty"><p>Nessuna riga con questo filtro.</p></div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- ========================================================== CATEGORIE -->
+  <template x-if="tab==='categories'">
+    <div class="stack">
+      <div class="card">
+        <header>
+          <h2>Categorie del sito</h2>
+          <div class="grow"></div>
+          <select style="max-width:280px" x-model.number="form.site_id" @change="onSiteChange()">
+            <template x-for="s in sites" :key="s.id">
+              <option :value="s.id" :selected="s.id == form.site_id" x-text="s.name"></option>
+            </template>
+          </select>
+          <button class="ghost sm" @click="loadTaxonomy(true)">Rileggi dal sito</button>
+        </header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">
+            Qui vedi categorie, attributi e marche già presenti sul sito. Le corrispondenze
+            dicono in quale categoria far atterrare i prodotti in base alla categoria indicata dalla fonte
+            (quella che si legge nella scheda trovata, per esempio «Pompe di circolazione»).
+          </p>
+
+          <template x-if="taxError">
+            <div class="notice n-err" x-text="taxError"></div>
+          </template>
+
+          <div class="grid-3" style="margin-top:12px">
+            <div>
+              <h3>Categorie</h3>
+              <div class="specs">
+                <table><tbody>
+                  <template x-for="c in categories" :key="c.id">
+                    <tr>
+                      <td x-text="c.name"></td>
+                      <td class="right hint num" x-text="c.count + ' prod.'"></td>
+                    </tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </div>
+            <div>
+              <h3>Attributi globali</h3>
+              <div class="specs">
+                <table><tbody>
+                  <template x-for="a in attributes" :key="a.id">
+                    <tr><td x-text="a.name"></td><td class="right hint mono" x-text="a.slug"></td></tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </div>
+            <div>
+              <h3>Marche</h3>
+              <div class="specs">
+                <table><tbody>
+                  <template x-for="b in brands" :key="b.id">
+                    <tr><td x-text="b.name"></td></tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><h2>Corrispondenze categoria</h2></header>
+        <div class="body">
+          <div class="row" style="margin-bottom:12px">
+            <input type="text" style="max-width:280px" x-model="mapForm.source_category"
+                   placeholder="Categoria della fonte (come appare nella scheda)">
+            <select style="max-width:280px" x-model.number="mapForm.wc_term_id">
+              <option :value="0">Categoria sul sito…</option>
+              <template x-for="c in categories" :key="c.id">
+                <option :value="c.id" :selected="c.id == mapForm.wc_term_id" x-text="c.name"></option>
+              </template>
+            </select>
+            <button @click="saveMapping()" :disabled="!mapForm.source_category || !mapForm.wc_term_id">Aggiungi</button>
+          </div>
+          <table>
+            <thead><tr><th>Categoria della fonte</th><th>Categoria sul sito</th><th></th></tr></thead>
+            <tbody>
+              <template x-for="m in mapping" :key="m.id">
+                <tr>
+                  <td class="mono" x-text="m.source_category"></td>
+                  <td x-text="m.wc_label || ('#' + m.wc_term_id)"></td>
+                  <td class="right"><button class="danger sm" @click="deleteMapping(m.id)">Rimuovi</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <template x-if="!mapping.length">
+            <div class="empty"><p>Nessuna corrispondenza. I prodotti finiranno nella categoria di riserva scelta al momento dell'importazione.</p></div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <!-- ============================================================ NEGOZIO -->
+  <template x-if="tab==='shop'">
+    <div class="stack">
+      <div class="card">
+        <header><h2>Dati del negozio</h2></header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">
+            Questi dati restano dentro il portale: servono a te e a chi lavora sul catalogo.
+            Non vengono scritti sul sito né mandati a nessuno.
+          </p>
+
+          <div class="logo-drop" style="margin:14px 0 18px">
+            <template x-if="profile.logo">
+              <img :src="profile.logo + '?v=' + logoBust" alt="Logo del negozio">
+            </template>
+            <template x-if="!profile.logo">
+              <div class="hint">Nessun logo caricato.</div>
+            </template>
+            <div class="grow"></div>
+            <label class="btn ghost sm" style="margin:0;cursor:pointer">
+              Carica logo
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                     style="display:none" @change="uploadLogo($event)">
+            </label>
+            <button class="danger sm" x-show="profile.logo" @click="removeLogo()">Rimuovi</button>
+          </div>
+          <p class="hint" style="margin-top:-10px">PNG, JPG, WebP o SVG. Massimo 2 MB.</p>
+
+          <div class="grid-2" style="margin-top:16px">
+            <div class="field"><label for="pf-legal">Ragione sociale</label>
+              <input id="pf-legal" type="text" x-model="profile.legal_name"></div>
+            <div class="field"><label for="pf-web">Sito web</label>
+              <input id="pf-web" type="text" x-model="profile.website" placeholder="https://"></div>
+          </div>
+          <div class="grid-3">
+            <div class="field"><label for="pf-vat">Partita IVA</label>
+              <input id="pf-vat" type="text" class="mono" x-model="profile.vat_number"></div>
+            <div class="field"><label for="pf-cf">Codice fiscale</label>
+              <input id="pf-cf" type="text" class="mono" x-model="profile.tax_code"></div>
+            <div class="field"><label for="pf-sdi">Codice SDI</label>
+              <input id="pf-sdi" type="text" class="mono" x-model="profile.sdi_code"></div>
+          </div>
+
+          <h3 style="margin:8px 0 10px">Sede</h3>
+          <div class="field"><label for="pf-addr">Indirizzo</label>
+            <input id="pf-addr" type="text" x-model="profile.address"></div>
+          <div class="grid-3">
+            <div class="field"><label for="pf-zip">CAP</label>
+              <input id="pf-zip" type="text" class="mono" x-model="profile.zip_code"></div>
+            <div class="field"><label for="pf-city">Comune</label>
+              <input id="pf-city" type="text" x-model="profile.city"></div>
+            <div class="field"><label for="pf-prov">Provincia</label>
+              <input id="pf-prov" type="text" class="mono" x-model="profile.province" maxlength="4"></div>
+          </div>
+
+          <h3 style="margin:8px 0 10px">Contatti</h3>
+          <div class="grid-3">
+            <div class="field"><label for="pf-tel">Telefono</label>
+              <input id="pf-tel" type="text" x-model="profile.phone"></div>
+            <div class="field"><label for="pf-mail">Email</label>
+              <input id="pf-mail" type="email" x-model="profile.contact_email"></div>
+            <div class="field"><label for="pf-pec">PEC</label>
+              <input id="pf-pec" type="email" x-model="profile.pec"></div>
+          </div>
+
+          <div class="row" style="margin-top:8px">
+            <button @click="saveProfile()">Salva i dati</button>
+          </div>
+        </div>
+      </div>
+
+      <template x-if="currentSite && currentSite.resync_enabled">
+        <div class="card">
+          <header><h2>Aggiornamento notturno</h2></header>
+          <div class="body">
+            <dl class="kv">
+              <dt>Quando</dt><dd x-text="resyncLabel(currentSite)"></dd>
+              <dt>Ultimo giro</dt>
+              <dd x-text="currentSite.last_resync_at ? (fmtDate(currentSite.last_resync_at) + ' — ' + currentSite.last_resync_msg) : 'non ancora eseguito'"></dd>
+            </dl>
+            <p class="hint" style="margin-top:12px">
+              Ogni notte le schede già a catalogo vengono ricercate di nuovo e aggiornate dove
+              serve. Gli aggiornamenti non consumano la quota: quella la consumano solo i
+              prodotti nuovi. Se vuoi cambiare orario o cosa viene aggiornato, scrivici.
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <div class="card">
+        <header><h2>Abbonamento</h2></header>
+        <div class="body">
+          <template x-if="sub">
+            <dl class="kv">
+              <dt>Stato</dt><dd><span class="badge" :class="sub.allowed ? 'b-ok' : 'b-err'" x-text="sub.status_label"></span></dd>
+              <dt>Piano</dt><dd x-text="sub.plan || '—'"></dd>
+              <dt>Scadenza</dt><dd x-text="sub.expires_at ? fmtDay(sub.expires_at) : 'nessuna'"></dd>
+              <dt>Quota mensile</dt><dd class="num" x-text="sub.quota ? (sub.used + ' su ' + sub.quota) : (sub.used + ' pubblicati, nessun limite')"></dd>
+            </dl>
+          </template>
+          <p class="hint" style="margin-top:14px">
+            Piano, scadenza e quota li imposta l'amministratore del portale. Senza abbonamento attivo
+            le schede si scaricano e si vedono in anteprima, ma non si pubblicano sul sito.
+          </p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================ CLIENTI -->
+  <template x-if="tab==='clients' && isAdmin">
+    <div class="stack">
+      <div class="card">
+        <header>
+          <h2>Clienti</h2>
+          <div class="grow"></div>
+          <button class="sm" @click="editClient(null)">Nuovo cliente</button>
+        </header>
+        <div class="body tight">
+          <table>
+            <thead><tr>
+              <th>Cliente</th><th>Lingua schede</th><th>Siti</th>
+              <th class="right">Mese</th><th class="right">Abbonamento</th><th></th>
+            </tr></thead>
+            <tbody>
+              <template x-for="c in clients" :key="c.id">
+                <tr>
+                  <td>
+                    <div x-text="c.name"></div>
+                    <div class="hint" x-text="c.users.map(u => u.email).join(', ')"></div>
+                  </td>
+                  <td><span class="badge b-wait" translate="no" x-text="nomeLingua(c.content_lang)"></span></td>
+                  <td class="hint" x-text="c.sites.map(s => s.name).join(', ') || '—'"></td>
+                  <td class="right num"
+                      x-text="c.subscription.quota ? (c.subscription.used + '/' + c.subscription.quota) : c.subscription.used"></td>
+                  <td class="right">
+                    <span class="badge" :class="c.subscription.allowed ? 'b-ok' : 'b-err'"
+                          x-text="c.subscription.status_label"></span>
+                    <div class="hint" x-text="c.plan_name"></div>
+                  </td>
+                  <td class="right"><button class="ghost sm" @click="editClient(c)">Modifica</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <template x-if="!clients.length"><div class="empty"><p>Nessun cliente ancora.</p></div></template>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- =============================================================== SITI -->
+  <template x-if="tab==='sites' && isAdmin">
+    <div class="card">
+      <header>
+        <h2>Siti collegati</h2>
+        <div class="grow"></div>
+        <button class="sm" @click="editSite(null)">Nuovo sito</button>
+      </header>
+      <div class="body tight">
+        <table>
+          <thead><tr><th>Sito</th><th>Cliente</th><th>Collegamento</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="s in allSites" :key="s.id">
+              <tr>
+                <td>
+                  <div x-text="s.name"></div>
+                  <div class="hint mono" x-text="s.base_url"></div>
+                </td>
+                <td x-text="s.client_name"></td>
+                <td>
+                  <span class="badge" :class="s.last_ping_ok ? 'b-ok' : (s.has_keys ? 'b-warn' : 'b-err')"
+                        x-text="s.last_ping_ok ? 'Collegato' : (s.has_keys ? 'Da verificare' : 'Chiavi mancanti')"></span>
+                  <div class="hint" x-text="s.last_ping_msg"></div>
+                  <div class="hint" x-show="s.resync_enabled" x-text="resyncLabel(s)"></div>
+                </td>
+                <td class="right">
+                  <button class="ghost sm" @click="pingSite(s)">Verifica</button>
+                  <button class="ghost sm" x-show="s.resync_enabled" @click="resyncNow(s)">Aggiorna ora</button>
+                  <button class="ghost sm" @click="editSite(s)">Modifica</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <template x-if="!allSites.length"><div class="empty"><p>Nessun sito collegato.</p></div></template>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================ UTENTI -->
+  <template x-if="tab==='users' && isAdmin">
+    <div class="card">
+      <header>
+        <h2>Utenti</h2>
+        <div class="grow"></div>
+        <button class="sm" @click="editUser(null)">Nuovo utente</button>
+      </header>
+      <div class="body tight">
+        <table>
+          <thead><tr><th>Email</th><th>Cliente</th><th>Ruolo</th><th>Ultimo accesso</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="u in users" :key="u.id">
+              <tr>
+                <td>
+                  <div x-text="u.email"></div>
+                  <div class="hint" x-text="u.full_name"></div>
+                </td>
+                <td x-text="u.client_name || '—'"></td>
+                <td><span class="badge" :class="u.role==='admin' ? 'b-run' : 'b-wait'" x-text="u.role==='admin' ? 'Amministratore' : 'Cliente'"></span></td>
+                <td class="hint" x-text="u.last_login_at ? fmtDate(u.last_login_at) : 'mai'"></td>
+                <td class="right">
+                  <button class="ghost sm" @click="resetPwd(u)">Reimposta password</button>
+                  <button class="ghost sm" @click="editUser(u)">Modifica</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+
+  <!-- ====================================================== IMPOSTAZIONI -->
+  <template x-if="tab==='impostazioni' && isAdmin">
+    <div class="stack">
+      <div class="card">
+        <header>
+          <h2>Ricerca automatica sul web</h2>
+          <span class="badge" :class="ricerca.attiva ? 'b-ok' : 'b-wait'"
+                x-text="ricerca.attiva ? 'attiva' : 'spenta'"></span>
+        </header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">
+            Partendo dall'EAN o dal codice produttore trova da sola le pagine che pubblicano quel
+            prodotto, ne legge i dati e li incrocia. Si imposta qui una volta e vale per tutti i clienti.
+          </p>
+          <div class="notice n-ok come-funziona" style="margin-bottom:14px">
+            <strong>Come lavora, per non farsi bloccare.</strong>
+            Da una a tre ricerche per codice, distanziate di qualche secondo, ai motori che sui codici
+            funzionano davvero: prima nella lingua delle schede, così escono i negozi del tuo paese, poi
+            ovunque. Si aprono solo le pagine che riportano il codice o il modello, una alla
+            volta per sito, rispettando il loro robots.txt; i siti protetti da verifiche anti-bot si
+            saltano e si segnalano. Se sono i motori a bloccarci, il prodotto si rimanda e si riprova
+            da solo invece di finire fra i «non trovati».
+          </div>
+
+          <div class="grid-2">
+            <div class="field"><label>Motore</label>
+              <!-- Option scritte qui e non generate dall'API: se le option arrivano
+                   dopo che Alpine ha applicato il valore, la select mostra «Spenta»
+                   anche col motore salvato — sembrava un salvataggio non riuscito. -->
+              <select x-model="ricerca.motore">
+                <option value="">Spenta</option>
+                <option value="searxng">SearXNG (tuo, consigliato)</option>
+                <option value="duckduckgo">DuckDuckGo (senza chiave)</option>
+                <option value="brave">Brave Search (API ufficiale)</option>
+                <option value="google_cse">Google Programmable Search (API ufficiale)</option>
+                <option value="serpapi">SerpAPI</option>
+              </select>
+              <p class="hint" x-text="ricerca.motore && ricerca.motori_disponibili && ricerca.motori_disponibili[ricerca.motore] ? ricerca.motori_disponibili[ricerca.motore].note : ''"></p>
+            </div>
+            <template x-if="ricercaServe('chiave')">
+              <div class="field"><label>Chiave API</label>
+                <input type="text" class="mono" x-model="ricerca.chiave"
+                       :placeholder="ricerca.chiave_masked || 'incolla la chiave del motore'">
+                <p class="hint">Vuota per non cambiarla.</p>
+              </div>
+            </template>
+          </div>
+
+          <template x-if="ricerca.motore === 'searxng'">
+            <div class="grid-2">
+              <div class="field"><label>Indirizzo di SearXNG</label>
+                <input type="text" class="mono" x-model="ricerca.url" placeholder="http://searxng:8080">
+                <p class="hint">
+                  Il nome del container se sta sulla stessa rete Docker, altrimenti l'indirizzo
+                  della LXC. Nel suo <code>settings.yml</code> serve
+                  <code>search: formats: [html, json]</code>, altrimenti risponde 403.
+                </p>
+              </div>
+              <div class="field"><label>Motori da interrogare</label>
+                <input type="text" class="mono" x-model="ricerca.motori" :placeholder="ricerca.motori_predefiniti">
+                <p class="hint">
+                  Vuoto = quelli consigliati (<span class="mono" x-text="ricerca.motori_predefiniti"></span>).
+                  Vanno bene anche se nel settings.yml sono spenti. Bing, Qwant e Mojeek sui codici
+                  rispondono a caso: meglio lasciarli fuori.
+                </p>
+              </div>
+            </div>
+          </template>
+
+          <div class="grid-2">
+            <div class="field"><label>LibreTranslate (facoltativo)</label>
+              <input type="text" class="mono" x-model="ricerca.lt_url" placeholder="http://libretranslate:5000">
+              <p class="hint">
+                Porta nella lingua delle schede (italiano, inglese, francese, tedesco, spagnolo)
+                quello che si trova in un'altra lingua, senza IA esterne: un container tuo come SearXNG.
+                Vuoto = le parti in un'altra lingua restano così, con un avviso.
+              </p>
+            </div>
+            <div class="field"><label>Browser per le pagine fatte di JavaScript (facoltativo)</label>
+              <input type="text" class="mono" x-model="ricerca.render_url" placeholder="http://browser:3000">
+              <p class="hint">
+                Un Chrome headless tuo (servizio <code>browser</code> nel compose) apre le pagine
+                che a un lettore semplice arrivano vuote o con un errore. Vuoto = quelle pagine si saltano.
+              </p>
+            </div>
+          </div>
+
+          <template x-if="ricerca.motore === 'google_cse'">
+            <div class="field" style="max-width:340px"><label>ID del motore (cx)</label>
+              <input type="text" class="mono" x-model="ricerca.cx" placeholder="a1b2c3d4e5f6g7h8i">
+              <p class="hint">Lo trovi nel pannello Programmable Search Engine di Google.</p>
+            </div>
+          </template>
+
+          <div class="row" style="margin-top:10px">
+            <button @click="salvaRicerca()">Salva</button>
+            <button class="ghost" @click="svuotaCacheRicerca(false)"
+                    title="Butta i «non trovato» in memoria: le ricerche fallite si rifanno da capo.">
+              Svuota i tentativi a vuoto</button>
+            <button class="ghost" @click="svuotaCacheRicerca(true)"
+                    title="Butta anche le schede già trovate: si riscaricano al prossimo giro.">
+              Svuota tutta la cache</button>
+            <div class="grow"></div>
+            <input type="text" class="mono" style="max-width:190px" x-model="ricercaProvaGtin"
+                   placeholder="EAN o codice di prova" @keydown.enter="provaRicerca()">
+            <select style="max-width:140px" x-model="ricercaProvaLingua" translate="no">
+              <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+              <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+            </select>
+            <button class="ghost" @click="provaRicerca()" :disabled="busy"
+                    x-text="busy ? 'Cerco…' : 'Prova un codice'"></button>
+          </div>
+
+          <template x-if="ricercaEsito">
+            <div style="margin-top:12px">
+              <div class="notice" :class="ricercaEsito.ok ? 'n-ok' : 'n-err'">
+                <template x-if="ricercaEsito.ok">
+                  <span>Scheda trovata su <strong x-text="ricercaEsito.origine"></strong>.</span>
+                </template>
+                <template x-if="!ricercaEsito.ok">
+                  <span x-text="ricercaEsito.diagnosi && ricercaEsito.diagnosi.causa ? causaTesto(ricercaEsito.diagnosi.causa) : ricercaEsito.error"></span>
+                </template>
+              </div>
+              <template x-if="ricercaEsito.product">
+                <div x-html="renderProduct(ricercaEsito.product)"></div>
+              </template>
+              <template x-if="ricercaEsito.diagnosi">
+                <details style="margin-top:10px" open>
+                  <summary class="hint">Cosa è successo: motori interrogati e siti aperti</summary>
+                  <div x-html="renderDiagnosi(ricercaEsito.diagnosi)"></div>
+                </details>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- ======== salute della ricerca: i numeri veri di questo server -->
+      <div class="card">
+        <header>
+          <h2>Com'è andata la ricerca</h2>
+          <span class="hint">ultimi 7 giorni</span>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="loadSalute()">Aggiorna</button>
+        </header>
+        <div class="body">
+          <template x-if="!salute">
+            <p class="hint" style="margin:0">Carico…</p>
+          </template>
+          <template x-if="salute && !salute.ricerche">
+            <p class="hint" style="margin:0">Ancora nessuna ricerca registrata con la versione nuova: lancia un carico o una prova a lotti.</p>
+          </template>
+          <template x-if="salute && salute.ricerche">
+            <div class="salute">
+              <div class="salute-numeri">
+                <div><span class="n" x-text="salute.ricerche"></span><span class="hint">codici cercati</span></div>
+                <div><span class="n ok" x-text="salute.trovati"></span><span class="hint">trovati</span></div>
+                <div><span class="n" x-text="Math.round(salute.trovati * 100 / salute.ricerche) + '%'"></span><span class="hint">riuscita</span></div>
+              </div>
+              <div class="grid-3">
+                <div>
+                  <h3>Perché non si trovano</h3>
+                  <ul class="lista-cause">
+                    <template x-for="c in salute.cause.filter(x => x.causa !== 'trovato')" :key="c.causa">
+                      <li><span class="num" x-text="c.volte"></span><div x-text="causaBreve(c.causa)"></div></li>
+                    </template>
+                    <template x-if="!salute.cause.filter(x => x.causa !== 'trovato').length"><li class="hint">nessun mancato</li></template>
+                  </ul>
+                </div>
+                <div>
+                  <h3>Siti che rifiutano la lettura</h3>
+                  <ul class="lista-cause">
+                    <template x-for="sx in salute.siti_bloccati" :key="sx.dominio">
+                      <li><span class="num" x-text="sx.volte"></span>
+                        <div><span class="mono" translate="no" x-text="sx.dominio"></span>
+                          <div class="hint" x-text="sx.motivo"></div></div></li>
+                    </template>
+                    <template x-if="!salute.siti_bloccati.length"><li class="hint">nessuno</li></template>
+                  </ul>
+                </div>
+                <div>
+                  <h3>Motori di ricerca</h3>
+                  <ul class="lista-cause">
+                    <template x-for="m in salute.motori_ora" :key="'mo'+m.motore">
+                      <li class="motore">
+                        <span class="badge" :class="m.stato === 'ok' ? 'b-ok' : 'b-err'" x-text="m.stato === 'ok' ? 'risponde' : 'bloccato'"></span>
+                        <div><span class="mono" translate="no" x-text="m.motore"></span>
+                          <span class="hint" x-show="m.stato !== 'ok' && m.motivo" x-text="' · ' + m.motivo"></span></div>
+                      </li>
+                    </template>
+                    <template x-if="!salute.motori_ora.length">
+                      <li class="hint">Nessuna ricerca da quando il portale è ripartito.</li>
+                    </template>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- ======== prova a lotti -->
+      <div class="card">
+        <header><h2>Prova a lotti</h2></header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">
+            Incolla fino a 40 codici: si cercano uno alla volta, come in un'importazione vera, senza
+            toccare clienti e siti. Per ognuno vedi se si trova, dove, e se no perché.
+          </p>
+          <div class="aggiungi-grid">
+            <textarea rows="5" class="mono" x-model="lotto.codici" placeholder="8059893356383&#10;5712608909306&#10;97924465"></textarea>
+            <div>
+              <div class="field"><label>Lingua delle schede</label>
+                <select x-model="lotto.lingua" translate="no">
+                  <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+                  <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+                </select>
+              </div>
+              <button @click="avviaLotto()" :disabled="lotto.busy || !lotto.codici.trim()"
+                      x-text="lotto.busy ? 'In corso…' : 'Avvia la prova'"></button>
+            </div>
+          </div>
+          <template x-if="lotto.stato">
+            <div style="margin-top:14px">
+              <div class="row">
+                <strong x-text="lotto.stato.fatti + ' di ' + lotto.stato.totale + ' cercati'"></strong>
+                <span class="hint" x-text="'· trovati ' + lotto.stato.righe.filter(r => r.trovato).length"></span>
+                <span class="spin" x-show="!lotto.stato.finito"></span>
+              </div>
+              <table class="lotto" style="margin-top:8px">
+                <thead><tr><th style="width:150px">Codice</th><th>Esito</th><th class="right" style="width:170px">Scheda</th><th style="width:110px"></th></tr></thead>
+                <tbody>
+                  <template x-for="(r, i) in lotto.stato.righe" :key="'lr'+i">
+                    <tr>
+                      <td class="gtin" x-text="r.codice"></td>
+                      <td>
+                        <template x-if="r.trovato">
+                          <div><span class="badge b-ok">trovato</span> <span x-text="r.titolo"></span>
+                            <div class="hint" x-text="'su ' + r.origine + (r.conferma === 'debole' ? ' · solo per somiglianza del nome' : '')"></div></div>
+                        </template>
+                        <template x-if="!r.trovato">
+                          <div><span class="badge b-err">non trovato</span>
+                            <span x-text="r.diagnosi && r.diagnosi.causa ? causaTesto(r.diagnosi.causa) : r.errore"></span></div>
+                        </template>
+                      </td>
+                      <td class="right hint num" x-text="r.trovato ? (r.foto + ' foto · ' + r.specifiche + ' spec. · ' + r.descrizione + ' car.') : ''"></td>
+                      <td class="right"><button class="ghost sm" x-show="r.diagnosi" @click="apriDiario(r.diagnosi, r.codice)">Dettagli</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><h2>Aspetto del portale</h2></header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">
+            Nome, logo e favicon che i clienti vedono in alto, nella scheda del browser e nella pagina di accesso.
+          </p>
+          <div class="field" style="max-width:340px"><label>Nome del portale</label>
+            <input type="text" x-model="brandForm.name" placeholder="TD Sync Catalog"></div>
+
+          <div class="logo-drop" style="margin:12px 0">
+            <template x-if="brandForm.logo">
+              <img :src="brandForm.logo + '?v=' + logoBust" alt="">
+            </template>
+            <template x-if="!brandForm.logo">
+              <div class="hint">Nessun logo: si mostra il nome scritto.</div>
+            </template>
+            <div class="grow"></div>
+            <label class="btn ghost sm" style="margin:0;cursor:pointer">
+              Carica logo
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                     style="display:none" @change="uploadBrandLogo($event)">
+            </label>
+            <button class="danger sm" x-show="brandForm.logo" @click="removeBrandLogo()">Rimuovi</button>
+          </div>
+          <p class="hint" style="margin-top:-4px">
+            PNG, JPG, WebP o SVG, massimo 2 MB. Va bene un logo orizzontale: viene mostrato
+            alto 26 pixel in barra e fino a 54 nella pagina di accesso.
+          </p>
+
+          <div class="logo-drop favicon-drop" style="margin:16px 0 12px">
+            <div class="favicon-anteprime">
+              <img class="favicon-anteprima grande" :src="brandForm.favicon || '/static/favicon.svg'" alt="">
+              <span class="favicon-scheda"><img :src="brandForm.favicon || '/static/favicon.svg'" alt="">
+                <span translate="no" x-text="brandForm.name || 'TD Sync Catalog'"></span></span>
+            </div>
+            <div>
+              <strong>Favicon</strong>
+              <div class="hint" x-text="brandForm.favicon ? 'La tua icona' : 'Quella di serie'"></div>
+            </div>
+            <div class="grow"></div>
+            <label class="btn ghost sm" style="margin:0;cursor:pointer">
+              Carica favicon
+              <input type="file" accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico,image/webp,image/jpeg"
+                     style="display:none" @change="uploadBrandFavicon($event)">
+            </label>
+            <button class="danger sm" x-show="brandForm.favicon" @click="removeBrandFavicon()">Torna a quella di serie</button>
+          </div>
+          <p class="hint" style="margin-top:-4px">
+            PNG quadrato da almeno 180×180 pixel (meglio 512×512), oppure SVG o ICO, massimo 1 MB. È l'icona
+            della scheda del browser e dei preferiti; se è un PNG anche quella sul telefono. Vale per tutti,
+            anche nella pagina di accesso.
+          </p>
+
+          <div class="row" style="margin-top:10px">
+            <button @click="saveBrand()">Salva</button>
+            <span class="hint">Il nome cambia dopo un ricaricamento della pagina.</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <header><h2>Registro attività</h2></header>
+        <div class="body tight">
+          <table>
+            <thead><tr><th>Quando</th><th>Utente</th><th>Azione</th><th>Dettaglio</th></tr></thead>
+            <tbody>
+              <template x-for="(a, i) in auditRows" :key="i">
+                <tr>
+                  <td class="hint" x-text="fmtDate(a.at)"></td>
+                  <td x-text="a.user"></td>
+                  <td class="mono" x-text="a.action"></td>
+                  <td class="hint" x-text="a.detail"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </template>
+
+</main>
+
+<!-- AGPL-3.0: chi usa il portale deve poter arrivare al suo codice sorgente. -->
+<footer class="piede" x-cloak>
+  <span translate="no">{{ app_name }} {{ app_version }}</span>{% if source_url %} ·
+  <a href="{{ source_url }}" target="_blank" rel="noopener">Codice sorgente</a>
+  <span translate="no">(AGPL-3.0)</span>{% endif %}
+</footer>
+
+<!-- ============================================================== MODALI -->
+<template x-if="modal.kind">
+  <!-- Il click fuori chiude solo l'anteprima: nelle modali con campi compilati
+       un click sbagliato non deve buttare via il lavoro. Esc chiude sempre. -->
+  <div class="overlay" @click.self="(modal.kind==='preview' || modal.kind==='perche') && (modal.kind=null)"
+       @keydown.escape.window="modal.kind=null" x-cloak>
+    <div class="modal">
+      <header>
+        <h2 x-text="modal.title"></h2>
+        <div class="grow"></div>
+        <button class="x" @click="modal.kind=null" aria-label="Chiudi" title="Chiudi">&times;</button>
+      </header>
+      <div class="body">
+        <template x-if="modal.error">
+          <div class="notice n-err" style="margin-top:0" x-text="modal.error"></div>
+        </template>
+
+        <!-- anteprima prodotto -->
+        <template x-if="modal.kind==='preview'">
+          <div x-html="renderProduct(modal.data.product)"></div>
+        </template>
+
+        <!-- perché: il diario della ricerca -->
+        <template x-if="modal.kind==='perche'">
+          <div>
+            <template x-if="modal.data.riprova_alle">
+              <div class="notice n-warn" style="margin-top:0"
+                   x-text="'Motori di ricerca bloccati: riprovo da solo alle ' + fmtOra(modal.data.riprova_alle)"></div>
+            </template>
+            <template x-if="!modal.data.diagnosi || !modal.data.diagnosi.causa">
+              <p class="hint" style="margin-top:0">Per questa riga non c'è il diario della ricerca: è stata cercata con una versione precedente. Premi «Riprova» per averlo.</p>
+            </template>
+            <template x-if="modal.data.diagnosi && modal.data.diagnosi.causa">
+              <div x-html="renderDiagnosi(modal.data.diagnosi)"></div>
+            </template>
+          </div>
+        </template>
+
+        <!-- compilazione manuale della scheda -->
+        <template x-if="modal.kind==='edit'">
+          <div>
+            <template x-if="modal.data.status === 'not_found'">
+              <div class="notice n-warn">
+                Nessuna fonte conosce questo codice. Scrivi qui i dati e la scheda diventa
+                pubblicabile come tutte le altre.
+              </div>
+            </template>
+            <template x-if="modal.data.issues && modal.data.issues.length">
+              <div class="notice n-err">
+                Manca ancora: <span x-text="modal.data.issues.map(i => modal.data.field_labels[i] || i).join(', ')"></span>
+              </div>
+            </template>
+
+            <dl class="kv" style="margin-bottom:14px">
+              <dt>EAN</dt><dd class="gtin" x-text="modal.data.gtin"></dd>
+              <dt>Fonte</dt><dd x-text="modal.data.source || 'nessuna'"></dd>
+            </dl>
+
+            <div class="field"><label>Nome prodotto</label>
+              <input type="text" x-model="edit.title"></div>
+            <div class="grid-2">
+              <div class="field"><label>Marca</label><input type="text" x-model="edit.brand"></div>
+              <div class="field"><label>Codice produttore</label>
+                <input type="text" class="mono" x-model="edit.mpn"></div>
+            </div>
+            <div class="field"><label>Categoria sul sito <span class="obbl">obbligatoria</span></label>
+              <select x-model.number="edit.category_id" :class="!edit.category_id && 'manca'">
+                <option value="" disabled>— scegli la categoria —</option>
+                <template x-for="c in catValide" :key="'ec' + c.id">
+                  <option :value="c.id" :selected="c.id == edit.category_id" x-text="c.name"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="prezzi" style="margin:0 0 12px">
+              <div class="field" style="margin:0"><label>Prezzo</label>
+                <input type="text" class="mono big" x-model="edit.regular_price" placeholder="129,90"></div>
+              <div class="field" style="margin:0"><label>Prezzo scontato</label>
+                <input type="text" class="mono big" x-model="edit.sale_price" placeholder="facoltativo"></div>
+              <p class="hint" style="grid-column:1/-1;margin:0">
+                I prezzi li decidi tu: nessuna fonte li fornisce. Lo scontato, se lo metti,
+                deve stare sotto il prezzo pieno o WooCommerce lo ignora.
+              </p>
+            </div>
+
+            <div class="field"><label>Descrizione</label>
+              <textarea x-model="edit.description" rows="6" style="font-family:var(--sans)"></textarea></div>
+
+            <div class="field">
+              <label>Immagini</label>
+              <template x-for="(img, i) in edit.images" :key="'img' + i">
+                <div class="row riga" style="margin-bottom:6px">
+                  <input type="text" class="mono" x-model="edit.images[i]" placeholder="https://">
+                  <button class="danger sm" @click="edit.images.splice(i,1)">Togli</button>
+                </div>
+              </template>
+              <button class="ghost sm" @click="edit.images.push('')">Aggiungi immagine</button>
+            </div>
+
+            <div class="field">
+              <label>Specifiche</label>
+              <template x-for="(a, i) in edit.attributes" :key="'at' + i">
+                <div class="row riga" style="margin-bottom:6px">
+                  <input type="text" style="flex:0 0 200px" x-model="a.name" placeholder="Nome">
+                  <input type="text" x-model="a.value" placeholder="Valore">
+                  <button class="danger sm" @click="edit.attributes.splice(i,1)">Togli</button>
+                </div>
+              </template>
+              <button class="ghost sm" @click="edit.attributes.push({name:'',value:''})">Aggiungi specifica</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- cliente -->
+        <template x-if="modal.kind==='client'">
+          <div>
+            <div class="field"><label>Nome cliente</label>
+              <input type="text" x-model="modal.data.name"></div>
+            <template x-if="modal.data.id">
+              <div style="margin-bottom:18px">
+                <div class="row" style="margin-bottom:8px">
+                  <h3 style="margin:0">Fonti dati</h3>
+                  <div class="grow"></div>
+                </div>
+                <p class="hint" style="margin-top:0">
+                  Si provano in ordine finché una risponde, e le successive completano i buchi della
+                  prima. Senza fonti attive vale comunque la ricerca sul web; un connettore JSON serve
+                  quando un fornitore ti dà accesso al suo catalogo.
+                </p>
+
+                <div class="fonti">
+                  <template x-for="(preset, chiave) in presetFonti" :key="chiave">
+                    <div class="fonte" :class="fonteAttiva(chiave) && 'attiva'">
+                      <div class="fonte-testa">
+                        <strong x-text="t(preset.name)"></strong>
+                        <span class="badge" :class="fonteAttiva(chiave) ? 'b-ok' : 'b-wait'"
+                              x-text="fonteAttiva(chiave) ? 'attiva' : 'spenta'"></span>
+                      </div>
+                      <p class="hint" x-text="preset.descrizione"></p>
+                      <div class="row">
+                        <template x-if="fonteAttiva(chiave)">
+                          <button class="ghost" @click="editProvider(fonteAttiva(chiave))">Impostazioni</button>
+                        </template>
+                        <template x-if="!fonteAttiva(chiave)">
+                          <button @click="aggiungiFonte(chiave)">Attiva</button>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <template x-if="clientProviders.length">
+                  <div class="row" style="margin-top:14px">
+                    <input type="text" class="mono" style="max-width:190px" x-model="confrontoGtin"
+                           placeholder="EAN da confrontare">
+                    <button class="ghost" @click="confrontaFonti()">Confronta le fonti</button>
+                    <span class="hint">Interroga ogni fonte separatamente sullo stesso codice.</span>
+                  </div>
+                </template>
+
+                <template x-if="confronto.length">
+                  <table style="margin-top:12px">
+                    <thead><tr><th>Fonte</th><th>Cosa restituisce</th><th class="right">Contenuti</th></tr></thead>
+                    <tbody>
+                      <template x-for="e in confronto" :key="e.fonte">
+                        <tr>
+                          <td>
+                            <span class="badge" :class="e.ok ? 'b-ok' : 'b-err'" x-text="e.fonte"></span>
+                            <div class="hint" x-show="e.origine" x-text="'da ' + e.origine"></div>
+                          </td>
+                          <td>
+                            <template x-if="e.ok">
+                              <div>
+                                <div x-text="e.titolo"></div>
+                                <div class="hint" x-text="[e.marca, e.mpn, e.categoria].filter(Boolean).join(' · ')"></div>
+                              </div>
+                            </template>
+                            <template x-if="!e.ok">
+                              <span class="hint" x-text="e.errore || 'nessuna scheda'"></span>
+                            </template>
+                          </td>
+                          <td class="right hint num">
+                            <template x-if="e.ok">
+                              <span x-text="e.descrizione + ' car. · ' + e.immagini + ' img · ' + e.caratteristiche + ' spec.'"></span>
+                            </template>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </template>
+
+                <template x-if="clientProviders.length">
+                  <table style="margin-top:14px">
+                    <thead><tr><th>Ordine</th><th>Fonte</th><th>Ultimo esito</th><th></th></tr></thead>
+                    <tbody>
+                      <template x-for="pr in clientProviders" :key="pr.id">
+                        <tr>
+                          <td class="num" x-text="pr.priority"></td>
+                          <td>
+                            <div x-text="t(pr.name)"></div>
+                            <div class="hint mono" x-show="pr.endpoint"
+                                 x-text="(pr.endpoint || '').split('\n')[0].slice(0, 46)"></div>
+                          </td>
+                          <td>
+                            <span class="badge" :class="pr.last_error ? 'b-err' : (pr.last_ok_at ? 'b-ok' : 'b-wait')"
+                                  x-text="pr.last_error ? 'errore' : (pr.last_ok_at ? 'ok' : 'mai usata')"></span>
+                            <div class="hint" x-text="pr.last_error"></div>
+                          </td>
+                          <td class="right"><button class="ghost" @click="editProvider(pr)">Apri</button></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </template>
+              </div>
+            </template>
+
+            <div class="field" style="max-width:340px"><label>Lingua delle schede</label>
+              <select x-model="modal.data.content_lang" translate="no">
+                <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+                <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+              </select>
+              <p class="hint">Quella usata dagli aggiornamenti notturni e dai negozi senza una lingua propria.</p>
+            </div>
+            <h3 style="margin:16px 0 10px">Abbonamento</h3>
+            <div class="grid-3">
+              <div class="field"><label>Stato</label>
+                <select x-model="modal.data.subscription_status">
+                  <option value="trial">In prova</option>
+                  <option value="active">Attivo</option>
+                  <option value="suspended">Sospeso</option>
+                  <option value="expired">Scaduto</option>
+                </select>
+              </div>
+              <div class="field"><label>Piano</label>
+                <input type="text" x-model="modal.data.plan_name"></div>
+              <div class="field"><label>Quota mensile (0 = illimitata)</label>
+                <input type="number" min="0" x-model.number="modal.data.monthly_quota"></div>
+            </div>
+            <div class="field"><label>Scadenza</label>
+              <input type="date" x-model="modal.data.subscription_until_day">
+              <p class="hint">Vuoto = nessuna scadenza. Passata la data la pubblicazione si blocca da sola.</p>
+            </div>
+
+            <h3 style="margin:16px 0 10px">Anagrafica</h3>
+            <div class="grid-2">
+              <div class="field"><label>Ragione sociale</label>
+                <input type="text" x-model="modal.data.legal_name"></div>
+              <div class="field"><label>Partita IVA</label>
+                <input type="text" class="mono" x-model="modal.data.vat_number"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label>Email</label>
+                <input type="email" x-model="modal.data.contact_email"></div>
+              <div class="field"><label>PEC</label>
+                <input type="email" x-model="modal.data.pec"></div>
+              <div class="field"><label>Telefono</label>
+                <input type="text" x-model="modal.data.phone"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label>Indirizzo</label>
+                <input type="text" x-model="modal.data.address"></div>
+              <div class="field"><label>Comune</label>
+                <input type="text" x-model="modal.data.city"></div>
+              <div class="field"><label>Provincia</label>
+                <input type="text" class="mono" x-model="modal.data.province" maxlength="4"></div>
+            </div>
+
+            <div class="field"><label>Note interne</label>
+              <textarea x-model="modal.data.notes" style="font-family:var(--sans);min-height:60px"></textarea></div>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500">
+              <input type="checkbox" x-model="modal.data.is_active" style="width:auto"> Account attivo
+            </label>
+          </div>
+        </template>
+
+        <!-- sito -->
+        <template x-if="modal.kind==='site'">
+          <div>
+            <div class="grid-2">
+              <div class="field"><label>Cliente</label>
+                <select x-model.number="modal.data.client_id">
+                  <template x-for="c in clients" :key="c.id">
+                    <option :value="c.id" :selected="c.id == modal.data.client_id" x-text="c.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div class="field"><label>Nome del sito</label>
+                <input type="text" x-model="modal.data.name"></div>
+            </div>
+            <div class="field"><label>Indirizzo del sito</label>
+              <input type="text" class="mono" x-model="modal.data.base_url" placeholder="https://www.esempio.it">
+              <p class="hint">Senza slash finale. Serve HTTPS e i permalink attivi.</p>
+            </div>
+
+            <h3 style="margin:16px 0 8px">Chiavi API di WooCommerce</h3>
+            <p class="hint" style="margin-top:-4px;margin-bottom:10px">
+              Si generano sul sito in <strong>WooCommerce → Impostazioni → Avanzate → API REST →
+              Aggiungi chiave</strong>, con permesso <strong>Lettura/Scrittura</strong>.
+              Il segreto si vede una volta sola: copialo subito.
+              <strong>Queste chiavi restano solo qui: il cliente non le vede da nessuna parte.</strong>
+            </p>
+            <div class="grid-2">
+              <div class="field"><label>Consumer key</label>
+                <input type="text" class="mono" x-model="modal.data.wc_key"
+                       :placeholder="modal.data.wc_key_masked || 'ck_...'">
+                <p class="hint">Lasciala vuota per non cambiarla.</p>
+              </div>
+              <div class="field"><label>Consumer secret</label>
+                <input type="text" class="mono" x-model="modal.data.wc_secret"
+                       :placeholder="modal.data.wc_secret_masked || 'cs_...'">
+                <p class="hint">Lascialo vuoto per non cambiarlo.</p>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field"><label>Stato predefinito dei prodotti</label>
+                <select x-model="modal.data.default_status">
+                  <option value="publish">Pubblicato</option><option value="draft">Bozza</option>
+                </select>
+              </div>
+              <div class="field"><label>Lingua delle schede di questo negozio</label>
+                <select x-model="modal.data.content_lang">
+                  <option value="">Quella scelta da chi carica i codici</option>
+                  <!-- option scritte qui: generate con x-for arrivano dopo x-model e la select mostra la prima -->
+                  <option value="IT" translate="no">Italiano</option><option value="EN" translate="no">English</option><option value="FR" translate="no">Français</option><option value="DE" translate="no">Deutsch</option><option value="ES" translate="no">Español</option>
+                </select>
+                <p class="hint">Se il negozio è in una lingua sola, fissala qui: le schede arrivano sempre in quella.</p>
+              </div>
+            </div>
+            <h3 style="margin:16px 0 8px">Cosa può sovrascrivere l'importazione</h3>
+            <template x-for="f in policyFields" :key="f.key">
+              <div class="row" style="margin-bottom:6px">
+                <div style="width:190px" x-text="f.label"></div>
+                <select style="max-width:220px" x-model="modal.data.write_policy[f.key]">
+                  <option value="fill">Solo se vuoto</option>
+                  <option value="overwrite">Sempre</option>
+                  <option value="skip">Mai</option>
+                </select>
+              </div>
+            </template>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:16px 0 6px">
+              <input type="checkbox" x-model="modal.data.specs_meta" style="width:auto">
+              Scrivi le specifiche anche per TD Product Specs
+            </label>
+            <p class="hint" style="margin-top:-2px">
+              Riempie il meta <code>_td_product_specs</code> letto dallo shortcode
+              <code>[td_specifiche]</code> e dai campi YOOtheme. Se il plugin non c'è sul sito,
+              il meta resta lì senza fare niente.
+            </p>
+
+            <div class="field" style="max-width:260px;margin-top:14px">
+              <label>Quante specifiche scrivere</label>
+              <input type="number" min="0" max="80" x-model.number="modal.data.specs_limit">
+              <p class="hint">
+                Certe schede ne hanno anche novanta. Le prime sono quelle che contano, il resto
+                allunga la scheda e basta. 0 = tutte.
+              </p>
+            </div>
+
+            <h3 style="margin:18px 0 8px">Immagini, per l'eliminazione</h3>
+            <p class="hint" style="margin-top:-4px;margin-bottom:10px">
+              Facoltative. Le chiavi WooCommerce eliminano i prodotti ma non le immagini:
+              la libreria media è del core WordPress e le chiavi di Woo lì non valgono.
+              Con utente e <strong>Password per applicazioni</strong> (Utenti → Profilo →
+              Password per applicazioni) si eliminano anche quelle. Senza, i prodotti si
+              cancellano lo stesso e le immagini restano in libreria.
+            </p>
+            <div class="grid-2">
+              <div class="field"><label>Utente WordPress</label>
+                <input type="text" class="mono" x-model="modal.data.wp_user"></div>
+              <div class="field"><label>Password per applicazioni</label>
+                <input type="text" class="mono" x-model="modal.data.wp_app_password"
+                       :placeholder="modal.data.wp_app_masked || 'xxxx xxxx xxxx xxxx'">
+                <p class="hint">Vuota per non cambiarla.</p>
+              </div>
+            </div>
+
+            <h3 style="margin:18px 0 8px">Campi obbligatori per pubblicare</h3>
+            <p class="hint" style="margin-top:-4px;margin-bottom:10px">
+              Se manca uno di questi la scheda resta "Da completare" e non parte verso il sito.
+            </p>
+            <div class="row" style="margin-bottom:14px">
+              <template x-for="f in qualityFields" :key="f[0]">
+                <button type="button" class="ghost sm"
+                        :style="isRequired(f[0]) ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : ''"
+                        @click="toggleRequired(f[0])" x-text="f[1]"></button>
+              </template>
+            </div>
+
+            <h3 style="margin:18px 0 10px">Aggiornamento notturno</h3>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-bottom:10px">
+              <input type="checkbox" x-model="modal.data.resync_enabled" style="width:auto">
+              Ricerca di nuovo i prodotti già a catalogo
+            </label>
+
+            <template x-if="modal.data.resync_enabled">
+              <div>
+                <div class="grid-3">
+                  <div class="field"><label>Ora</label>
+                    <select x-model.number="modal.data.resync_hour">
+                      <template x-for="h in 24" :key="h">
+                        <option :value="h-1" :selected="(h-1) == modal.data.resync_hour" x-text="String(h-1).padStart(2,'0') + ':00'"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="field"><label>Minuti</label>
+                    <input type="number" min="0" max="59" x-model.number="modal.data.resync_minute"></div>
+                  <div class="field"><label>Quanti per volta</label>
+                    <input type="number" min="1" max="2000" x-model.number="modal.data.resync_batch"></div>
+                </div>
+
+                <div class="field">
+                  <label>Giorni</label>
+                  <div class="row">
+                    <template x-for="(d, i) in ['Lun','Mar','Mer','Gio','Ven','Sab','Dom']" :key="i">
+                      <button type="button" class="ghost sm"
+                              :class="isResyncDay(i) && 'on'"
+                              :style="isResyncDay(i) ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : ''"
+                              @click="toggleResyncDay(i)" x-text="d"></button>
+                    </template>
+                  </div>
+                  <p class="hint" x-text="modal.data.resync_days ? '' : 'Nessun giorno selezionato = tutte le notti.'"></p>
+                </div>
+
+                <div class="grid-2">
+                  <div class="field"><label>Quali prodotti</label>
+                    <select x-model="modal.data.resync_scope">
+                      <option value="hub">Solo quelli importati da qui</option>
+                      <option value="all">Tutti quelli con un EAN sul sito</option>
+                    </select>
+                  </div>
+                  <div class="field"><label>Salta quelli aggiornati da meno di</label>
+                    <input type="number" min="0" max="365" x-model.number="modal.data.resync_min_age_days">
+                    <p class="hint">giorni</p>
+                  </div>
+                </div>
+
+                <h3 style="margin:14px 0 8px">Cosa aggiorna la notte</h3>
+                <p class="hint" style="margin-top:-4px;margin-bottom:10px">
+                  Regole a parte rispetto all'importazione manuale. Il nome di norma non si tocca:
+                  se il cliente l'ha sistemato a mano, riscriverlo di notte se ne accorge la mattina.
+                </p>
+                <template x-for="f in policyFields" :key="'r-' + f.key">
+                  <div class="row" style="margin-bottom:6px">
+                    <div style="width:190px" x-text="f.label"></div>
+                    <select style="max-width:220px" x-model="modal.data.resync_policy[f.key]">
+                      <option value="fill">Solo se vuoto</option>
+                      <option value="overwrite">Sempre</option>
+                      <option value="skip">Mai</option>
+                    </select>
+                  </div>
+                </template>
+
+                <template x-if="modal.data.last_resync_msg">
+                  <p class="hint" style="margin-top:12px">
+                    Ultimo giro: <span x-text="fmtDate(modal.data.last_resync_at)"></span> —
+                    <span x-text="modal.data.last_resync_msg"></span>
+                  </p>
+                </template>
+              </div>
+            </template>
+
+
+          </div>
+        </template>
+
+        <!-- eliminazione importazione -->
+        <template x-if="modal.kind==='purge'">
+          <div>
+            <template x-if="modal.data.da_eliminare > 0">
+              <div class="notice n-err" style="margin-top:0">
+                Stai per eliminare <strong x-text="modal.data.da_eliminare"></strong>
+                prodotti dal sito <strong x-text="modal.data.site_name"></strong>.
+                Non si torna indietro.
+              </div>
+            </template>
+
+            <dl class="kv">
+              <dt>Creati da questa importazione</dt>
+              <dd><strong x-text="modal.data.da_eliminare"></strong> prodotti, eliminabili</dd>
+              <dt>Solo aggiornati</dt>
+              <dd>
+                <span x-text="modal.data.aggiornati"></span> prodotti, <strong>non si toccano</strong>
+                <div class="hint">Erano già sul sito prima di questa importazione.</div>
+              </dd>
+              <dt>Immagini</dt>
+              <dd>
+                <template x-if="modal.data.immagini">
+                  <span>vengono eliminate insieme ai prodotti</span>
+                </template>
+                <template x-if="!modal.data.immagini">
+                  <span>restano nella libreria media
+                    <div class="hint">Per eliminarle servono utente e Password per applicazioni
+                    nella scheda del sito.</div>
+                  </span>
+                </template>
+              </dd>
+            </dl>
+
+            <div class="row" style="margin-top:16px;gap:10px">
+              <button class="danger" x-show="modal.data.da_eliminare > 0" @click="doPurge(true)"
+                      x-text="'Elimina anche i ' + modal.data.da_eliminare + ' prodotti dal sito'"></button>
+              <button class="ghost" @click="doPurge(false)">Elimina solo dal portale</button>
+            </div>
+            <p class="hint" style="margin-top:10px">
+              «Solo dal portale» cancella lo storico dell'importazione e lascia il sito com'è.
+            </p>
+          </div>
+        </template>
+
+        <!-- fonte dati -->
+        <template x-if="modal.kind==='provider'">
+          <div>
+            <p class="hint" style="margin-top:0" x-text="modal.data.descrizione"></p>
+
+            <div class="grid-2">
+              <div class="field"><label>Nome</label>
+                <input type="text" x-model="modal.data.name"></div>
+              <div class="field"><label>Ordine di prova</label>
+                <input type="number" min="0" max="999" x-model.number="modal.data.priority">
+                <p class="hint">Numero più basso = provata prima.</p>
+              </div>
+            </div>
+
+            <template x-if="modal.data.kind === 'http_json'">
+              <div>
+                <div class="grid-2">
+                  <div class="field"><label>Utente del portale</label>
+                    <input type="text" class="mono" x-model="modal.data.username"></div>
+                  <div class="field"><label>Password o chiave</label>
+                    <input type="text" class="mono" x-model="modal.data.secret"
+                           :placeholder="modal.data.secret_masked || 'lascia vuoto per non cambiarla'"></div>
+                </div>
+                <div class="field"><label>Indirizzo delle API</label>
+                  <input type="text" class="mono" x-model="modal.data.endpoint"
+                         placeholder="https://api.esempio.it/prodotti/{gtin}">
+                  <p class="hint">
+                    Lo trovi nell'area riservata del portale, sezione API. Metti
+                    <code>{gtin}</code> dove va il codice EAN.
+                  </p>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="modal.data.kind === 'web'">
+              <div>
+                <div class="notice n-ok" style="margin-top:0">
+                  Non c'è niente da configurare qui: la pagina del produttore la trova da
+                  sola col motore di ricerca impostato nel pannello, pagina <strong>Impostazioni</strong>.
+                  Funziona anche su marche mai viste prima.
+                </div>
+
+                <details style="margin-top:12px">
+                  <summary class="hint">Ho già gli indirizzi di certe marche, li voglio usare</summary>
+                  <div class="field" style="margin-top:10px">
+                    <label>Indirizzi fissi, uno per riga</label>
+                <textarea x-model="modal.data.endpoint" rows="6" class="mono"
+                          placeholder="https://www.bosch-home.it/ricerca?q={gtin}&#10;https://www.samsung.com/it/search/?searchvalue={gtin}"></textarea>
+                <p class="hint">
+                  Un indirizzo per marca. Segnaposto: <code>{gtin}</code> per l'EAN,
+                  <code>{mpn}</code> per il codice produttore. Vanno bene sia la pagina
+                  prodotto diretta, se conosci lo schema degli indirizzi, sia la ricerca
+                  interna del sito.
+                </p>
+                    <p class="hint">
+                      Se metti qualcosa qui, si usano solo questi e la ricerca automatica
+                      viene saltata. Segnaposto: <code>{gtin}</code> e <code>{mpn}</code>.
+                    </p>
+                  </div>
+                </details>
+
+                <div class="notice n-warn" style="margin-top:12px">
+                  In entrambi i casi si rispetta il file <code>robots.txt</code> di ogni sito, si
+                  aspetta un secondo e mezzo fra una pagina e l'altra e i siti protetti da verifiche
+                  anti-bot si saltano. Se la pagina non conferma il codice richiesto, la scheda viene
+                  scartata invece di importare il prodotto sbagliato.
+                </div>
+              </div>
+            </template>
+
+            <template x-if="modal.data.kind === 'http_json'">
+              <details style="margin-top:10px">
+                <summary class="hint">Impostazioni avanzate</summary>
+                <div class="grid-2" style="margin-top:10px">
+                  <div class="field"><label>Autenticazione</label>
+                    <select x-model="modal.data.auth_mode">
+                      <option value="none">Nessuna</option>
+                      <option value="basic">Utente e password</option>
+                      <option value="header">Intestazione HTTP</option>
+                      <option value="query">Parametro nell'indirizzo</option>
+                      <option value="bearer">Bearer token</option>
+                    </select>
+                  </div>
+                  <div class="field"><label>Nome intestazione o parametro</label>
+                    <input type="text" class="mono" x-model="modal.data.auth_name" placeholder="X-Api-Key"></div>
+                </div>
+                <div class="field"><label>Dove inizia la scheda nella risposta</label>
+                  <input type="text" class="mono" x-model="modal.data.root_path" placeholder="dati.articolo"></div>
+                <div class="field"><label>Mappa dei campi</label>
+                  <textarea x-model="modal.data.field_map_text" rows="10" class="mono"></textarea>
+                  <p class="hint">
+                    A sinistra il campo del portale, a destra dove trovarlo nella risposta.
+                    Per le liste usa <code>[]</code>. I prezzi non si mappano: li mette il cliente.
+                  </p>
+                </div>
+              </details>
+            </template>
+
+            <div class="row" style="margin-top:14px">
+              <input type="text" class="mono" style="max-width:190px" x-model="providerTestGtin"
+                     placeholder="EAN di prova">
+              <button class="ghost" @click="testProvider()">Prova la fonte</button>
+              <div class="grow"></div>
+              <button class="danger" x-show="modal.data.id" @click="deleteProvider()">Disattiva</button>
+            </div>
+
+            <template x-if="providerTest">
+              <div style="margin-top:12px">
+                <div class="notice" :class="providerTest.ok ? 'n-ok' : 'n-err'"
+                     x-text="providerTest.ok ? 'La fonte risponde e i campi sono stati riconosciuti.' : (providerTest.error || 'Risposta ricevuta ma senza nome prodotto: controlla le impostazioni.')"></div>
+                <template x-if="providerTest.product">
+                  <div x-html="renderProduct(providerTest.product)"></div>
+                </template>
+                <template x-if="providerTest.raw_sample">
+                  <details style="margin-top:10px">
+                    <summary class="hint">Risposta grezza, per capire dove stanno i campi</summary>
+                    <pre class="mono" style="white-space:pre-wrap;font-size:11.5px;max-height:240px;overflow:auto"
+                         x-text="providerTest.raw_sample"></pre>
+                  </details>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- utente -->
+        <template x-if="modal.kind==='user'">
+          <div>
+            <div class="field"><label>Email</label>
+              <input type="email" x-model="modal.data.email" placeholder="nome@dominio.it"
+                     autocomplete="off" spellcheck="false"></div>
+            <div class="field"><label>Nome e cognome</label>
+              <input type="text" x-model="modal.data.full_name"></div>
+
+            <div class="field">
+              <label x-text="modal.data.id ? 'Nuova password' : 'Password'"></label>
+              <div class="row" style="flex-wrap:nowrap">
+                <input type="text" class="mono" x-model="modal.data.password"
+                       autocomplete="new-password" spellcheck="false"
+                       :placeholder="modal.data.id ? 'lasciala vuota per non cambiarla' : 'vuota = generata dal portale'">
+                <button type="button" class="ghost sm" @click="generaPassword()">Genera</button>
+              </div>
+              <p class="hint">Almeno 10 caratteri. La vedi solo tu: mandala al cliente come preferisci.</p>
+            </div>
+            <div class="grid-2">
+              <div class="field"><label>Ruolo</label>
+                <select x-model="modal.data.role">
+                  <option value="client">Cliente</option><option value="admin">Amministratore</option>
+                </select>
+              </div>
+              <div class="field"><label>Cliente collegato</label>
+                <select x-model.number="modal.data.client_id">
+                  <option value="">Nessuno</option>
+                  <template x-for="c in clients" :key="c.id">
+                    <option :value="c.id" :selected="c.id == modal.data.client_id" x-text="c.name"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500">
+              <input type="checkbox" x-model="modal.data.is_active" style="width:auto"> Può accedere
+            </label>
+            <template x-if="modal.data.generated_password">
+              <div class="notice n-ok" style="margin-top:14px">
+                Password generata, mandagliela tu: <code x-text="modal.data.generated_password"></code>
+              </div>
+            </template>
+          </div>
+        </template>
+
+      </div>
+      <footer x-show="modal.kind !== 'preview' && modal.kind !== 'purge' && modal.kind !== 'perche'">
+        <button class="ghost" @click="modal.kind=null">Annulla</button>
+        <button @click="saveModal()">Salva</button>
+      </footer>
+    </div>
+  </div>
+</template>
+
+<script src="/static/hub.js?v={{ static_v }}"></script>
+</body>
+</html>

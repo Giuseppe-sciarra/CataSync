@@ -1,0 +1,37 @@
+name: Validate source
+on:
+  push:
+    branches: ['**']   # i tag li crea il workflow delle release: niente doppio giro
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q app
+      - run: python -m unittest discover -s tests -v
+      - run: node --check static/hub.js && node --check static/i18n/i18n.js
+      - run: node --test tests/i18n.test.cjs
+      - run: python -m py_compile .github/scripts/rilascio.py
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t catasync-hub:ci .
+      - name: Compose files are valid
+        run: |
+          printf 'SECRET_KEY=x\nFERNET_KEY=y\nPOSTGRES_PASSWORD=z\nSEARXNG_SECRET=w\n' > .env
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.portainer.yml config -q
+          docker compose -f docker-compose.portainer-git.yml config -q

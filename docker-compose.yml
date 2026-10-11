@@ -1,0 +1,112 @@
+# TD Sync Catalog — docker compose classico, con Postgres.
+#
+#   cp .env.example .env      # e riempi le variabili
+#   docker compose up -d --build
+#
+# Il portale ascolta su 127.0.0.1:8811 (BIND_ADDRESS e HOST_PORT nel .env),
+# davanti ci va un reverse proxy con HTTPS (NPMplus, Traefik, Caddy…).
+# Le variabili ${...} vengono lette dal file .env in questa cartella.
+#
+# Aggiornando da una versione precedente: i container cambiano nome
+# (catasync-db / catasync-hub), compose ricrea i servizi da solo e il
+# database resta quello di prima (il volume pgdata non cambia).
+# Tieni aggiornato anche SearXNG: docker compose pull searxng
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: catasync-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hub
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definisci POSTGRES_PASSWORD nel .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  hub:
+    build: .
+    image: catasync-hub:latest
+    container_name: catasync-hub
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?definisci SECRET_KEY nel .env}
+      FERNET_KEY: ${FERNET_KEY:?definisci FERNET_KEY nel .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # L'URL lo costruisce il compose: utente e database sono fissi qui sopra,
+      # la password è la stessa POSTGRES_PASSWORD. Niente da tenere allineato a mano.
+      DATABASE_URL: postgresql://hub:${POSTGRES_PASSWORD}@db:5432/hub
+      UPLOAD_DIR: /data/uploads
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
+      WORKER_ENABLED: "1"
+      WORKER_BATCH: ${WORKER_BATCH:-5}
+      SCHEDULER_ENABLED: "1"
+      # Lingua delle schede quando nessuno la sceglie (IT, EN, FR, DE, ES).
+      DEFAULT_LANG: ${DEFAULT_LANG:-IT}
+      # Giorni di validità delle schede già trovate sul web (per codice e lingua).
+      CACHE_DAYS: ${CACHE_DAYS:-30}
+      # Secondi fra una ricerca e l'altra: è ciò che tiene lontani i CAPTCHA.
+      SEARCH_PAUSE: ${SEARCH_PAUSE:-4}
+      SEARCH_MAX_DEFERRALS: ${SEARCH_MAX_DEFERRALS:-4}
+      SITE_TIMEOUT: ${SITE_TIMEOUT:-60}
+      WC_MAX_SCAN_PAGES: ${WC_MAX_SCAN_PAGES:-30}
+      SOURCE_URL: ${SOURCE_URL:-https://github.com/Giuseppe-sciarra/CataSync}
+      TZ: ${TZ:-Europe/Rome}
+    volumes:
+      - hub_data:/data          # loghi, favicon, immagini categorie, cache: NON stanno nel DB
+    ports:
+      # Di serie solo in locale. Reverse proxy su un'altra macchina (es. NPMplus
+      # in un'altra LXC): BIND_ADDRESS=0.0.0.0 nel .env e porta limitata col firewall.
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8811}:8000"
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    volumes:
+      - ./searxng:/etc/searxng
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+      # La chiave di SearXNG viene dal .env: il settings.yml in repo non ha segreti.
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?definisci SEARXNG_SECRET nel .env (openssl rand -hex 32)}
+
+  libretranslate:
+    image: libretranslate/libretranslate
+    container_name: td-libretranslate
+    restart: unless-stopped
+    # Il container gira come utente 1032: la cartella deve essere sua, altrimenti
+    # non riesce a scaricare i modelli. Se nei log si lamenta dei permessi:
+    #   mkdir -p libretranslate && chown -R 1032:1032 libretranslate
+    user: "1032:1032"
+    environment:
+      LT_LOAD_ONLY: "it,en,es,de,fr"   # solo le lingue utili: parte prima e pesa meno
+    volumes:
+      # Cartella accanto a searxng/: i modelli linguistici scaricati stanno qui.
+      - ./libretranslate:/home/libretranslate/.local
+
+  browser:
+    image: browserless/chrome
+    container_name: td-browser
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      MAX_CONCURRENT_SESSIONS: "2"
+      CONNECTION_TIMEOUT: "45000"
+      # Lingua del browser quando il portale non riesce a indicarla pagina per
+      # pagina (versioni vecchie di browserless): metti quella dei tuoi clienti.
+      DEFAULT_LAUNCH_ARGS: '["--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36","--lang=it-IT"]'
+
+volumes:
+  pgdata:
+  hub_data:

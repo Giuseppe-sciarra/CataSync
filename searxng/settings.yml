@@ -1,0 +1,60 @@
+# Read the documentation before extending the defaults:
+# https://docs.searxng.org/admin/settings/
+#
+# La chiave segreta NON sta qui: il docker-compose.yml la passa al container con
+# SEARXNG_SECRET (dal .env). Senza, SearXNG si rifiuta di partire con la chiave
+# d'esempio qui sotto: è voluto, così nessuno va in produzione con quella.
+
+use_default_settings: true
+
+server:
+  secret_key: "ultrasecretkey"  # quella vera arriva da SEARXNG_SECRET nel .env
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
+  # Quanto resta fermo un motore dopo un CAPTCHA o un «troppe richieste».
+  # Le versioni vecchie di SearXNG lo fermavano per un giorno intero (e per
+  # due settimane coi CAPTCHA di Cloudflare): dopo un'ora il blocco di solito
+  # è già passato. Sono i valori delle versioni nuove, fissati anche per quelle vecchie.
+  suspended_times:
+    SearxEngineAccessDenied: 180
+    SearxEngineCaptcha: 3600
+    SearxEngineTooManyRequests: 180
+    cf_SearxEngineCaptcha: 3600
+    cf_SearxEngineAccessDenied: 3600
+    recaptcha_SearxEngineCaptcha: 3600
+
+# Yandex e Startpage a volte ci mettono più dei 3 secondi di serie: con un
+# timeout corto risultano «non rispondono» e il codice va rimandato per niente.
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 15.0
+
+# I motori per i CODICI li sceglie il portale a ogni ricerca (Impostazioni →
+# Ricerca automatica sul web → Motori di SearXNG; di serie google cse, yandex,
+# google, startpage, duckduckgo, brave): funzionano anche se qui sono spenti.
+# Questa lista vale per le ricerche fatte a mano dall'interfaccia di SearXNG.
+engines:
+  - name: google
+    disabled: false
+  # Bing sui numeri lunghi risponde a caso (partite di football, canzoni):
+  # il portale non lo usa per i codici, qui resta per le ricerche a mano.
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: startpage
+    disabled: false
+  - name: yandex
+    disabled: false
+  # qwant e mojeek NON vanno accesi: sui numeri lunghi fanno corrispondenze
+  # «somiglianti» e per un EAN Grundfos rispondono col gioco Rummikub.
+  - name: qwant
+    disabled: true
+  - name: mojeek
+    disabled: true

@@ -1,0 +1,300 @@
+# CataSync
+
+**Schede prodotto per WooCommerce partendo dal codice a barre** — incolli EAN o codici
+produttore, CataSync trova le pagine che pubblicano quei prodotti, controlla che riportino
+davvero quel codice e prepara nome, marca, foto, descrizione e specifiche nella lingua del
+negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
+
+🇬🇧 [Read in English](README.md)
+
+![Prodotti](docs/screenshots/it/01-products.png)
+
+---
+
+## Schermate
+
+| | |
+|---|---|
+| **Perché?** — ogni mancato dice il motivo: le domande fatte, i motori che hanno risposto o bloccato, i siti aperti e cosa è successo su ciascuno.<br>![Perché](docs/screenshots/it/02-why.png) | **Niente online** — tre ricerche e nessuna pagina con quel codice: prova il codice produttore o compila la scheda a mano.<br>![Non pubblicato online](docs/screenshots/it/03-why-unknown.png) |
+| **Correggi la scheda** — nome, marca, categoria, prezzi, descrizione, foto e specifiche prima di pubblicare.<br>![Correggi la scheda](docs/screenshots/it/04-edit.png) | **Tema scuro** — automatico, chiaro o scuro.<br>![Tema scuro](docs/screenshots/it/05-products-dark.png) |
+| **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
+
+I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
+inglese, francese e tedesco.
+
+## Funzionalità
+
+**Ricerca**
+- Parte dall'**EAN** (le cifre sotto il codice a barre) o dal **codice produttore** che trovi
+  sulla fattura del grossista; col codice produttore recupera anche l'EAN, se la pagina lo riporta.
+- Passa dal **tuo SearXNG**: da una a tre domande per codice, distanziate di qualche secondo,
+  solo ai motori che sui codici funzionano. Prima nella lingua e nel paese delle schede, poi
+  ovunque, poi fra virgolette; si ferma appena due risultati riportano il codice.
+- Se i motori bloccano (CAPTCHA, «troppe richieste») il codice **si rimanda e si riprova da
+  solo** dopo 10, 30, 90 e 240 minuti, invece di finire fra i «non trovati» senza essere stato
+  cercato.
+- Legge i **dati strutturati** che i negozi pubblicano per i motori di ricerca (JSON-LD
+  `schema.org/Product`, microdata, Open Graph), poi tabelle di specifiche e testo della pagina.
+- Una pagina vale solo se **riporta quel codice** (dati strutturati, testo o indirizzo) o
+  combacia col codice produttore; una pagina che dichiara un altro EAN si scarta. Pagine di
+  categoria e ricerche interne si riconoscono e si segue il link del prodotto.
+- Più siti che confermano si **incrociano e si fondono**: comanda la pagina più affidabile (EAN
+  dichiarato, poi codice in pagina), le altre riempiono i buchi.
+- Le foto si scaricano e si misurano: via segnaposto, loghi e immagini minuscole.
+- Nessun testo scritto da un'intelligenza artificiale: solo quello che le pagine pubblicano. I
+  prezzi non arrivano mai dalle pagine.
+
+**Lettura amichevole**
+- `robots.txt` rispettato (nome del programma `tdsynccatalog`, più le regole per `*`).
+- Una richiesta ogni 1,5 secondi per sito, una pagina alla volta.
+- Protezioni anti-bot (Cloudflare, Akamai, DataDome, Imperva, Sucuri, PerimeterX, CAPTCHA)
+  riconosciute e **saltate, mai aggirate**, e segnalate nel diario della ricerca.
+- Il browser senza finestra interviene solo per le pagine fatte col JavaScript e per i guasti
+  del server.
+
+**Perché non si trova**
+- Un **diario della ricerca** per ogni codice e il pulsante **Perché?**: domande fatte, motori
+  che hanno risposto o ci hanno bloccati (e perché), siti aperti, esito su ciascuno.
+- Una causa chiara per ogni mancato: motori bloccati, motore irraggiungibile, nessun sito
+  pubblica il codice, siti che rifiutano la lettura, nessuna pagina conferma, solo somiglianza
+  del nome, codice interno del grossista.
+- *Impostazioni → Com'è andata la ricerca*: stato dei motori, cause dei mancati, siti che
+  rifiutano la lettura. *Prova a lotti*: un elenco di codici cercati uno per uno, con l'esito.
+
+**Lingue**
+- Schede in **italiano, inglese, francese, tedesco o spagnolo**: domande in quella lingua e in
+  quel paese, pagine chieste in quella lingua, il resto tradotto dal **tuo LibreTranslate**. La
+  cache è per codice e per lingua.
+- Interfaccia in **italiano, inglese, francese e tedesco**: ognuno sceglie la sua.
+
+**WooCommerce**
+- Dialoga con le **REST API di WooCommerce** con una chiave in lettura/scrittura: niente da
+  installare sui siti, funziona anche su quelli che non gestisci tu.
+- Crea o aggiorna — mai duplica — per EAN (`global_unique_id`) o SKU: categorie, marche,
+  attributi (quelli globali del sito quando il nome combacia), immagini.
+- **Politiche di scrittura** per sito, campo per campo (mai / solo se vuoto / sempre), campi
+  obbligatori e numero di specifiche.
+- **Aggiornamento notturno** per sito, con politiche sue; le schede trovate da poco arrivano
+  dalla cache.
+- Eliminando un carico vedi prima cosa sparisce; con una password per applicazioni se ne vanno
+  anche le immagini.
+
+**Portale**
+- Multi-cliente: clienti, negozi, utenti (amministratore, cliente), stato dell'abbonamento,
+  piano e quota mensile.
+- Categoria e prezzo li mette il cliente direttamente in tabella; una categoria si assegna a
+  più righe insieme.
+- Nome, logo e favicon del portale caricabili dal pannello; tema chiaro e scuro.
+- Chiavi REST cifrate a riposo, descrizioni ripulite prima di salvarle e pubblicarle, richieste
+  solo verso indirizzi pubblici, SVG con contenuti attivi rifiutati.
+
+## Requisiti
+
+- Un server Linux con Docker e Docker Compose.
+- Un reverse proxy con HTTPS davanti (NPMplus, Caddy, Traefik…).
+- Accesso a internet in uscita: motori di ricerca, pagine dei prodotti, negozi WooCommerce.
+- RAM: circa 1 GB per portale, database e SearXNG; LibreTranslate con cinque lingue e il
+  browser ne vogliono circa 2 in più.
+
+| Porta | Protocollo | Cosa |
+|---|---|---|
+| `HOST_PORT` (di serie 8811) | TCP | il portale, dietro il reverse proxy |
+
+La porta ascolta su `BIND_ADDRESS` (di serie `127.0.0.1`). Database, SearXNG, LibreTranslate e
+browser restano sulla rete interna di Docker.
+
+## Installazione
+
+```bash
+git clone https://github.com/Giuseppe-sciarra/CataSync.git
+cd CataSync
+
+# 1. Configurazione
+cp .env.example .env
+nano .env        # almeno: SECRET_KEY, FERNET_KEY, POSTGRES_PASSWORD, SEARXNG_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+
+# 2. Cartella dei modelli di LibreTranslate (il container gira come utente 1032)
+mkdir -p libretranslate && sudo chown -R 1032:1032 libretranslate
+
+# 3. Avvio
+docker compose up -d --build
+docker compose logs -f hub
+```
+
+I segreti:
+
+```bash
+openssl rand -hex 32                      # SECRET_KEY, e un'altra per SEARXNG_SECRET
+openssl rand -base64 32 | tr '+/' '-_'    # FERNET_KEY
+```
+
+`POSTGRES_PASSWORD` solo lettere e numeri (finisce dentro un indirizzo). Tieni una copia di
+`FERNET_KEY` fuori dal server: cifra le chiavi REST dei negozi e quelle dei motori di ricerca.
+
+Poi apri il portale (`http://localhost:8811` per una prova in locale, con `COOKIE_SECURE=0`) ed
+entra con `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Dopo il primo accesso svuota `ADMIN_PASSWORD` nel
+`.env` e rilancia `docker compose up -d`: l'utente ormai esiste e la password si cambia dal
+pannello.
+
+Al primo avvio LibreTranslate scarica i modelli delle lingue: la traduzione funziona qualche
+minuto dopo.
+
+### Dietro un reverse proxy
+
+```dotenv
+PUBLIC_URL=https://catalogo.example.com
+BIND_ADDRESS=127.0.0.1      # 0.0.0.0 se il proxy sta su un'altra macchina (es. NPMplus in un'altra LXC)
+HOST_PORT=8811
+COOKIE_SECURE=1
+```
+
+Nel proxy punta a `http://<server>:8811`. `PUBLIC_URL` deve essere l'indirizzo che si apre nel
+browser: le richieste che scrivono vengono controllate su quello. Con `BIND_ADDRESS=0.0.0.0`
+lascia passare la porta solo dall'indirizzo del proxy, col firewall.
+
+### Con Portainer
+
+- **Dal repository**: *Stacks → Add stack → Repository*, indirizzo di questo repository, compose
+  path `docker-compose.portainer-git.yml`, e le variabili del `.env.example` in *Environment
+  variables*. Portainer costruisce l'immagine sul nodo Docker. Questa variante alza solo il
+  portale, con SQLite sul suo volume.
+- **Immagine già pronta**: `docker-compose.portainer.yml` nel web editor, se pubblichi
+  l'immagine su un registry (`HUB_IMAGE`).
+
+Per avere insieme Postgres, SearXNG e LibreTranslate usa il `docker-compose.yml` completo.
+
+## Collegare un negozio
+
+1. **Clienti → Nuovo cliente**: nome e lingua delle schede.
+2. **Siti → Nuovo sito**: cliente, nome, indirizzo e chiavi REST. Sul negozio: *WooCommerce →
+   Impostazioni → Avanzate → API REST → Aggiungi chiave*, con permesso **Lettura/Scrittura**.
+   Il consumer secret si vede una volta sola.
+3. **Siti → Verifica**: risponde con le versioni di WordPress e WooCommerce, il numero di
+   prodotti e se le Marche sono attive.
+4. **Utenti → Nuovo utente**: email del cliente, ruolo Cliente, collegato al cliente. La
+   password generata si vede una volta sola.
+
+La ricerca sul web si imposta una volta sola in **Impostazioni** e vale per tutti i clienti.
+
+## Perché un codice non si trova
+
+Ogni ricerca si chiude con una causa, quella che il cliente vede in tabella e in **Perché?**:
+
+| Causa | Cosa vuol dire | Cosa fare |
+|---|---|---|
+| Motori di ricerca bloccati | il codice non è stato cercato davvero | niente: si riprova da solo |
+| Motore spento o irraggiungibile | SearXNG non risponde | controlla il container |
+| Nessun sito pubblica questo codice | i motori rispondono, ma nessuna pagina riporta il codice | prova il codice produttore o compila a mano |
+| I siti che lo pubblicano non si lasciano leggere | anti-bot, `robots.txt`, errori del sito | compila a mano, o chiedi al grossista un listino |
+| Nessuna pagina conferma che sia lui | pagine simili, nessuna col codice giusto | controlla il codice |
+| Trovato solo per somiglianza del nome | una sola pagina, senza il codice | compila a mano |
+| Codice interno del grossista | prefisso 20–29 | usa l'EAN del produttore o il codice produttore |
+
+## Lingue
+
+La **lingua dell'interfaccia** la sceglie ognuno col selettore 🌐 (o segue il browser): cambia
+solo i testi del portale.
+
+La **lingua delle schede** è quella in cui nome, descrizione e specifiche arrivano su
+WooCommerce. In ordine: quella fissata sul **sito** (*Siti → Modifica*), poi il selettore
+**Schede in** sopra i codici (che parte dalla lingua dell'interfaccia), poi quella del
+**cliente**. Quello che arriva in un'altra lingua lo traduce LibreTranslate e la scheda lo
+segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata, con un avviso.
+
+## Dove si imposta cosa
+
+| Cosa | Dove |
+|---|---|
+| Motore di ricerca, motori da interrogare, LibreTranslate, browser | *Impostazioni → Ricerca automatica sul web* |
+| Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
+| Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
+| Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
+| Clienti, piano, quota, fonti dati | *Clienti* |
+| Chiavi REST, lingua del negozio, politiche di scrittura, campi obbligatori, aggiornamento notturno | *Siti → Modifica* |
+| Utenti e ruoli | *Utenti* |
+| Codici, categorie, prezzi, pubblicazione | *Prodotti* (area cliente) |
+| Carichi, eliminazione di un carico | *Storico* |
+| Categorie, attributi e marche del negozio | *Categorie* |
+| Dati anagrafici del cliente | *Negozio* |
+| Pausa fra le ricerche, rinvii, cache | `.env`: `SEARCH_PAUSE`, `SEARCH_MAX_DEFERRALS`, `CACHE_DAYS` |
+| Lingue caricate in LibreTranslate | `docker-compose.yml`: `LT_LOAD_ONLY` |
+| Motori e sospensioni di SearXNG | `searxng/settings.yml` |
+
+## Aggiornamenti
+
+```bash
+git pull --ff-only
+docker compose pull searxng libretranslate browser
+docker compose up -d --build
+docker compose ps
+```
+
+Il database si aggiorna da solo all'avvio: niente migrazioni a mano. Tieni aggiornato SearXNG:
+le versioni vecchie non hanno alcuni motori e al primo CAPTCHA sospendono un motore per un
+giorno intero.
+
+Ogni modifica di `main` che passa i controlli esce come
+[release](https://github.com/Giuseppe-sciarra/CataSync/releases). La versione sta in
+`VERSION.txt` e in fondo a ogni pagina: un numero nuovo in `VERSION.txt` si usa così com'è,
+altrimenti sale di uno l'ultima cifra; `[minor]` o `[major]` nel messaggio di commit fanno
+salire la cifra di mezzo o la prima.
+
+## Backup
+
+```bash
+docker compose exec -T db pg_dump -U hub hub > catasync-$(date +%F).sql
+```
+
+Conserva anche il volume `hub_data` (loghi, favicon, immagini delle categorie, cache delle
+immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si decifrano più.
+`docker compose down` tiene i volumi; `docker compose down -v` li cancella.
+
+## Se qualcosa non va
+
+- **Tutti i codici «non trovati» o rimandati** — apri *Impostazioni → Com'è andata la
+  ricerca*. Se i motori bloccano, i codici si riprovano da soli; alza `SEARCH_PAUSE` e aggiorna
+  SearXNG (`docker compose pull searxng`).
+- **«SearXNG: uscita JSON non abilitata»** — il `settings.yml` in uso non ha
+  `search: formats: [html, json]`: usa quello in `searxng/`.
+- **Il container `searxng` non parte** — manca `SEARXNG_SECRET` nel `.env`.
+- **Le schede restano in un'altra lingua** — LibreTranslate non è impostato in *Impostazioni* o
+  sta ancora scaricando i modelli (`docker compose logs libretranslate`). Errori di permessi nel
+  suo log: `sudo chown -R 1032:1032 libretranslate`.
+- **Salvando esce «Richiesta con provenienza non valida.»** — `PUBLIC_URL` non è l'indirizzo
+  aperto nel browser: correggilo o lascialo vuoto.
+- **In HTTP semplice l'accesso non resta** — `COOKIE_SECURE=1` vuole HTTPS; `COOKIE_SECURE=0`
+  solo per le prove in locale.
+- **La verifica del negozio non passa** — la chiave REST deve avere il permesso
+  Lettura/Scrittura e l'indirizzo dev'essere quello pubblico del negozio. Se il server butta via
+  l'intestazione `Authorization` (certe configurazioni Apache), CataSync riprova da solo con le
+  chiavi nell'indirizzo.
+- **`FERNET_KEY` persa** — le chiavi REST dei negozi e quelle dei motori vanno reinserite.
+
+## Documentazione
+
+- `CHANGELOG.md` — cosa cambia in ogni versione.
+- `SECURITY.md` — come segnalare una vulnerabilità.
+- `THIRD-PARTY.md` — componenti di terze parti e loro licenze.
+- `docs/GUIDA.md` — la guida completa: ricerca, prezzi, aggiornamento notturno, eliminazione dei
+  carichi, abbonamenti, chiamate a WooCommerce.
+- `docs/SICUREZZA.md` — note di sicurezza.
+
+## Licenza
+
+CataSync è software libero rilasciato sotto la [GNU Affero General Public License v3.0 o
+successiva](LICENSE). Se fai girare una versione modificata per altre persone attraverso la rete,
+devi offrire loro il suo codice sorgente: il link *Codice sorgente* in fondo a ogni pagina
+(`SOURCE_URL`) serve a questo. I componenti di terze parti mantengono le loro licenze
+(`THIRD-PARTY.md`).
+
+Copyright © Giuseppe Sciarra — [Tastiere Digitali](https://tastieredigitali.it)
+
+---
+
+## Sostieni il progetto
+
+Se CataSync ti è utile, puoi sostenerne lo sviluppo con una donazione:
+
+**[paypal.me/raxiel87](https://paypal.me/raxiel87)**
+
+Segnalazioni di bug e pull request sono benvenute.

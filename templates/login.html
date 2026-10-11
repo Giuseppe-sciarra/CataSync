@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="it" data-project="catasync">
+<head>
+<meta charset="utf-8">
+  <script src="/static/i18n/catalog.js?v={{ static_v }}"></script>
+  <script src="/static/i18n/i18n.js?v={{ static_v }}"></script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Accedi · {{ app_name }}</title>
+{% if portal_favicon %}
+<link rel="icon" href="{{ portal_favicon }}" type="{{ portal_favicon_type }}">
+{% if portal_favicon_raster %}<link rel="apple-touch-icon" href="{{ portal_favicon }}">{% endif %}
+{% else %}
+<link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
+<link rel="icon" href="/static/favicon-32.png?v={{ static_v }}" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ static_v }}">
+{% endif %}
+<script>
+/* Applica il tema prima del disegno, altrimenti si vede il lampo bianco. */
+(function () {
+  try {
+    var t = localStorage.getItem('tdic-theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
+<script defer src="/static/alpine.min.js?v={{ static_v }}"></script>
+
+  <link rel="stylesheet" href="/static/i18n/i18n.css?v={{ static_v }}">
+</head>
+<body>
+<div class="login-shell" x-data="loginForm()">
+  <div class="login-card card">
+    <div class="body">
+      {% if portal_logo %}<img src="{{ portal_logo }}" alt="{{ app_name }}" class="login-logo">
+      {% else %}<p class="mark">{{ app_name }}</p>{% endif %}
+      <h1 style="margin-bottom:18px">Accedi</h1>
+
+      <template x-if="error">
+        <div class="notice n-err" x-text="error"></div>
+      </template>
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" x-model="email" autocomplete="username"
+               @keydown.enter="submit()" autofocus>
+      </div>
+      <div class="field">
+        <label for="pwd">Password</label>
+        <input id="pwd" type="password" x-model="password" autocomplete="current-password"
+               @keydown.enter="submit()">
+      </div>
+
+      <button style="width:100%; justify-content:center" @click="submit()" :disabled="busy">
+        <span x-text="busy ? 'Un attimo…' : 'Entra'"></span>
+      </button>
+
+      <p class="hint" style="margin-top:14px">
+        Le credenziali te le fornisce l'amministratore del portale. Se non riesci a entrare, scrivi all'assistenza.
+      </p>
+      <!-- AGPL-3.0: chi usa il portale deve poter arrivare al suo codice sorgente. -->
+      <p class="piede piede-login">
+        <span translate="no">{{ app_version }}</span>{% if source_url %} ·
+        <a href="{{ source_url }}" target="_blank" rel="noopener">Codice sorgente</a>
+        <span translate="no">(AGPL-3.0)</span>{% endif %}
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+function loginForm() {
+  return {
+    email: '', password: '', error: '', busy: false,
+    async submit() {
+      if (this.busy) return;
+      this.error = '';
+      if (!this.email || !this.password) { this.error = 'Inserisci email e password.'; return; }
+      this.busy = true;
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: this.email, password: this.password })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          this.error = data.detail || 'Accesso non riuscito.';
+          this.busy = false;
+          return;
+        }
+        window.location.href = '/';
+      } catch (e) {
+        this.error = 'Server non raggiungibile.';
+        this.busy = false;
+      }
+    }
+  };
+}
+</script>
+</body>
+</html>
