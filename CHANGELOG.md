@@ -1,6 +1,6 @@
 # Changelog
 
-## Non rilasciato
+## 3.0.0 — 2026-10-11
 
 ### Added
 - Guida: come nascono numeri e note delle release automatiche (`docs/GUIDA.md`, capitolo 14).
