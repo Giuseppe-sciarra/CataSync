@@ -71,20 +71,16 @@ function hub(isAdmin) {
 
     // dati
     sites: [], allSites: [], clients: [], users: [], jobs: [], items: [],
-    categories: [], attributes: [], brands: [], mapping: [], auditRows: [],
+    categories: [], attributes: [], brands: [], auditRows: [],
     job: null, itemFilter: null, taxError: '',
 
     form: {
       site_id: null, eans: '', label: '', lang: 'IT',
       product_status: 'publish', fallback_category_id: null, auto_push: false
     },
-    mapForm: { source_category: '', wc_term_id: 0 },
     // Categorie: creazione, ordine fra sorelle (padre -> id), trascinamento.
-    catNuova: { name: '', parent: 0, busy: false },
+    catNuova: { name: '', busy: false },
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
-    // Menu del sito (mu-plugin): null = non ancora letto.
-    menuSito: null, menuErrore: '', menuBusy: false,
-    menuForm: { attivo: false, menu_id: 0, voce_id: 0, sottocategorie: true },
     single: { gtin: '', busy: false, product: null, message: '', onSite: null, fonte: '', diagnosi: null },
     modal: { kind: null, title: '', data: {} },
 
@@ -157,7 +153,7 @@ function hub(isAdmin) {
       // riaccende openJob(id, true) subito dopo, quando serve.
       if (tab === 'jobs') { this.soloJob = false; this.loadJobs(); }
       if (tab === 'catalogo') { this.loadTaxonomy(); this.loadCatalogo(); }
-      if (tab === 'categories') { this.loadTaxonomy(); this.caricaMenu(); }
+      if (tab === 'categories') this.loadTaxonomy();
       if (tab === 'sites') this.loadAllSites();
       if (tab === 'users') this.loadUsers();
       if (tab === 'clients') this.loadClients();
@@ -375,10 +371,9 @@ function hub(isAdmin) {
     },
 
     onSiteChange() {
-      this.categories = []; this.attributes = []; this.brands = []; this.mapping = [];
-      this.catOrdine = {}; this.catOrdineSalvato = '{}'; this.menuSito = null; this.menuErrore = '';
+      this.categories = []; this.attributes = []; this.brands = [];
+      this.catOrdine = {}; this.catOrdineSalvato = '{}';
       this.loadTaxonomy();
-      if (this.tab === 'categories') this.caricaMenu();
     },
 
     async loadTaxonomy(force) {
@@ -390,7 +385,6 @@ function hub(isAdmin) {
         this.categories = data.categories || [];
         this.attributes = data.attributes || [];
         this.brands = data.brands || [];
-        this.mapping = data.mapping || [];
         this.preparaOrdine();
       } catch (e) {
         this.taxError = e.message;
@@ -489,12 +483,11 @@ function hub(isAdmin) {
       this.catNuova.busy = true;
       try {
         const r = await this.api('/api/sites/' + this.form.site_id + '/categories', {
-          method: 'POST', body: JSON.stringify({ name: nome, parent: this.catNuova.parent || 0 })
+          method: 'POST', body: JSON.stringify({ name: nome })
         });
-        this.catNuova = { name: '', parent: this.catNuova.parent, busy: false };
+        this.catNuova = { name: '', busy: false };
         this.say(this.tt('Categoria «{0}» creata.', r.name || nome));
         await this.loadTaxonomy(true);
-        this.caricaMenu();
       } catch (e) { this.fail(e.message); }
       this.catNuova.busy = false;
     },
@@ -513,7 +506,6 @@ function hub(isAdmin) {
         this.modal.kind = null;
         this.say(this.tt('Categoria «{0}» eliminata.', r.name || d.nome));
         await this.loadTaxonomy(true);
-        this.caricaMenu();
       } catch (e) { this.modal.error = e.message; }
       this.catBusy = false;
     },
@@ -526,90 +518,8 @@ function hub(isAdmin) {
         });
         this.say(r.cambiate ? this.t('Ordine salvato sul sito.') : this.t("L'ordine sul sito era già questo."));
         await this.loadTaxonomy(true);
-        this.caricaMenu();
       } catch (e) { this.fail(e.message); }
       this.catBusy = false;
-    },
-
-    // ------------------------------------------------------ menu del sito
-    get vociMenuScelto() {
-      const m = ((this.menuSito && this.menuSito.menus) || []).find(x => x.id === this.menuForm.menu_id);
-      return m ? m.voci : [];
-    },
-    applicaMenu(stato) {
-      this.menuSito = stato;
-      this.menuErrore = '';
-      if (stato && stato.plugin) {
-        this.menuForm = {
-          attivo: !!stato.attivo, menu_id: stato.menu_id || 0,
-          voce_id: stato.voce_id || 0, sottocategorie: stato.sottocategorie !== false
-        };
-      }
-    },
-    async caricaMenu() {
-      if (!this.form.site_id) return;
-      const sito = this.form.site_id;
-      this.menuErrore = '';
-      try {
-        const stato = await this.api('/api/sites/' + sito + '/menu');
-        if (sito === this.form.site_id) this.applicaMenu(stato);
-      } catch (e) {
-        if (sito === this.form.site_id) { this.menuSito = null; this.menuErrore = e.message; }
-      }
-    },
-    async salvaMenu() {
-      this.menuBusy = true;
-      try {
-        const stato = await this.api('/api/sites/' + this.form.site_id + '/menu', {
-          method: 'PUT', body: JSON.stringify(this.menuForm)
-        });
-        this.applicaMenu(stato);
-        this.say(stato.esito ? this.testoEsito(stato.esito, 'Menu salvato e allineato: voci aggiunte {0}, spostate {1}, tolte {2}.')
-                             : this.t('Menu salvato.'));
-      } catch (e) { this.fail(e.message); }
-      this.menuBusy = false;
-    },
-    async allineaMenu() {
-      this.menuBusy = true;
-      try {
-        const stato = await this.api('/api/sites/' + this.form.site_id + '/menu/allinea', { method: 'POST' });
-        this.applicaMenu(stato);
-        this.say(this.testoEsito(stato.esito || {}, 'Menu allineato: voci aggiunte {0}, spostate {1}, tolte {2}.'));
-      } catch (e) { this.fail(e.message); }
-      this.menuBusy = false;
-    },
-    testoEsito(esito, modello) {
-      if (esito.errore) return this.t(esito.errore);
-      return this.tt(modello, esito.aggiunte || 0, esito.spostate || 0, esito.tolte || 0);
-    },
-    testoUltimoAllineamento() {
-      const u = this.menuSito && this.menuSito.ultimo;
-      if (!u) return '';
-      if (u.errore) return this.tt('Ultimo allineamento ({0}): {1}', this.fmtDate(u.quando), this.t(u.errore));
-      return this.tt('Ultimo allineamento: {0} · voci aggiunte {1}, spostate {2}, tolte {3}',
-                     this.fmtDate(u.quando), u.aggiunte || 0, u.spostate || 0, u.tolte || 0);
-    },
-
-    async saveMapping() {
-      try {
-        const cat = this.categories.find(c => c.id === this.mapForm.wc_term_id);
-        await this.api('/api/sites/' + this.form.site_id + '/mapping', {
-          method: 'POST',
-          body: JSON.stringify({
-            source_category: this.mapForm.source_category,
-            source_label: this.mapForm.source_category,
-            wc_term_id: this.mapForm.wc_term_id,
-            wc_label: cat ? cat.name : ''
-          })
-        });
-        this.mapForm = { source_category: '', wc_term_id: 0 };
-        this.loadTaxonomy(true);
-      } catch (e) { this.fail(e.message); }
-    },
-
-    async deleteMapping(id) {
-      await this.api('/api/sites/' + this.form.site_id + '/mapping/' + id, { method: 'DELETE' });
-      this.loadTaxonomy(true);
     },
 
     // ---------------------------------------------------------- importa

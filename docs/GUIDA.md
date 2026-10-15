@@ -24,7 +24,7 @@ Cercando col **codice produttore**, se la pagina trovata riporta l'EAN lo si rec
 finisce sul prodotto WooCommerce.
 
 **Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
-eliminazione, ordine, menu del sito: vedi il capitolo 15) e mostra attributi globali e marche;
+eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
 **Negozio** contiene i dati anagrafici del cliente.
 
 ## 2. La ricerca sul web
@@ -282,7 +282,7 @@ app/
 templates/       login e console
 static/          CSS, Alpine, logica UI, favicon, traduzioni dell'interfaccia (i18n/)
 searxng/         settings.yml del motore di ricerca
-wordpress/       mu-plugin per il menu delle categorie (catasync-category-menu.php)
+wordpress/       mu-plugin facoltativo per il menu delle categorie (catasync-category-menu.php)
 tests/           test automatici (python -m unittest discover -s tests; node --test tests/i18n.test.cjs)
 .github/         controlli e release automatiche
 ```
@@ -299,7 +299,6 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Marca nuova | `POST /products/brands` |
 | Categorie: creare, eliminare | `POST` / `DELETE /products/categories` |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
-| Menu del sito (col mu-plugin) | `GET` / `POST /wp-json/wc-catasync/v1/menu`, `POST …/menu/allinea` |
 
 Autenticazione Basic su HTTPS. Se il server mangia l'intestazione `Authorization` — capita
 con certe configurazioni Apache — il portale riprova da solo con le chiavi nell'indirizzo,
@@ -359,36 +358,39 @@ Il numero giusto lo rimetti in `VERSION.txt`.
 
 ### Le categorie
 
-Nella scheda **Categorie** c'è l'albero delle categorie del negozio, nell'ordine in cui le mostra
-il sito: è l'ordine di *Prodotti → Categorie* in WooCommerce (il campo `menu_order`).
+Nella scheda **Categorie** ci sono le categorie del negozio, nell'ordine in cui le mostra il sito:
+è l'ordine di *Prodotti → Categorie* in WooCommerce (il campo `menu_order`).
 
-- **Crea**: nome e, se serve, la categoria madre («Dentro»). La nuova va in fondo al suo livello.
-  Due categorie con lo stesso nome allo stesso livello non si possono avere.
-- **Ordine**: si trascina una categoria sopra o sotto una sorella, oppure si usano le frecce, e si
-  preme **Salva l'ordine**. Vale fra sorelle: una sottocategoria si sposta fra le sottocategorie
-  della stessa madre. Finché l'ordine non è salvato, creare ed eliminare sono fermi.
-- **Elimina**: prima una finestra dice quanti prodotti e quante sottocategorie ci sono dentro. I
-  prodotti restano sul sito (WooCommerce mette in «Senza categoria» quelli che non hanno altre
-  categorie), le sottocategorie salgono di un livello. Nel portale si tolgono le corrispondenze
-  verso quella categoria, la categoria di riserva dei carichi che la usavano e la categoria delle
-  righe che la usavano: quelle non ancora pubblicate tornano da completare.
+- **Crea**: basta il nome. È sempre una categoria principale (sottocategorie da qui non se ne
+  creano) e va in fondo all'elenco. Due categorie principali con lo stesso nome non si possono avere.
+- **Ordine**: si trascina una categoria sopra o sotto un'altra, oppure si usano le frecce, e si
+  preme **Salva l'ordine**. Finché l'ordine non è salvato, creare ed eliminare sono fermi.
+- **Elimina**: prima una finestra dice quanti prodotti ci sono dentro. I prodotti restano sul sito
+  (WooCommerce mette in «Senza categoria» quelli che non hanno altre categorie). Nel portale le
+  righe che la usavano e non sono ancora pubblicate tornano da completare, e i carichi che l'avevano
+  come categoria di riserva la perdono.
 - «Senza categoria» non compare e non si elimina: è la categoria di riserva di WooCommerce.
+
+Se il sito ha già delle sottocategorie, fatte da WordPress, compaiono rientrate sotto la loro
+categoria: si spostano solo fra loro e, se si elimina la categoria madre, salgono di un livello.
 
 Le categorie create dal sito finiscono dove le mette WooCommerce: senza un ordine proprio stanno in
 cima, finché non le sposti.
 
 Creare, eliminare e ordinare scrive sul sito: serve l'account attivo, come per pubblicare (la
-quota dei prodotti qui non conta).
+quota dei prodotti qui non conta). L'utente della chiave REST deve poter gestire le categorie dei
+prodotti (amministratore o gestore del negozio), altrimenti il sito risponde 403.
 
-### Il menu del sito
+### Il menu del sito (facoltativo)
 
-Il mu-plugin `wordpress/catasync-category-menu.php` («CataSync – Menu delle categorie») mette le
-categorie sotto una voce del menu del sito e le tiene allineate. Si scarica anche dalla scheda
-Categorie; va in `wp-content/mu-plugins/` e parte da solo.
+CataSync non tocca mai il menu del sito. Se le categorie nel menu le vuoi, c'è il mu-plugin
+`wordpress/catasync-category-menu.php` («CataSync – Menu delle categorie»): le mette sotto una voce
+del menu e le tiene allineate. Va in `wp-content/mu-plugins/` e parte da solo; senza, il menu resta
+com'è.
 
-- **Dove**: si sceglie il menu e la voce (per esempio «Prodotti») da *Categorie → Menu del sito* in
-  CataSync, oppure sul sito da *Aspetto → Menu categorie*. Una voce che è già una categoria non si
-  può scegliere.
+- **Dove**: sul sito, in *Aspetto → Menu categorie*: si sceglie la voce (per esempio «Prodotti» nel
+  menu principale), si spunta **Attivo** e si salva. Una voce che è già una categoria non si può
+  scegliere.
 - **Cosa fa**: ogni categoria ha la sua voce sotto quella scelta, le sottocategorie sotto la voce
   della loro categoria (con «Sottocategorie» spento vanno solo le principali). L'ordine è quello
   delle categorie; il nome della voce segue il nome della categoria, anche quando cambia.
@@ -404,7 +406,8 @@ Categorie; va in `wp-content/mu-plugins/` e parte da solo.
 - **Allinea adesso** rimette tutto in ordine subito; funziona anche col plugin spento, per un
   allineamento una tantum.
 
-CataSync parla col plugin sulle rotte `/wp-json/wc-catasync/v1/menu`: il prefisso `wc-` fa
-accettare a WooCommerce le stesse chiavi REST del negozio. La chiave dev'essere di un utente che
-può modificare i menu (amministratore o gestore del negozio) e avere il permesso di scrittura;
-senza chiave le rotte non rispondono.
+Il plugin si accorge da solo delle categorie create, eliminate o riordinate da CataSync: il portale
+non lo chiama. Le stesse impostazioni si leggono e si cambiano anche via REST su
+`/wp-json/wc-catasync/v1/menu` (il prefisso `wc-` fa accettare a WooCommerce le chiavi REST del
+negozio): serve un utente che può modificare i menu, amministratore o gestore del negozio; senza
+chiave le rotte non rispondono.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.1.1 — 2026-10-15
+
+### Changed
+- **Scheda Categorie più semplice**: si aggiungono, si eliminano e si mettono in ordine le
+  categorie, e basta. Una categoria nuova è sempre principale (la scelta «Dentro» non c'è più,
+  anche l'API ignora la categoria madre) e va in fondo all'elenco. Le sottocategorie che il sito ha
+  già si vedono ancora sotto la loro categoria.
+- Tolti dalla scheda i riquadri **Menu del sito** e **Corrispondenze categoria**: CataSync non tocca
+  più il menu del sito. Il mu-plugin resta facoltativo e si imposta solo dal sito (Aspetto → Menu
+  categorie); le corrispondenze già salvate continuano a valere nelle importazioni.
+- La conferma di eliminazione e la nota sotto l'elenco parlano di sottocategorie solo se ce ne sono.
+
+### Fixed
+- Il messaggio per il «403» del mu-plugin dava la colpa solo alla chiave REST: ora dice anche del
+  firewall o del plugin di sicurezza che può bloccare l'indirizzo.
+
 ## 2.1.0 — 2026-10-15
 
 ### Added

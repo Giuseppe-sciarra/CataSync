@@ -15,15 +15,17 @@
  * Va in wp-content/mu-plugins/ (oppure in plugins/ e si attiva come gli altri).
  *
  * Come lavora
- * - Il menu e la voce sotto cui mettere le categorie si scelgono in Aspetto → Menu categorie,
- *   oppure da CataSync (Categorie → Menu del sito). Per esempio «Prodotti» nel menu principale.
+ * - Il menu e la voce sotto cui mettere le categorie si scelgono in Aspetto → Menu categorie.
+ *   Per esempio «Prodotti» nel menu principale.
  * - Ogni categoria creata, dal sito o da CataSync, finisce sotto quella voce; le sottocategorie
  *   sotto la loro categoria (si può spegnere). Eliminata la categoria, sparisce la voce.
  * - L'ordine è quello delle categorie: WooCommerce → Prodotti → Categorie, trascinandole, oppure
  *   CataSync. Il nome della voce segue il nome della categoria.
  * - Sotto quella voce le voci delle categorie le gestisce il plugin. Le altre voci che ci metti
  *   a mano (pagine, link) restano, dopo le categorie.
- * - CataSync parla col plugin con le stesse chiavi REST di WooCommerce: /wp-json/wc-catasync/v1/menu.
+ * - CataSync non lo chiama: crea, elimina e ordina le categorie con le REST di WooCommerce e il
+ *   plugin se ne accorge da solo. Le impostazioni si leggono e si cambiano anche via REST
+ *   (/wp-json/wc-catasync/v1/menu) con le chiavi WooCommerce di un amministratore o gestore.
  */
 
 defined( 'ABSPATH' ) || exit;

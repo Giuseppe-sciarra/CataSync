@@ -97,8 +97,11 @@ async def _request(
             detail = resp.text[:200]
         if base != BASE:
             if resp.status_code == 403:
-                raise SiteError("La chiave REST di questo sito non può cambiare i menu: dev'essere di un "
-                                "amministratore o di un gestore del negozio.")
+                # O la chiave è di un utente che non può toccare i menu, o un firewall o un plugin di
+                # sicurezza blocca l'indirizzo prima di WordPress: da qui non si distingue.
+                raise SiteError("Il sito ha rifiutato la richiesta al mu-plugin del menu (HTTP 403): la chiave REST "
+                                "dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o "
+                                "plugin di sicurezza deve bloccare /wp-json/wc-catasync/.")
             if resp.status_code == 400 and detail:
                 raise SiteError(detail)   # il plugin spiega già cosa non va, in italiano
         raise SiteError(f"HTTP {resp.status_code} dal sito. {detail}".strip())

@@ -770,8 +770,8 @@ def prices_template(job_id: int, db: Session = Depends(get_db), user: User = Dep
 # (l'ordine di Prodotti → Categorie in WooCommerce, che il mu-plugin del menu segue).
 
 class CategoriaNuova(BaseModel):
+    # Sempre una categoria principale: da CataSync le sottocategorie non si creano.
     name: str = Field(min_length=1, max_length=190)
-    parent: int = Field(default=0, ge=0)
 
 
 class OrdineCategorie(BaseModel):
@@ -805,23 +805,20 @@ async def _categorie_del_sito(site: Site) -> list[dict]:
 async def crea_categoria(
     site_id: int, data: CategoriaNuova, db: Session = Depends(get_db), user: User = Depends(require_user)
 ):
-    """Nuova categoria sul sito, in fondo alle sorelle."""
+    """Nuova categoria principale sul sito, in fondo all'elenco."""
     site = _visible_site(db, site_id, user)
     _scrittura_sul_sito(site)
     nome = " ".join(data.name.split())
     if not nome:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scrivi il nome della categoria.")
 
-    esistenti = await _categorie_del_sito(site)
-    if data.parent and not any(c.get("id") == data.parent for c in esistenti):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "La categoria madre non c'è più sul sito: rileggi le categorie.")
-    sorelle = [c for c in esistenti if (c.get("parent") or 0) == data.parent]
-    if any((c.get("name") or "").strip().lower() == nome.lower() for c in sorelle):
-        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria «{nome}» a questo livello.")
-    in_fondo = max(((c.get("menu_order") or 0) for c in sorelle), default=-1) + 1
+    principali = [c for c in await _categorie_del_sito(site) if not c.get("parent")]
+    if any((c.get("name") or "").strip().lower() == nome.lower() for c in principali):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria principale «{nome}».")
+    in_fondo = max(((c.get("menu_order") or 0) for c in principali), default=-1) + 1
 
     try:
-        creata = await wc_rest.create_category(site, nome, parent=data.parent, menu_order=in_fondo)
+        creata = await wc_rest.create_category(site, nome, menu_order=in_fondo)
     except wc_rest.SiteError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
     audit(db, user.email, "category_create", f"{site.name} · {nome}")
