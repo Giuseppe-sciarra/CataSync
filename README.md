@@ -21,7 +21,7 @@ multi-client, nothing to install on the shops.
 | **Edit** — name, brand, category, prices, description, photos and specifications before publishing.<br>![Edit](docs/screenshots/en/04-edit.png) | **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/en/05-products-dark.png) |
 | **Search settings** — engine, translation, headless browser, and how the last searches went.<br>![Settings](docs/screenshots/en/06-settings.png) | **Portal appearance** — name, logo and favicon of your portal.<br>![Appearance](docs/screenshots/en/07-appearance.png) |
 | **Categories** — add (also inside another one), rename, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Delete** — before deleting a category it shows what is inside and what happens to it.<br>![Delete a category](docs/screenshots/en/09-delete-category.png) |
-| **Guide** — a tab of its own that walks through loading products and managing categories, with screenshots.<br>![Guide](docs/screenshots/en/10-guide.png) | |
+| **Guide** — three guides (products, warehouse, categories) with screenshots, in a tab of their own.<br>![Guide](docs/screenshots/en/10-guide.png) | **Warehouse** — the products already on the site by category, with search, pages, edit and the site's trash.<br>![Warehouse](docs/screenshots/en/11-warehouse.png) |
 
 The data shown is a demo with made-up names and `.example` sites. The interface is available
 in English, Italian, French and German.
@@ -80,6 +80,18 @@ in English, Italian, French and German.
 - Deleting a batch shows first what will be removed; with an application password the images go
   too.
 
+**Warehouse**
+- The **products already on the site**, by category (click a category, see its products and those
+  of its subcategories), with a search by name, SKU or EAN and pages of 15, 20, 30, 50 or 100.
+- **Category and price** of a product change right from the list; with several categories only
+  the first one changes. Variable products keep their prices on the variations.
+- **Delete** moves the product to the **site's trash**, WooCommerce's own (*Products → Trash*):
+  it disappears from the shop at once. The **Trash** view shows that same trash, products trashed
+  from WordPress included, with **Restore** (same status and address as before), **Delete
+  permanently** and **Empty the trash**. WordPress empties it by itself after the days set on the
+  site (`EMPTY_TRASH_DAYS`, 30 by default; the portal has the same number per shop to show the
+  right dates). Images stay in the media library.
+
 **Categories**
 - The shop's **categories managed from the portal**: add them (also inside another one), rename
   them, delete them, put them in order by dragging them or with the arrows. The order is
@@ -94,8 +106,8 @@ in English, Italian, French and German.
   you choose** on the site, in the same order.
 
 **Portal**
-- **Guide** tab: loading products step by step, what each product status means and how to manage
-  categories, with example screenshots in the interface language (Italian or English). New users
+- **Guide** tab with three guides — products, warehouse, categories — each with example
+  screenshots in the interface language (Italian or English). New users
   get a short invitation to it, which stays closed once dismissed, on every device.
 - Multi-client: clients, shops, users (administrator, client), subscription status, plan and
   monthly quota.
@@ -241,10 +253,11 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Engine status, causes of misses, sites refusing to be read | *Settings → How the search went* |
 | A list of codes searched one by one, with the outcome | *Settings → Batch test* |
 | Portal name, logo, favicon | *Settings → Portal appearance* |
+| Products already on the site: search, category, price, trash | *Warehouse* |
 | Add, rename, delete and order the shop's categories | *Categories* |
 | Menu item the categories go under (optional mu-plugin) | on the site, *Appearance → Menu categorie* |
 | Clients, plan, quota, data sources | *Clients* |
-| REST keys, shop language, write policies, required fields, nightly update | *Sites → Edit* |
+| REST keys, shop language, write policies, required fields, nightly update, trash days | *Sites → Edit* |
 | Users and roles | *Users* |
 | Codes, categories, prices, publishing | *Products* (client area) |
 | Batches, deleting a batch | *History* |

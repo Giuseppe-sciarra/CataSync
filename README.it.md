@@ -21,7 +21,7 @@ negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 | **Correggi la scheda** — nome, marca, categoria, prezzi, descrizione, foto e specifiche prima di pubblicare.<br>![Correggi la scheda](docs/screenshots/it/04-edit.png) | **Tema scuro** — automatico, chiaro o scuro.<br>![Tema scuro](docs/screenshots/it/05-products-dark.png) |
 | **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
 | **Categorie** — aggiungi (anche dentro un'altra), rinomini, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Elimina** — prima di eliminare una categoria mostra cosa c'è dentro e che fine fa.<br>![Elimina una categoria](docs/screenshots/it/09-delete-category.png) |
-| **Guida** — una scheda a sé che spiega passo passo come caricare i prodotti e gestire le categorie, con le schermate.<br>![Guida](docs/screenshots/it/10-guide.png) | |
+| **Guida** — tre guide (prodotti, magazzino, categorie) con le schermate, in una scheda a sé.<br>![Guida](docs/screenshots/it/10-guide.png) | **Magazzino** — i prodotti già sul sito per categoria, con ricerca, pagine, modifica e il cestino del sito.<br>![Magazzino](docs/screenshots/it/11-warehouse.png) |
 
 I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
 inglese, francese e tedesco.
@@ -83,6 +83,18 @@ inglese, francese e tedesco.
 - Eliminando un carico vedi prima cosa sparisce; con una password per applicazioni se ne vanno
   anche le immagini.
 
+**Magazzino**
+- I **prodotti già sul sito**, per categoria (clic su una categoria: i suoi prodotti e quelli
+  delle sottocategorie), con la ricerca per nome, SKU o EAN e pagine da 15, 20, 30, 50 o 100.
+- **Categoria e prezzo** di un prodotto si cambiano direttamente dall'elenco; se il prodotto sta
+  in più categorie cambia la prima. I prodotti con varianti tengono i prezzi sulle varianti.
+- **Elimina** sposta il prodotto nel **cestino del sito**, quello di WooCommerce (*Prodotti →
+  Cestino*): sparisce subito dal negozio. La vista **Cestino** mostra quello stesso cestino, anche
+  i prodotti cestinati da WordPress, con **Ripristina** (stato e indirizzo di prima), **Elimina per
+  sempre** e **Svuota il cestino**. WordPress lo svuota da solo dopo i giorni impostati sul sito
+  (`EMPTY_TRASH_DAYS`, di serie 30; nel portale lo stesso numero si mette per negozio, per le
+  date giuste). Le immagini restano nella libreria media.
+
 **Categorie**
 - Le **categorie del negozio si gestiscono dal portale**: le aggiungi (anche dentro un'altra), le
   rinomini, le elimini, le metti in ordine trascinandole o con le frecce. L'ordine è quello di
@@ -97,9 +109,8 @@ inglese, francese e tedesco.
   che scegli** sul sito, nello stesso ordine.
 
 **Portale**
-- Scheda **Guida**: come si caricano i prodotti passo passo, cosa vuol dire ogni stato e come si
-  gestiscono le categorie, con le schermate di esempio nella lingua dell'interfaccia (italiano o
-  inglese). Chi entra per la prima volta trova un invito alla Guida, che una volta chiuso resta
+- Scheda **Guida** con tre guide — prodotti, magazzino, categorie — ognuna con le schermate di
+  esempio nella lingua dell'interfaccia (italiano o inglese). Chi entra per la prima volta trova un invito alla Guida, che una volta chiuso resta
   chiuso su ogni dispositivo.
 - Multi-cliente: clienti, negozi, utenti (amministratore, cliente), stato dell'abbonamento,
   piano e quota mensile.
@@ -244,10 +255,11 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
 | Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
 | Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
+| Prodotti già sul sito: ricerca, categoria, prezzo, cestino | *Magazzino* |
 | Aggiungere, rinominare, eliminare e ordinare le categorie del negozio | *Categorie* |
 | Voce di menu sotto cui vanno le categorie (mu-plugin facoltativo) | sul sito, *Aspetto → Menu categorie* |
 | Clienti, piano, quota, fonti dati | *Clienti* |
-| Chiavi REST, lingua del negozio, politiche di scrittura, campi obbligatori, aggiornamento notturno | *Siti → Modifica* |
+| Chiavi REST, lingua del negozio, politiche di scrittura, campi obbligatori, aggiornamento notturno, giorni del cestino | *Siti → Modifica* |
 | Utenti e ruoli | *Utenti* |
 | Codici, categorie, prezzi, pubblicazione | *Prodotti* (area cliente) |
 | Carichi, eliminazione di un carico | *Storico* |

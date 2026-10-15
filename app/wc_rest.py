@@ -603,6 +603,63 @@ async def get_product(site, product_id: int) -> dict:
     return await _get(site, f"/products/{product_id}")
 
 
+# ------------------------------------------------------------ magazzino
+# Solo i campi che servono all'elenco: le schede intere pesano molto.
+CAMPI_MAGAZZINO = ("id,name,slug,sku,global_unique_id,categories,price,regular_price,sale_price,status,"
+                   "stock_status,stock_quantity,manage_stock,images,permalink,type,date_modified")
+
+
+async def prodotti_magazzino(site, *, categoria: int = 0, testo: str = "", pagina: int = 1,
+                             per_pagina: int = 20, cestino: bool = False) -> tuple[list[dict], int, int]:
+    """Una pagina dei prodotti del sito (o del suo cestino), con il totale e le pagine.
+    La ricerca guarda nome, SKU ed EAN; la categoria comprende le sue sottocategorie."""
+    params: dict = {
+        "per_page": per_pagina, "page": pagina, "_fields": CAMPI_MAGAZZINO,
+        "status": "trash" if cestino else "any",
+        "orderby": "modified" if cestino else "title", "order": "desc" if cestino else "asc",
+    }
+    if categoria:
+        params["category"] = int(categoria)
+    if testo:
+        params["search"] = testo
+        # WooCommerce recente cerca anche in SKU ed EAN; uno più vecchio ignora il campo e
+        # cerca solo nel nome e nel testo, che è comunque meglio di niente.
+        params["search_fields[]"] = ["name", "sku", "global_unique_id"]
+    data, headers = await _request(site, "GET", "/products", params=params)
+    prodotti = [_nome_in_chiaro(p) for p in (data or []) if isinstance(p, dict)]
+    totale = int(headers.get("X-WP-Total") or len(prodotti))
+    pagine = int(headers.get("X-WP-TotalPages") or 1)
+    return prodotti, totale, pagine
+
+
+async def quanti_nel_cestino(site) -> int:
+    _, headers = await _request(site, "GET", "/products", params={"status": "trash", "per_page": 1, "_fields": "id"})
+    return int(headers.get("X-WP-Total") or 0)
+
+
+async def cestina_prodotto(site, product_id: int) -> dict:
+    """Nel cestino del sito, come «Sposta nel cestino» di WordPress: niente force."""
+    data, _ = await _request(site, "DELETE", f"/products/{product_id}")
+    return _nome_in_chiaro(data)
+
+
+async def ripristina_prodotto(site, product_id: int, stato: str, slug: str) -> dict:
+    data, _ = await _request(site, "PUT", f"/products/{product_id}", json_body={"status": stato, "slug": slug})
+    return _nome_in_chiaro(data)
+
+
+async def elimina_prodotti(site, ids: list[int]) -> int:
+    """Eliminazione definitiva a lotti da cento (il batch di WooCommerce elimina con force)."""
+    eliminati = 0
+    for inizio in range(0, len(ids), BATCH_MAX):
+        lotto = [int(i) for i in ids[inizio:inizio + BATCH_MAX]]
+        data, _ = await _request(site, "POST", "/products/batch", json_body={"delete": lotto})
+        for voce in (data or {}).get("delete", []) if isinstance(data, dict) else []:
+            if isinstance(voce, dict) and not voce.get("error"):
+                eliminati += 1
+    return eliminati
+
+
 async def delete_product(site, product_id: int) -> dict:
     """Elimina il prodotto. force=true perché senza finirebbe nel cestino."""
     data, _ = await _request(site, "DELETE", f"/products/{product_id}", params={"force": "true"})

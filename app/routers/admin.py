@@ -90,6 +90,7 @@ class SiteIn(BaseModel):
     resync_batch: int = 200
     resync_min_age_days: int = 25
     resync_policy: dict | None = None
+    giorni_cestino: int = 30
 
 
 # --------------------------------------------------------------------- clienti
@@ -277,6 +278,7 @@ def _site_json(s: Site) -> dict:
         "required_fields": quality.required_for(s),
         "specs_meta": s.specs_meta,
         "specs_limit": s.specs_limit,
+        "giorni_cestino": s.giorni_cestino or 30,
         "content_lang": s.content_lang or "",
         # Nemmeno nel pannello si mostrano per intero: bastano le ultime cifre per
         # riconoscere quale chiave è. Il cliente non le vede in nessun caso.
@@ -342,6 +344,7 @@ def create_site(data: SiteIn, db: Session = Depends(get_db), admin: User = Depen
     _apply_resync(site, data)
     site.specs_meta = data.specs_meta
     site.specs_limit = max(0, min(80, data.specs_limit))
+    site.giorni_cestino = max(1, min(365, data.giorni_cestino))
     site.content_lang = lingue.normalizza(data.content_lang, "") if data.content_lang else ""
     if data.required_fields is not None:
         site.required_fields = json.dumps([f for f in data.required_fields if f in quality.FIELDS])
@@ -379,6 +382,7 @@ def update_site(site_id: int, data: SiteIn, db: Session = Depends(get_db), admin
     _apply_resync(site, data)
     site.specs_meta = data.specs_meta
     site.specs_limit = max(0, min(80, data.specs_limit))
+    site.giorni_cestino = max(1, min(365, data.giorni_cestino))
     site.content_lang = lingue.normalizza(data.content_lang, "") if data.content_lang else ""
     if data.required_fields is not None:
         site.required_fields = json.dumps([f for f in data.required_fields if f in quality.FIELDS])

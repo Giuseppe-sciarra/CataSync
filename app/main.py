@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import config, worker
 from .db import Base, SessionLocal, engine, ensure_columns, get_db, migra_dati, migra_schema
 from .models import Client, Site, User
-from .routers import admin, auth, client
+from .routers import admin, auth, client, magazzino
 from .security import current_user, hash_password, require_user
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -159,6 +159,7 @@ async def guard(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(client.router)
+app.include_router(magazzino.router)
 
 static_dir = config.BASE_DIR / "static"
 static_dir.mkdir(exist_ok=True)

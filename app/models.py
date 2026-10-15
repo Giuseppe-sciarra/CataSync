@@ -150,6 +150,10 @@ class Site(Base):
     last_resync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_resync_msg: Mapped[str] = mapped_column(Text, default="")
 
+    # Dopo quanti giorni WordPress svuota da solo il cestino (EMPTY_TRASH_DAYS nel wp-config del
+    # sito, di serie 30). Il portale non lo può leggere: serve solo a mostrare le date giuste.
+    giorni_cestino: Mapped[int] = mapped_column(Integer, default=30)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     client: Mapped[Client] = relationship(back_populates="sites")
@@ -244,6 +248,23 @@ class EanCache(Base):
     found: Mapped[bool] = mapped_column(Boolean, default=True)
     payload: Mapped[str] = mapped_column(Text, default="")  # JSON della scheda (o del perché non c'è)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ProdottoCestinato(Base):
+    """Prodotto spostato nel cestino del sito dal Magazzino: si ricorda com'era (pubblicato,
+    bozza…) per rimetterlo uguale quando lo si ripristina. Il cestino vero resta quello del
+    sito: questa è solo una nota a margine."""
+
+    __tablename__ = "cestino_magazzino"
+    __table_args__ = (UniqueConstraint("site_id", "product_id", name="uq_cestino_prodotto"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[int] = mapped_column(Integer)
+    stato_prima: Mapped[str] = mapped_column(String(16), default="publish")
+    nome: Mapped[str] = mapped_column(String(255), default="")
+    da_chi: Mapped[str] = mapped_column(String(190), default="")
+    quando: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class CategoryMap(Base):

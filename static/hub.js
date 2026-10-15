@@ -92,6 +92,17 @@ function hub(isAdmin) {
     catRinomina: { id: null, name: '', busy: false },
     // Immagini delle istruzioni: in italiano per l'italiano, in inglese per le altre lingue.
     linguaAiuto: 'it',
+    // Magazzino: i prodotti già sul sito (o nel suo cestino), per categoria, con ricerca e pagine.
+    mag: {
+      vista: 'prodotti', categoria: 0, q: '', pagina: 1, pagine: 1, totale: 0, prodotti: [],
+      perPagina: (function () { try { const n = +localStorage.getItem('td_mag_per_pagina'); return [15, 20, 30, 50, 100].includes(n) ? n : 20; } catch (e) { return 20; } })(),
+      nelCestino: 0, giorni: 30, busy: false, errore: ''
+    },
+    magCategorie: [],
+    magModifica: { id: null, categoria: 0, altre: [], prezzo: '', scontato: '', busy: false },
+    magTimer: null,
+    magRichiesta: 0,
+    guidaSezione: 'import',
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
     single: { gtin: '', busy: false, product: null, message: '', onSite: null, fonte: '', diagnosi: null },
     modal: { kind: null, title: '', data: {} },
@@ -168,6 +179,7 @@ function hub(isAdmin) {
       if (tab === 'jobs') { this.soloJob = false; this.loadJobs(); }
       if (tab === 'catalogo') { this.loadTaxonomy(); this.loadCatalogo(); }
       if (tab === 'categories') this.loadTaxonomy();
+      if (tab === 'magazzino') this.apriMagazzino();
       if (tab === 'sites') this.loadAllSites();
       if (tab === 'users') this.loadUsers();
       if (tab === 'clients') this.loadClients();
@@ -220,10 +232,12 @@ function hub(isAdmin) {
       if (vecchia && !dalServer.includes('benvenuto')) this.ricordaGuida('benvenuto', false);
       try { localStorage.setItem('td_guide_chiuse', JSON.stringify(this.guideChiuse)); } catch (e) {}
     },
-    // La Guida è una pagina sola: ci si arriva dalla barra o dai pulsanti 📖, già sulla sezione.
+    // La Guida ha tre guide (prodotti, magazzino, categorie): ci si arriva dalla barra o dai
+    // pulsanti 📖, già su quella giusta.
     apriGuida(sezione) {
       if (sezione === 'import') this.ricordaGuida('benvenuto', false);   // vista la guida, l'invito non serve più
-      this.go('guida');
+      this.guidaSezione = sezione === 'stati' ? 'import' : sezione;
+      if (this.tab !== 'guida') this.go('guida');
       this.$nextTick(() => this.vaiGuida(sezione));
     },
     vaiGuida(sezione) {
@@ -418,6 +432,7 @@ function hub(isAdmin) {
     },
 
     onSiteChange() {
+      if (this.tab === 'magazzino') { this.mag.categoria = 0; this.mag.pagina = 1; this.apriMagazzino(); }
       this.categories = []; this.attributes = []; this.brands = [];
       this.catOrdine = {}; this.catOrdineSalvato = '{}';
       this.catRinomina = { id: null, name: '', busy: false };
@@ -539,6 +554,224 @@ function hub(isAdmin) {
       } catch (e) { this.fail(e.message); }
       this.catNuova.busy = false;
     },
+    // ------------------------------------------------------ magazzino
+    apriMagazzino() {
+      this.annullaModMag();
+      this.caricaCategorieMag();
+      this.caricaMag();
+    },
+    async caricaCategorieMag() {
+      if (!this.form.site_id) return;
+      try { this.magCategorie = await this.api('/api/sites/' + this.form.site_id + '/magazzino/categorie'); }
+      catch (e) { this.magCategorie = []; }
+    },
+    // Albero come nella scheda Categorie; «Senza categoria» in fondo.
+    get righeMagCat() {
+      const per = {}, figlie = {};
+      this.magCategorie.forEach(c => { per[c.id] = c; });
+      this.magCategorie.forEach(c => {
+        const padre = c.parent && per[c.parent] ? c.parent : 0;
+        (figlie[padre] = figlie[padre] || []).push(c);
+      });
+      const ordina = l => l.sort((a, b) => (a.riserva - b.riserva) || ((a.menu_order || 0) - (b.menu_order || 0)) ||
+        String(a.nome).localeCompare(String(b.nome), undefined, { sensitivity: 'base' }));
+      const righe = [], visti = new Set();
+      const visita = (padre, livello) => ordina(figlie[padre] || []).forEach(c => {
+        if (visti.has(c.id)) return;
+        visti.add(c.id);
+        righe.push({ c, livello });
+        visita(c.id, livello + 1);
+      });
+      visita(0, 0);
+      return righe;
+    },
+    nomeCatMag(id) {
+      const c = this.magCategorie.find(x => x.id === id);
+      if (!c) return '';
+      const parti = [c.nome];
+      let p = c.parent, giri = 0;
+      while (p && giri++ < 6) {
+        const m = this.magCategorie.find(x => x.id === p);
+        if (!m) break;
+        parti.unshift(m.nome);
+        p = m.parent;
+      }
+      return parti.join(' › ');
+    },
+    async caricaMag() {
+      if (!this.form.site_id) return;
+      const n = ++this.magRichiesta;   // vince l'ultima richiesta: chi scrive in fretta non vede risultati vecchi
+      this.mag.busy = true;
+      this.mag.errore = '';
+      const q = new URLSearchParams({
+        pagina: this.mag.pagina, per_pagina: this.mag.perPagina,
+        cestino: this.mag.vista === 'cestino' ? 'true' : 'false'
+      });
+      if (this.mag.categoria) q.set('categoria', this.mag.categoria);
+      if (this.mag.q.trim()) q.set('q', this.mag.q.trim());
+      try {
+        const d = await this.api('/api/sites/' + this.form.site_id + '/magazzino?' + q.toString());
+        if (n !== this.magRichiesta) return;
+        Object.assign(this.mag, { prodotti: d.prodotti || [], totale: d.totale || 0, pagine: d.pagine || 1,
+                                  pagina: d.pagina || 1, nelCestino: d.nel_cestino || 0, giorni: d.giorni_cestino || 30 });
+      } catch (e) {
+        if (n !== this.magRichiesta) return;
+        this.mag.prodotti = []; this.mag.totale = 0; this.mag.pagine = 1;
+        this.mag.errore = e.message;
+      }
+      this.mag.busy = false;
+    },
+    vistaMag(v) {
+      if (this.mag.vista === v) return;
+      this.annullaModMag();
+      Object.assign(this.mag, { vista: v, pagina: 1, prodotti: [] });
+      this.caricaMag();
+    },
+    scegliCatMag(id) {
+      this.annullaModMag();
+      Object.assign(this.mag, { categoria: id, pagina: 1 });
+      this.caricaMag();
+    },
+    cercaMag() {
+      clearTimeout(this.magTimer);
+      this.magTimer = setTimeout(() => { this.mag.pagina = 1; this.caricaMag(); }, 350);
+    },
+    vaiPaginaMag(n) {
+      if (n < 1 || n > this.mag.pagine || n === this.mag.pagina) return;
+      this.annullaModMag();
+      this.mag.pagina = n;
+      this.caricaMag();
+    },
+    cambiaPerPaginaMag() {
+      try { localStorage.setItem('td_mag_per_pagina', String(this.mag.perPagina)); } catch (e) {}
+      this.mag.pagina = 1;
+      this.caricaMag();
+    },
+    // 1 … 4 5 [6] 7 8 … 20
+    get pagineMag() {
+      const tot = this.mag.pagine, cur = this.mag.pagina, out = [];
+      for (let i = 1; i <= tot; i++) {
+        if (i === 1 || i === tot || Math.abs(i - cur) <= 2) out.push(i);
+        else if (out[out.length - 1] !== '…') out.push('…');
+      }
+      return out;
+    },
+    get riassuntoMag() {
+      if (!this.mag.totale) return '';
+      if (this.mag.totale === 1) return this.t('1 prodotto');
+      const da = (this.mag.pagina - 1) * this.mag.perPagina + 1;
+      const a = Math.min(this.mag.totale, da + this.mag.prodotti.length - 1);
+      return this.tt('{0}–{1} di {2} prodotti', da, a, this.mag.totale);
+    },
+    statoMag(p) {
+      return { publish: 'Pubblicato', draft: 'Bozza', pending: 'In revisione', private: 'Privato', future: 'Programmato' }[p.stato] || p.stato;
+    },
+    pillStatoMag(p) {
+      return p.stato === 'publish' ? 'p-sul_sito' : (p.stato === 'draft' || p.stato === 'pending' ? 'p-da_completare' : 'p-in_corso');
+    },
+    disponibilitaMag(p) {
+      if (p.disponibilita === 'outofstock') return this.t('Esaurito');
+      if (p.disponibilita === 'onbackorder') return this.t('Su ordinazione');
+      return p.quantita !== null && p.quantita !== undefined ? this.tt('Disponibili: {0}', p.quantita) : this.t('Disponibile');
+    },
+    soldi(v) {
+      const n = parseFloat(String(v || '').replace(',', '.'));
+      return isNaN(n) ? '' : n.toLocaleString(I18n.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    prezzoPerCampo(v) {
+      const n = parseFloat(String(v || '').replace(',', '.'));
+      return isNaN(n) ? '' : n.toLocaleString(I18n.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false });
+    },
+    modificaMag(p) {
+      const ids = (p.categorie || []).map(c => c.id);
+      this.magModifica = { id: p.id, categoria: ids[0] || 0, altre: ids.slice(1), busy: false,
+                           prezzo: this.prezzoPerCampo(p.prezzo_pieno), scontato: this.prezzoPerCampo(p.scontato) };
+    },
+    annullaModMag() {
+      this.magModifica = { id: null, categoria: 0, altre: [], prezzo: '', scontato: '', busy: false };
+    },
+    // La categoria scelta prende il posto della prima; le altre restano.
+    async salvaModMag(p) {
+      const m = this.magModifica;
+      if (m.busy || m.id !== p.id) return;
+      const corpo = {};
+      const prima = (p.categorie || []).map(c => c.id);
+      const dopo = [m.categoria, ...m.altre.filter(i => i !== m.categoria)].filter(Boolean);
+      if (dopo.length && dopo.join(',') !== prima.join(',')) corpo.categorie = dopo;
+      if (p.tipo !== 'variable') {
+        if (m.prezzo.trim() !== this.prezzoPerCampo(p.prezzo_pieno)) corpo.prezzo = m.prezzo.trim();
+        if (m.scontato.trim() !== this.prezzoPerCampo(p.scontato)) corpo.scontato = m.scontato.trim();
+      }
+      if (!Object.keys(corpo).length) { this.annullaModMag(); return; }
+      m.busy = true;
+      try {
+        const r = await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + p.id, {
+          method: 'PATCH', body: JSON.stringify(corpo)
+        });
+        const i = this.mag.prodotti.findIndex(x => x.id === p.id);
+        if (i >= 0 && r.prodotto) this.mag.prodotti.splice(i, 1, r.prodotto);
+        this.annullaModMag();
+        this.say(this.tt('«{0}» aggiornato sul sito.', p.nome));
+        if (corpo.categorie) this.caricaCategorieMag();   // i conteggi delle categorie cambiano
+      } catch (e) {
+        this.magModifica.busy = false;
+        this.fail(e.message);
+      }
+    },
+    chiediCestinaMag(p) {
+      this.modal = { error: null, kind: 'magcestina', title: this.t('Sposta nel cestino'), data: { p, giorni: this.mag.giorni } };
+    },
+    async cestinaMag() {
+      const p = this.modal.data.p;
+      this.mag.busy = true;
+      try {
+        await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + p.id, { method: 'DELETE' });
+        this.modal.kind = null;
+        this.say(this.tt('«{0}» è nel cestino del sito.', p.nome));
+        this.mag.busy = false;
+        await this.caricaMag();
+        this.caricaCategorieMag();
+      } catch (e) { this.modal.error = e.message; this.mag.busy = false; }
+    },
+    async ripristinaMag(p) {
+      this.mag.busy = true;
+      try {
+        await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + p.id + '/ripristina', { method: 'POST' });
+        this.say(this.tt('«{0}» è tornato sul sito.', p.nome));
+        this.mag.busy = false;
+        await this.caricaMag();
+        this.caricaCategorieMag();
+      } catch (e) { this.mag.busy = false; this.fail(e.message); }
+    },
+    chiediPerSempreMag(p) {
+      this.modal = { error: null, kind: 'magpersempre', title: this.t('Elimina per sempre'), data: { p } };
+    },
+    async perSempreMag() {
+      const p = this.modal.data.p;
+      this.mag.busy = true;
+      try {
+        await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + p.id + '/per-sempre', { method: 'DELETE' });
+        this.modal.kind = null;
+        this.say(this.tt('«{0}» eliminato per sempre.', p.nome));
+        this.mag.busy = false;
+        await this.caricaMag();
+      } catch (e) { this.modal.error = e.message; this.mag.busy = false; }
+    },
+    chiediSvuotaMag() {
+      this.modal = { error: null, kind: 'magsvuota', title: this.t('Svuota il cestino'), data: { quanti: this.mag.nelCestino } };
+    },
+    async svuotaMag() {
+      this.mag.busy = true;
+      try {
+        const r = await this.api('/api/sites/' + this.form.site_id + '/magazzino/cestino/svuota', { method: 'POST' });
+        this.modal.kind = null;
+        this.say(r.eliminati === 1 ? this.t('Cestino svuotato: un prodotto eliminato per sempre.')
+                                   : this.tt('Cestino svuotato: {0} prodotti eliminati per sempre.', r.eliminati || 0));
+        this.mag.busy = false;
+        await this.caricaMag();
+      } catch (e) { this.modal.error = e.message; this.mag.busy = false; }
+    },
+
     // Rinomina sul posto: il nuovo nome va sul sito e si aggiorna qui senza rileggere tutto,
     // così un ordine non ancora salvato non si perde.
     iniziaRinomina(c) {
@@ -1592,7 +1825,7 @@ function hub(isAdmin) {
                     is_active: true, default_status: 'publish', wc_key: '', wc_secret: '', specs_meta: true,
                     content_lang: '',
                     resync_enabled: false, resync_hour: 3, resync_minute: 0, resync_days: '',
-                    resync_scope: 'hub', resync_batch: 200, resync_min_age_days: 25, specs_limit: 6,
+                    resync_scope: 'hub', resync_batch: 200, resync_min_age_days: 25, specs_limit: 6, giorni_cestino: 30,
                     required_fields: ['title', 'description', 'images', 'category', 'regular_price'],
                     resync_policy: { title: 'skip', description: 'overwrite', short_description: 'overwrite',
                                      images: 'fill', attributes: 'overwrite', brand: 'fill',
@@ -1661,6 +1894,7 @@ function hub(isAdmin) {
             required_fields: d.required_fields || null,
             specs_meta: d.specs_meta !== false,
             specs_limit: d.specs_limit === undefined ? 6 : d.specs_limit,
+            giorni_cestino: d.giorni_cestino || 30,
             content_lang: d.content_lang || '',
             resync_enabled: !!d.resync_enabled,
             resync_hour: d.resync_hour ?? 3,

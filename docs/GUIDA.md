@@ -23,14 +23,15 @@ hanno bloccati), quali siti sono usciti e cosa è successo aprendo ciascuno.
 Cercando col **codice produttore**, se la pagina trovata riporta l'EAN lo si recupera e
 finisce sul prodotto WooCommerce.
 
-**Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
+**Magazzino** mostra i prodotti già sul sito, per categoria e con la ricerca: lì si cambiano
+categoria e prezzo e si eliminano (capitolo 16). **Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
 nome, eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
 **Negozio** contiene i dati anagrafici del cliente.
 
-**Guida** è la scheda delle istruzioni, tutte in un posto: i quattro passi del caricamento,
-gli stati dei prodotti e le categorie, ognuno con la schermata di esempio (in italiano per
-l'interfaccia in italiano, in inglese per le altre lingue). Ci si arriva anche dai pulsanti 📖
-di Prodotti e Categorie, già sulla sezione giusta. Chi entra per la prima volta trova in cima
+**Guida** è la scheda delle istruzioni, tutte in un posto, divise in tre guide: prodotti (i
+quattro passi del caricamento e gli stati), magazzino e categorie, ognuna con le schermate di
+esempio (in italiano per l'interfaccia in italiano, in inglese per le altre lingue). Ci si arriva
+anche dai pulsanti 📖 di Prodotti, Magazzino e Categorie, già sulla guida giusta. Chi entra per la prima volta trova in cima
 a Prodotti un invito alla Guida: chiuso una volta (o aperta la Guida), il portale lo ricorda
 sull'utente, quindi resta chiuso su ogni browser e dispositivo.
 
@@ -308,6 +309,10 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Aggiornare | `PUT /products/{id}` |
 | Marca nuova | `POST /products/brands` |
 | Categorie: creare, rinominare, eliminare | `POST /products/categories`, `PUT` / `DELETE /products/categories/{id}` |
+| Magazzino: elenco e ricerca | `GET /products` con `status=any` (o `trash`), `category`, `search` + `search_fields[]=name,sku,global_unique_id`, `_fields` |
+| Magazzino: categoria e prezzi | `PUT /products/{id}` (`categories`, `regular_price`, `sale_price`) |
+| Magazzino: nel cestino, ripristino | `DELETE /products/{id}` senza `force`; `PUT /products/{id}` con `status` e `slug` di prima |
+| Magazzino: per sempre, svuota | `DELETE /products/{id}?force=true`; `POST /products/batch` (`delete`, a lotti da cento) |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
 
 Autenticazione Basic su HTTPS. Se il server mangia l'intestazione `Authorization` — capita
@@ -426,3 +431,35 @@ non lo chiama. Le stesse impostazioni si leggono e si cambiano anche via REST su
 `/wp-json/wc-catasync/v1/menu` (il prefisso `wc-` fa accettare a WooCommerce le chiavi REST del
 negozio): serve un utente che può modificare i menu, amministratore o gestore del negozio; senza
 chiave le rotte non rispondono.
+
+## 16. Magazzino
+
+Nella scheda **Magazzino** ci sono i prodotti che sono già sul sito, letti ogni volta da
+WooCommerce: niente copie nel portale che possano restare indietro.
+
+- **Categorie a sinistra**: un clic e a destra compaiono i prodotti della categoria e delle sue
+  sottocategorie; «Tutti i prodotti» li mostra tutti. C'è anche «Senza categoria», se ha prodotti.
+- **Ricerca** per nome, SKU o EAN, anche dentro la categoria scelta. Con un WooCommerce vecchio,
+  che non conosce `search_fields`, si cerca solo nel nome e nel testo.
+- **Pagine** da 15, 20, 30, 50 o 100 prodotti: la scelta resta nel browser.
+- **Modifica**: categoria (o sottocategoria), prezzo e prezzo scontato, salvati subito sul sito.
+  Se il prodotto sta in più categorie cambia la prima e le altre restano. Lo scontato dev'essere
+  sotto il pieno, come in Prodotti. I prodotti con varianti hanno i prezzi sulle varianti, che si
+  cambiano dal sito. Le righe del portale collegate a quel prodotto si allineano: una nuova
+  pubblicazione non rimette il prezzo vecchio.
+- **Elimina** chiede conferma e sposta il prodotto nel **cestino del sito**, lo stesso di
+  WordPress (*Prodotti → Cestino*): sparisce subito dal negozio. Il portale si segna com'era
+  (pubblicato, bozza…) per rimetterlo uguale.
+- **Cestino**: è il cestino del sito, quindi ci sono anche i prodotti cestinati da WordPress.
+  *Ripristina* rimette lo stato di prima (pubblicato se il prodotto l'ha cestinato WordPress) e
+  l'indirizzo di prima, togliendo il `__trashed` che WordPress aggiunge allo slug. *Elimina per
+  sempre* e *Svuota il cestino* lo cancellano davvero; le immagini restano nella libreria media.
+  Nel portale, le righe di Prodotti legate a un prodotto eliminato per sempre spariscono, così
+  nessuno lo ripubblica per sbaglio.
+- **Giorni del cestino**: WordPress svuota il cestino da solo dopo `EMPTY_TRASH_DAYS` giorni (nel
+  `wp-config.php` del sito, di serie 30). Il portale non lo può leggere: in *Siti → Modifica* si
+  mette lo stesso numero, che serve a mostrare quando si svuota.
+
+Modificare ed eliminare scrive sul sito: servono l'account attivo e una chiave REST di un
+amministratore o gestore del negozio, come per le categorie.
+

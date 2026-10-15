@@ -49,6 +49,9 @@
       <button :class="(tab==='catalogo' || tab==='single') && 'on'" @click="go('catalogo')">Prodotti</button>
     </template>
     <template x-if="!isAdmin">
+      <button :class="tab==='magazzino' && 'on'" @click="go('magazzino')">Magazzino</button>
+    </template>
+    <template x-if="!isAdmin">
       <button :class="tab==='jobs' && 'on'" @click="go('jobs')">Storico</button>
     </template>
     <template x-if="!isAdmin">
@@ -733,6 +736,214 @@
   </template>
 
   <!-- ========================================================== CATEGORIE -->
+  <!-- ============================================================ MAGAZZINO -->
+  <template x-if="tab==='magazzino'">
+    <div class="stack">
+      <div class="card magazzino">
+        <header>
+          <h2>Magazzino</h2>
+          <div class="seg" role="tablist">
+            <button :class="mag.vista==='prodotti' && 'on'" @click="vistaMag('prodotti')">Prodotti sul sito</button>
+            <button :class="mag.vista==='cestino' && 'on'" @click="vistaMag('cestino')">
+              <span>Cestino</span><span class="conta" x-show="mag.nelCestino" x-text="mag.nelCestino"></span>
+            </button>
+          </div>
+          <div class="grow"></div>
+          <template x-if="sites.length > 1">
+            <select style="max-width:240px" x-model.number="form.site_id" @change="onSiteChange()">
+              <template x-for="s in sites" :key="'ms' + s.id">
+                <option :value="s.id" :selected="s.id == form.site_id" x-text="s.name"></option>
+              </template>
+            </select>
+          </template>
+          <button class="ghost sm" @click="go('import')">Aggiungi prodotti</button>
+          <button class="ghost sm" @click="apriGuida('magazzino')" title="Come si cercano, modificano ed eliminano i prodotti, con esempi">📖 Istruzioni</button>
+        </header>
+
+        <div class="body mag-corpo">
+          <!-- categorie: un clic e a destra ci sono i loro prodotti -->
+          <aside class="mag-cat">
+            <div class="mag-cat-titolo">Categorie</div>
+            <button class="mag-cat-voce" :class="!mag.categoria && 'on'" @click="scegliCatMag(0)">
+              <span class="nome">Tutti i prodotti</span>
+            </button>
+            <template x-for="r in righeMagCat" :key="'mc' + r.c.id">
+              <button class="mag-cat-voce" :class="mag.categoria === r.c.id && 'on'" @click="scegliCatMag(r.c.id)"
+                      :style="'padding-left:' + (12 + r.livello * 16) + 'px'">
+                <span class="nome" x-text="r.c.nome" translate="no"></span>
+                <span class="num" x-text="r.c.count"></span>
+              </button>
+            </template>
+          </aside>
+
+          <section class="mag-lista">
+            <div class="mag-barra">
+              <input type="search" x-model="mag.q" @input="cercaMag()" maxlength="120"
+                     placeholder="Cerca per nome, SKU o EAN" aria-label="Cerca per nome, SKU o EAN">
+              <span class="hint" x-text="riassuntoMag"></span>
+              <div class="grow"></div>
+              <label class="hint" for="mag-per-pagina">Per pagina</label>
+              <select id="mag-per-pagina" x-model.number="mag.perPagina" @change="cambiaPerPaginaMag()">
+                <template x-for="n in [15, 20, 30, 50, 100]" :key="'pp' + n">
+                  <option :value="n" :selected="n == mag.perPagina" x-text="n"></option>
+                </template>
+              </select>
+            </div>
+
+            <template x-if="mag.vista==='cestino'">
+              <div class="notice n-warn mag-avviso">
+                <span x-text="tt('Questo è il cestino del sito, lo stesso di WordPress (Prodotti → Cestino). WordPress lo svuota da solo dopo {0} giorni.', mag.giorni)"></span>
+                <button class="danger sm" @click="chiediSvuotaMag()" :disabled="!mag.nelCestino || mag.busy">Svuota il cestino</button>
+              </div>
+            </template>
+            <template x-if="mag.errore">
+              <div class="notice n-err" x-text="mag.errore"></div>
+            </template>
+
+            <div class="mag-tab-wrap">
+              <table class="mag-tab" x-show="mag.prodotti.length">
+                <thead><tr>
+                  <th style="width:56px"></th>
+                  <th class="mag-col-prodotto">Prodotto</th>
+                  <th style="width:180px">Categoria</th>
+                  <th>Prezzo</th>
+                  <th x-text="mag.vista==='cestino' ? t('Nel cestino') : t('Stato')"></th>
+                  <th></th>
+                </tr></thead>
+                <tbody>
+                  <template x-for="p in mag.prodotti" :key="'mp' + p.id">
+                    <tr :class="magModifica.id === p.id && 'in-modifica'">
+                      <td>
+                        <template x-if="p.immagine"><img class="thumb" :src="p.immagine" alt="" loading="lazy"></template>
+                        <template x-if="!p.immagine"><div class="thumb vuoto"></div></template>
+                      </td>
+                      <td>
+                        <div class="titolo">
+                          <span x-text="p.nome" translate="no"></span>
+                          <a class="mag-vedi" :href="p.link" target="_blank" rel="noopener" x-show="p.link && p.stato === 'publish'"
+                             title="Vedi sul sito" aria-label="Vedi sul sito">↗</a>
+                        </div>
+                        <div class="hint mag-codici">
+                          <span x-show="p.sku">SKU <span class="mono" x-text="p.sku" translate="no"></span></span>
+                          <span x-show="p.ean">EAN <span class="mono" x-text="p.ean" translate="no"></span></span>
+                          <span x-show="p.tipo === 'variable'">con varianti</span>
+                        </div>
+                      </td>
+                      <td>
+                        <template x-if="magModifica.id !== p.id">
+                          <div class="mag-chip-riga">
+                            <template x-for="c in p.categorie" :key="'pc' + p.id + '-' + c.id">
+                              <span class="mag-chip" x-text="c.nome" :title="nomeCatMag(c.id) || c.nome" translate="no"></span>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="magModifica.id === p.id">
+                          <div>
+                            <select x-model.number="magModifica.categoria" aria-label="Categoria">
+                              <template x-for="r in righeMagCat" :key="'ec' + r.c.id">
+                                <option :value="r.c.id" :selected="r.c.id == magModifica.categoria"
+                                        x-text="'  '.repeat(r.livello) + r.c.nome" translate="no"></option>
+                              </template>
+                            </select>
+                            <div class="hint" x-show="magModifica.altre.length"
+                                 x-text="tt('Resta anche in: {0}', magModifica.altre.map(i => nomeCatMag(i)).join(', '))"></div>
+                          </div>
+                        </template>
+                      </td>
+                      <td>
+                        <template x-if="magModifica.id !== p.id">
+                          <div>
+                            <template x-if="p.scontato">
+                              <span><s class="hint" x-text="soldi(p.prezzo_pieno)"></s> <strong x-text="soldi(p.scontato)"></strong></span>
+                            </template>
+                            <template x-if="!p.scontato">
+                              <strong x-text="p.prezzo ? soldi(p.prezzo) : '—'"></strong>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="magModifica.id === p.id">
+                          <div>
+                            <template x-if="p.tipo !== 'variable'">
+                              <div class="price-stack">
+                                <input type="text" inputmode="decimal" x-model="magModifica.prezzo" placeholder="Prezzo" aria-label="Prezzo"
+                                       @keydown.enter.prevent="salvaModMag(p)" @keydown.escape.prevent="annullaModMag()">
+                                <input type="text" inputmode="decimal" class="sale" x-model="magModifica.scontato" placeholder="Scontato" aria-label="Prezzo scontato"
+                                       @keydown.enter.prevent="salvaModMag(p)" @keydown.escape.prevent="annullaModMag()">
+                              </div>
+                            </template>
+                            <template x-if="p.tipo === 'variable'">
+                              <span class="hint">I prezzi stanno sulle varianti: si cambiano dal sito.</span>
+                            </template>
+                          </div>
+                        </template>
+                      </td>
+                      <td>
+                        <template x-if="mag.vista==='prodotti' && magModifica.id !== p.id">
+                          <div>
+                            <span class="pill" :class="pillStatoMag(p)" x-text="t(statoMag(p))"></span>
+                            <div class="hint" x-text="disponibilitaMag(p)"></div>
+                          </div>
+                        </template>
+                        <template x-if="mag.vista==='cestino'">
+                          <div>
+                            <div x-text="fmtDay(p.nel_cestino_dal + 'T12:00:00')"></div>
+                            <div class="hint" x-text="tt('si svuota il {0}', fmtDay(p.si_svuota_il + 'T12:00:00'))"></div>
+                          </div>
+                        </template>
+                      </td>
+                      <td class="mag-azioni">
+                        <template x-if="mag.vista==='prodotti' && magModifica.id !== p.id">
+                          <span>
+                            <button class="ghost sm" @click="modificaMag(p)">Modifica</button>
+                            <button class="danger sm" @click="chiediCestinaMag(p)">Elimina</button>
+                          </span>
+                        </template>
+                        <template x-if="mag.vista==='prodotti' && magModifica.id === p.id">
+                          <span>
+                            <button class="sm" @click="salvaModMag(p)" :disabled="magModifica.busy">Salva</button>
+                            <button class="ghost sm" @click="annullaModMag()" :disabled="magModifica.busy">Annulla</button>
+                          </span>
+                        </template>
+                        <template x-if="mag.vista==='cestino'">
+                          <span>
+                            <button class="ghost sm" @click="ripristinaMag(p)" :disabled="mag.busy">Ripristina</button>
+                            <button class="danger sm" @click="chiediPerSempreMag(p)" :disabled="mag.busy">Elimina per sempre</button>
+                          </span>
+                        </template>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <template x-if="!mag.prodotti.length && !mag.busy && !mag.errore">
+              <div class="empty">
+                <p x-text="mag.vista==='cestino' ? t('Il cestino è vuoto.') : (mag.q ? t('Nessun prodotto trovato con questa ricerca.') : t('Nessun prodotto in questa categoria.'))"></p>
+              </div>
+            </template>
+            <template x-if="mag.busy && !mag.prodotti.length">
+              <div class="empty"><p>Carico i prodotti…</p></div>
+            </template>
+
+            <nav class="paginazione" x-show="mag.pagine > 1" aria-label="Pagine">
+              <button class="ghost sm" @click="vaiPaginaMag(mag.pagina - 1)" :disabled="mag.pagina <= 1" aria-label="Pagina precedente">‹</button>
+              <template x-for="(n, i) in pagineMag" :key="'pg' + i">
+                <span>
+                  <template x-if="n === '…'"><span class="hint">…</span></template>
+                  <template x-if="n !== '…'">
+                    <button class="sm" :class="n === mag.pagina ? 'on' : 'ghost'" @click="vaiPaginaMag(n)" x-text="n"></button>
+                  </template>
+                </span>
+              </template>
+              <button class="ghost sm" @click="vaiPaginaMag(mag.pagina + 1)" :disabled="mag.pagina >= mag.pagine" aria-label="Pagina successiva">›</button>
+            </nav>
+          </section>
+        </div>
+      </div>
+    </div>
+  </template>
+
   <template x-if="tab==='categories'">
     <div class="stack">
       <div class="card">
@@ -866,17 +1077,21 @@
       <div class="card">
         <header><h2>Guida</h2></header>
         <div class="body">
-          <p class="hint" style="margin-top:0">Tutto quello che serve per usare il portale, con esempi.</p>
-          <nav class="guida-indice">
-            <button class="ghost sm" @click="vaiGuida('import')">Caricare i prodotti</button>
-            <button class="ghost sm" @click="vaiGuida('stati')">Gli stati dei prodotti</button>
-            <button class="ghost sm" @click="vaiGuida('categorie')">Le categorie</button>
+          <p class="hint" style="margin-top:0">Tutto quello che serve per usare il portale, con esempi. Scegli la guida:</p>
+          <nav class="seg guida-indice" style="margin-left:0">
+            <button :class="guidaSezione==='import' && 'on'" @click="apriGuida('import')">Guida prodotti</button>
+            <button :class="guidaSezione==='magazzino' && 'on'" @click="apriGuida('magazzino')">Guida magazzino</button>
+            <button :class="guidaSezione==='categorie' && 'on'" @click="apriGuida('categorie')">Guida categorie</button>
           </nav>
         </div>
       </div>
 
-      <div class="card legenda" id="guida-import">
-        <header><h2>Caricare i prodotti</h2></header>
+      <div class="card legenda" id="guida-import" x-show="guidaSezione==='import'">
+        <header>
+          <h2>Guida prodotti</h2>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="go('catalogo')">Vai ai prodotti</button>
+        </header>
         <div class="body">
           <ol class="passi">
             <li>
@@ -927,9 +1142,50 @@
         </div>
       </div>
 
-      <div class="card" id="guida-categorie">
+      <div class="card" id="guida-magazzino" x-show="guidaSezione==='magazzino'">
         <header>
-          <h2>Le categorie</h2>
+          <h2>Guida magazzino</h2>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="go('magazzino')">Vai al magazzino</button>
+        </header>
+        <div class="body istruzioni-corpo">
+          <p style="margin-top:0">Nel Magazzino ci sono i prodotti che sono già sul sito: li trovi, cambi categoria e prezzo, li togli. Ogni modifica va subito sul sito.</p>
+
+          <h4>Trovare un prodotto</h4>
+          <p>A sinistra ci sono le categorie: con un clic, a destra compaiono i loro prodotti, anche quelli delle sottocategorie. «Tutti i prodotti» li mostra tutti. Nel campo di ricerca scrivi il nome, lo SKU o l'EAN. In alto a destra scegli quanti prodotti vedere per pagina; in fondo passi da una pagina all'altra.</p>
+          <div class="istruzioni-figure">
+            <figure>
+              <figcaption>Per categoria</figcaption>
+              <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/categorie.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                   alt="Esempio: una categoria scelta a sinistra e i suoi prodotti a destra">
+            </figure>
+            <figure>
+              <figcaption>Con la ricerca</figcaption>
+              <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/cerca.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                   alt="Esempio: ricerca per SKU con il prodotto trovato">
+            </figure>
+          </div>
+
+          <h4>Cambiare categoria e prezzo</h4>
+          <p>Premi Modifica sulla riga, scegli la categoria (o la sottocategoria), scrivi il prezzo e, se c'è, quello scontato, poi premi Salva (o Invio); Annulla (o Esc) lascia tutto com'era. Se il prodotto sta in più categorie cambia la prima, le altre restano. I prodotti con varianti hanno i prezzi sulle varianti: quelli si cambiano dal sito.</p>
+          <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/modifica.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: un prodotto mentre se ne cambiano categoria e prezzo">
+
+          <h4>Eliminare un prodotto</h4>
+          <p>Premi Elimina e conferma: il prodotto va nel cestino del sito e sparisce subito dal negozio. Non è ancora perso: resta nel cestino per i giorni impostati sul sito (di solito 30), poi WordPress lo elimina da solo.</p>
+          <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/elimina.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: conferma prima di spostare un prodotto nel cestino">
+
+          <h4>Il cestino</h4>
+          <p>In alto passi a «Cestino»: è lo stesso cestino di WordPress (Prodotti → Cestino), quindi ci trovi anche i prodotti cestinati dal sito. Ripristina rimette il prodotto com'era, con lo stesso indirizzo; Elimina per sempre lo cancella subito; Svuota il cestino li cancella tutti. Le immagini restano nella libreria media del sito.</p>
+          <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/cestino.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: il cestino con i pulsanti per ripristinare o eliminare per sempre">
+        </div>
+      </div>
+
+      <div class="card" id="guida-categorie" x-show="guidaSezione==='categorie'">
+        <header>
+          <h2>Guida categorie</h2>
           <div class="grow"></div>
           <button class="ghost sm" @click="go('categories')">Vai alle categorie</button>
         </header>
@@ -1900,6 +2156,15 @@
               </p>
             </div>
 
+            <div class="field" style="max-width:260px;margin-top:14px">
+              <label>Giorni del cestino</label>
+              <input type="number" min="1" max="365" x-model.number="modal.data.giorni_cestino">
+              <p class="hint">
+                Dopo quanti giorni WordPress svuota da solo il cestino del sito: è EMPTY_TRASH_DAYS nel
+                wp-config.php, di serie 30. Serve al Magazzino per mostrare le date giuste.
+              </p>
+            </div>
+
             <h3 style="margin:18px 0 8px">Immagini, per l'eliminazione</h3>
             <p class="hint" style="margin-top:-4px;margin-bottom:10px">
               Facoltative. Le chiavi WooCommerce eliminano i prodotti ma non le immagini:
@@ -2079,6 +2344,46 @@
           </div>
         </template>
 
+        <!-- magazzino: nel cestino, per sempre, svuota -->
+        <template x-if="modal.kind==='magcestina'">
+          <div>
+            <p style="margin-top:0">Sposti nel cestino del sito <strong x-text="modal.data.p.nome" translate="no"></strong>.</p>
+            <dl class="kv">
+              <dt>Sul negozio</dt>
+              <dd>Sparisce subito: non si vede e non si compra più.</dd>
+              <dt>Nel cestino</dt>
+              <dd x-text="tt('Resta {0} giorni, poi WordPress lo elimina da solo. Fino ad allora lo ripristini dal Cestino del Magazzino o da WordPress (Prodotti → Cestino).', modal.data.giorni)"></dd>
+            </dl>
+            <div class="row" style="margin-top:16px;gap:10px">
+              <button class="danger" @click="cestinaMag()" :disabled="mag.busy">Sposta nel cestino</button>
+              <button class="ghost" @click="modal.kind = null">Annulla</button>
+            </div>
+          </div>
+        </template>
+        <template x-if="modal.kind==='magpersempre'">
+          <div>
+            <div class="notice n-err" style="margin-top:0">
+              Elimini per sempre dal sito <strong x-text="modal.data.p.nome" translate="no"></strong>. Non si torna indietro.
+            </div>
+            <p class="hint">Le immagini restano nella libreria media del sito.</p>
+            <div class="row" style="margin-top:16px;gap:10px">
+              <button class="danger" @click="perSempreMag()" :disabled="mag.busy">Elimina per sempre</button>
+              <button class="ghost" @click="modal.kind = null">Annulla</button>
+            </div>
+          </div>
+        </template>
+        <template x-if="modal.kind==='magsvuota'">
+          <div>
+            <div class="notice n-err" style="margin-top:0"
+                 x-text="modal.data.quanti === 1 ? t('Elimini per sempre il prodotto che è nel cestino del sito. Non si torna indietro.') : tt('Elimini per sempre tutti i {0} prodotti nel cestino del sito, anche quelli cestinati da WordPress. Non si torna indietro.', modal.data.quanti)"></div>
+            <p class="hint">Le immagini restano nella libreria media del sito.</p>
+            <div class="row" style="margin-top:16px;gap:10px">
+              <button class="danger" @click="svuotaMag()" :disabled="mag.busy">Svuota il cestino</button>
+              <button class="ghost" @click="modal.kind = null">Annulla</button>
+            </div>
+          </div>
+        </template>
+
         <!-- fonte dati -->
         <template x-if="modal.kind==='provider'">
           <div>
@@ -2250,7 +2555,7 @@
         </template>
 
       </div>
-      <footer x-show="modal.kind !== 'preview' && modal.kind !== 'purge' && modal.kind !== 'perche' && modal.kind !== 'catdel'">
+      <footer x-show="modal.kind !== 'preview' && modal.kind !== 'purge' && modal.kind !== 'perche' && modal.kind !== 'catdel' && !String(modal.kind).startsWith('mag')">
         <button class="ghost" @click="modal.kind=null">Annulla</button>
         <button @click="saveModal()">Salva</button>
       </footer>

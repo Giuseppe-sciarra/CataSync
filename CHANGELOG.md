@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.4.0 — 2026-10-15
+
+### Added
+- Scheda **Magazzino**: i prodotti già sul sito per categoria (a sinistra le categorie, a destra
+  i loro prodotti), con la ricerca per nome, SKU o EAN e le pagine da 15, 20, 30, 50 o 100.
+- Dal Magazzino si cambiano **categoria e prezzi** di un prodotto, salvati subito sul sito.
+- **Elimina** sposta il prodotto nel **cestino del sito** (lo stesso di WordPress). La vista
+  **Cestino** mostra quel cestino con *Ripristina* (stato e indirizzo di prima), *Elimina per
+  sempre* e *Svuota il cestino*.
+- In *Siti → Modifica*, **giorni del cestino** (come `EMPTY_TRASH_DAYS` del sito, di serie 30) per
+  mostrare quando WordPress svuota il cestino.
+- Guida divisa in tre: **Guida prodotti**, **Guida magazzino**, **Guida categorie**, con le
+  schermate.
+
 ## 2.3.0 — 2026-10-15
 
 ### Added
