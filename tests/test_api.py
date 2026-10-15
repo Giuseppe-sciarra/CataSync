@@ -169,6 +169,38 @@ class GiroCompleto(unittest.TestCase):
         self.assertEqual(inviato["regular_price"], "199.90")
         db.close()
 
+        # --- scheda cliente: il cliente la legge, i dati li scrive solo l'amministratore
+        r = c.get("/api/profile")
+        self.assertEqual(r.status_code, 200, r.text)
+        profilo = r.json()
+        self.assertEqual(profilo["name"], "Termoidraulica Demo")
+        self.assertFalse(profilo["modificabile"])
+        self.assertEqual([s["nome"] for s in profilo["siti"]], ["Negozio demo"])
+        self.assertEqual(profilo["pubblicati_totale"], 1)
+        self.assertIn("status_label", profilo["subscription"])
+        self.assertEqual(c.put("/api/profile", json={"legal_name": "Furbo srl"}).status_code, 403)
+        self.assertEqual(c.post("/api/profile/logo", files={"file": ("l.png", _png(64, 64), "image/png")}).status_code, 403)
+        self.assertEqual(c.delete("/api/profile/logo").status_code, 403)
+
+        self.entra("admin@example.com")
+        r = c.put(f"/api/admin/clients/{cid}", json={
+            "name": "Termoidraulica Demo", "content_lang": "IT", "legal_name": "Termoidraulica Demo srl",
+            "vat_number": "01234567890", "tax_code": "01234567890", "sdi_code": "ABC1234",
+            "zip_code": "00100", "city": "Roma", "province": "RM", "country": "Italia",
+            "website": "www.esempio.it", "subscription_status": "active", "plan_name": "Base", "monthly_quota": 50})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = c.post(f"/api/profile/logo?client_id={cid}", files={"file": ("l.png", _png(64, 64), "image/png")})
+        self.assertEqual(r.status_code, 200, r.text)
+
+        self.entra("cliente@example.com")
+        profilo = c.get("/api/profile").json()
+        self.assertEqual(profilo["legal_name"], "Termoidraulica Demo srl")
+        self.assertEqual((profilo["sdi_code"], profilo["zip_code"], profilo["website"]), ("ABC1234", "00100", "www.esempio.it"))
+        self.assertEqual(profilo["subscription"]["plan"], "Base")
+        self.assertEqual(profilo["subscription"]["quota"], 50)
+        self.assertEqual(profilo["logo"], f"/media/logo/{cid}")
+        self.assertEqual(c.get(profilo["logo"]).status_code, 200)
+
         # --- isolamento
         self.assertEqual(c.get("/api/admin/clients").status_code, 403)
         self.assertEqual(c.post("/api/admin/brand/favicon", files={"file": ("x.ico", ico, "image/x-icon")}).status_code, 403)

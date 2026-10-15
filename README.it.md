@@ -22,6 +22,7 @@ negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 | **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
 | **Categorie** — aggiungi (anche dentro un'altra), rinomini, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Elimina** — prima di eliminare una categoria mostra cosa c'è dentro e che fine fa.<br>![Elimina una categoria](docs/screenshots/it/09-delete-category.png) |
 | **Guida** — tre guide (prodotti, magazzino, categorie) con le schermate, in una scheda a sé.<br>![Guida](docs/screenshots/it/10-guide.png) | **Magazzino** — i prodotti già sul sito per categoria, con ricerca, pagine, modifica e il cestino del sito.<br>![Magazzino](docs/screenshots/it/11-warehouse.png) |
+| **Scheda prodotto** — il prodotto intero com'è sul sito: nome, stato, prezzi, scorte, categorie, foto, descrizioni e specifiche.<br>![Scheda prodotto](docs/screenshots/it/12-product-sheet.png) | **Scheda cliente** — anagrafica, logo e abbonamento come li imposta l'amministratore, in sola lettura per il cliente.<br>![Scheda cliente](docs/screenshots/it/13-client-profile.png) |
 
 I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
 inglese, francese e tedesco.
@@ -86,7 +87,19 @@ inglese, francese e tedesco.
 **Magazzino**
 - I **prodotti già sul sito**, per categoria (clic su una categoria: i suoi prodotti e quelli
   delle sottocategorie), con la ricerca per nome, SKU o EAN e pagine da 15, 20, 30, 50 o 100.
-- **Categoria e prezzo** di un prodotto si cambiano direttamente dall'elenco; se il prodotto sta
+- **Modifica** apre la **scheda intera** del prodotto com'è sul sito: nome, stato (pubblicato,
+  bozza, in revisione, privato), marca, SKU ed EAN (controllato), prezzo, prezzo scontato, scorte,
+  categorie, foto, descrizione breve, descrizione e specifiche. *Salva sul sito* la scrive subito.
+- **Foto**: le riordini (la prima è la principale), le togli, le aggiungi con l'indirizzo o le
+  **carichi dal computer** (JPG, PNG, WebP fino a 8 MB; serve `PUBLIC_URL`, perché il sito scarica
+  il file dal portale).
+- **Descrizioni** con un editor semplice (grassetto, corsivo, titoletti, elenchi, link) o
+  direttamente in HTML; l'HTML viene ripulito prima di mandarlo. Le descrizioni con video, contenuti
+  incorporati o moduli si lasciano a WordPress, così non si rompono; gli shortcode restano com'erano,
+  come testo.
+- **Specifiche**: quelle del prodotto si cambiano qui (più valori separati da `|`); gli attributi
+  globali del sito e quelli usati per le varianti si vedono e restano come sono.
+- **Categoria e prezzo** si cambiano anche con un clic direttamente nell'elenco; se il prodotto sta
   in più categorie cambia la prima. I prodotti con varianti tengono i prezzi sulle varianti.
 - **Elimina** sposta il prodotto nel **cestino del sito**, quello di WooCommerce (*Prodotti →
   Cestino*): sparisce subito dal negozio. La vista **Cestino** mostra quello stesso cestino, anche
@@ -114,6 +127,9 @@ inglese, francese e tedesco.
   chiuso su ogni dispositivo.
 - Multi-cliente: clienti, negozi, utenti (amministratore, cliente), stato dell'abbonamento,
   piano e quota mensile.
+- **Scheda cliente**: il cliente vede anagrafica, logo, abbonamento (stato, piano, scadenza, quota
+  mensile, se può pubblicare), siti collegati e aggiornamento notturno. Li cambia solo
+  l'amministratore, da *Clienti*.
 - Categoria e prezzo li mette il cliente direttamente in tabella; una categoria si assegna a
   più righe insieme.
 - Nome, logo e favicon del portale caricabili dal pannello; tema chiaro e scuro.
@@ -255,7 +271,7 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
 | Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
 | Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
-| Prodotti già sul sito: ricerca, categoria, prezzo, cestino | *Magazzino* |
+| Prodotti già sul sito: ricerca, scheda completa, categoria, prezzo, cestino | *Magazzino* |
 | Aggiungere, rinominare, eliminare e ordinare le categorie del negozio | *Categorie* |
 | Voce di menu sotto cui vanno le categorie (mu-plugin facoltativo) | sul sito, *Aspetto → Menu categorie* |
 | Clienti, piano, quota, fonti dati | *Clienti* |
@@ -264,7 +280,7 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Codici, categorie, prezzi, pubblicazione | *Prodotti* (area cliente) |
 | Carichi, eliminazione di un carico | *Storico* |
 | Categorie, attributi e marche del negozio | *Categorie* |
-| Dati anagrafici del cliente | *Negozio* |
+| Dati anagrafici e logo del cliente (lui li vede in *Scheda cliente*) | *Clienti → Modifica* |
 | Pausa fra le ricerche, rinvii, cache | `.env`: `SEARCH_PAUSE`, `SEARCH_MAX_DEFERRALS`, `CACHE_DAYS` |
 | Lingue caricate in LibreTranslate | `docker-compose.yml`: `LT_LOAD_ONLY` |
 | Motori e sospensioni di SearXNG | `searxng/settings.yml` |

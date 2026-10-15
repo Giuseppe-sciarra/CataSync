@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.5.0 — 2026-10-15
+
+### Added
+- Nel Magazzino, **Modifica** (o un clic sul nome) apre la **scheda completa** del prodotto com'è
+  sul sito: nome, stato, marca, SKU, EAN, prezzo e scontato, scorte, categorie, foto, descrizione
+  breve, descrizione e specifiche. *Salva sul sito* manda solo quello che è cambiato e allinea le
+  righe di Prodotti collegate.
+- **Foto**: si riordinano, si tolgono, si aggiungono con l'indirizzo o si **caricano dal
+  computer** (JPG, PNG, WebP fino a 8 MB; serve `PUBLIC_URL`, perché il sito scarica il file dal
+  portale).
+- **Descrizioni** con un editor semplice (grassetto, corsivo, titoletti, elenchi, link) o in HTML,
+  ripulite prima di scriverle sul sito. Quelle con video, contenuti incorporati o moduli restano a
+  WordPress.
+- **Scheda cliente** al posto di Negozio: il cliente vede anagrafica, logo, abbonamento (stato,
+  piano, scadenza con i giorni che mancano, quota del mese, se può pubblicare), prodotti
+  pubblicati, siti collegati e aggiornamento notturno, in sola lettura.
+- In *Clienti → Modifica* l'amministratore ha tutta l'anagrafica (anche codice fiscale, SDI, CAP,
+  paese, sito web) e il **logo del cliente**.
+- Guida magazzino: «Modificare la scheda», con le schermate.
+
+### Changed
+- I dati del cliente e il logo li cambia solo l'amministratore: il cliente che prova a salvarli
+  riceve un rifiuto.
+- Categoria e prezzo al volo si cambiano con un clic sulla cella della riga.
+- Il nome del cliente in alto resta su una riga.
+
+### Fixed
+- «1 prodotto pubblicato questo mese» al singolare.
+
 ## 2.4.0 — 2026-10-15
 
 ### Added

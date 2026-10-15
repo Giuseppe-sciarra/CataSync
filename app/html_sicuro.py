@@ -101,6 +101,114 @@ def pulisci_html(testo: str) -> str:
     return p.risultato()
 
 
+# ------------------------------------------------- descrizioni scritte dal negozio
+# Quando la descrizione la scrive chi gestisce il negozio (Magazzino → Modifica), link,
+# immagini, titoli e tabelle servono: si tengono, con i soli attributi innocui. Spariscono
+# sempre script, stili, iframe, form, gestori di eventi e indirizzi javascript:.
+RICCO_PERMESSI = PERMESSI | {"a", "img", "span", "div", "hr", "h6", "s", "del", "pre", "code",
+                             "figure", "figcaption", "dl", "dt", "dd", "caption"}
+RICCO_ATTRIBUTI = {
+    "a": {"href", "target", "rel", "title"},
+    "img": {"src", "alt", "width", "height", "title"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan"},
+}
+_CLASSE = re.compile(r"^[\w\- ]{1,200}$")
+
+
+def _indirizzo_ok(valore: str, immagine: bool) -> bool:
+    v = (valore or "").strip()
+    basso = re.sub(r"\s+", "", v).lower()
+    if immagine:
+        return basso.startswith(("https://", "http://"))
+    return basso.startswith(("https://", "http://", "mailto:", "tel:", "#", "/")) and not basso.startswith("//")
+
+
+class _PulitoreRicco(_Pulitore):
+    def _apri(self, tag, attrs, chiudi_subito=False):
+        buoni = []
+        for nome, valore in attrs:
+            nome = (nome or "").lower()
+            valore = valore or ""
+            if nome == "class" and _CLASSE.match(valore):
+                buoni.append((nome, valore))
+            elif nome in RICCO_ATTRIBUTI.get(tag, set()):
+                if nome in ("href", "src") and not _indirizzo_ok(valore, tag == "img"):
+                    continue
+                if nome == "target" and valore not in ("_blank", "_self"):
+                    continue
+                if nome in ("width", "height", "colspan", "rowspan") and not valore.isdigit():
+                    continue
+                buoni.append((nome, valore))
+        if tag == "a" and ("target", "_blank") in buoni and not any(n == "rel" for n, _ in buoni):
+            buoni.append(("rel", "noopener"))
+        testo_attr = "".join(f' {n}="{escape(v, quote=True)}"' for n, v in buoni)
+        self.fuori.append(f"<{tag}{testo_attr}>")
+        if tag not in ("img", "hr", "br") and not chiudi_subito:
+            self.aperti.append(tag)
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in DA_BUTTARE:
+            self.salta += 1
+            return
+        if self.salta:
+            return
+        if tag in ("br", "hr", "img"):
+            if tag == "img" and not any((n or "").lower() == "src" and _indirizzo_ok(v or "", True) for n, v in attrs):
+                return
+            self._apri(tag, attrs)
+        elif tag in RICCO_PERMESSI:
+            self._apri(tag, attrs)
+        elif tag in BLOCCHI or tag in VUOTI:
+            self.fuori.append(" ")
+
+    def handle_startendtag(self, tag, attrs):
+        tag = tag.lower()
+        if self.salta or tag in DA_BUTTARE:
+            return
+        if tag in ("br", "hr", "img"):
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in DA_BUTTARE:
+            if self.salta:
+                self.salta -= 1
+            return
+        if self.salta or tag in ("br", "hr", "img"):
+            return
+        if tag in RICCO_PERMESSI and tag in self.aperti:
+            while self.aperti:
+                aperto = self.aperti.pop()
+                self.fuori.append(f"</{aperto}>")
+                if aperto == tag:
+                    break
+        elif tag in BLOCCHI:
+            self.fuori.append(" ")
+
+    def risultato(self) -> str:
+        while self.aperti:
+            self.fuori.append(f"</{self.aperti.pop()}>")
+        return "".join(self.fuori).strip()
+
+
+def pulisci_html_ricco(testo: str) -> str:
+    """Descrizione scritta dal negozio: formattazione, link e immagini sì, codice attivo no."""
+    if not testo:
+        return ""
+    testo = str(testo)
+    if "<" not in testo:
+        return testo
+    p = _PulitoreRicco()
+    try:
+        p.feed(testo)
+        p.close()
+    except Exception:  # pragma: no cover
+        return escape(re.sub(r"<[^>]*>", " ", testo), quote=False)
+    return p.risultato()
+
+
 def testo_puro(testo) -> str:
     """Nomi, marche, specifiche: niente tag, niente entità che diventano tag."""
     if testo is None:

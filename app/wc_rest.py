@@ -599,8 +599,10 @@ async def scan_catalog(site, max_pages: int = 30) -> list[dict]:
 
 
 # ------------------------------------------------------------ eliminazione
-async def get_product(site, product_id: int) -> dict:
-    return await _get(site, f"/products/{product_id}")
+async def get_product(site, product_id: int, *, grezzo: bool = False) -> dict:
+    """grezzo=True chiede i testi come sono salvati (context=edit): senza, WooCommerce manda le
+    descrizioni già passate da wpautop e dagli shortcode, e riscrivendole si perderebbero."""
+    return await _get(site, f"/products/{product_id}", {"context": "edit"} if grezzo else None)
 
 
 # ------------------------------------------------------------ magazzino

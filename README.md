@@ -22,6 +22,7 @@ multi-client, nothing to install on the shops.
 | **Search settings** — engine, translation, headless browser, and how the last searches went.<br>![Settings](docs/screenshots/en/06-settings.png) | **Portal appearance** — name, logo and favicon of your portal.<br>![Appearance](docs/screenshots/en/07-appearance.png) |
 | **Categories** — add (also inside another one), rename, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Delete** — before deleting a category it shows what is inside and what happens to it.<br>![Delete a category](docs/screenshots/en/09-delete-category.png) |
 | **Guide** — three guides (products, warehouse, categories) with screenshots, in a tab of their own.<br>![Guide](docs/screenshots/en/10-guide.png) | **Warehouse** — the products already on the site by category, with search, pages, edit and the site's trash.<br>![Warehouse](docs/screenshots/en/11-warehouse.png) |
+| **Product sheet** — the whole product as it is on the site: name, status, prices, stock, categories, photos, descriptions and specifications.<br>![Product sheet](docs/screenshots/en/12-product-sheet.png) | **Customer profile** — company details, logo and subscription as set by the administrator, read-only for the client.<br>![Customer profile](docs/screenshots/en/13-client-profile.png) |
 
 The data shown is a demo with made-up names and `.example` sites. The interface is available
 in English, Italian, French and German.
@@ -83,7 +84,18 @@ in English, Italian, French and German.
 **Warehouse**
 - The **products already on the site**, by category (click a category, see its products and those
   of its subcategories), with a search by name, SKU or EAN and pages of 15, 20, 30, 50 or 100.
-- **Category and price** of a product change right from the list; with several categories only
+- **Edit** opens the **whole product sheet** as it is on the site: name, status (published, draft,
+  pending, private), brand, SKU and EAN (checked), price, sale price, stock, categories, photos,
+  short description, description and specifications. *Save to the site* writes it at once.
+- **Photos**: reorder them (the first is the main one), remove them, add them by address or
+  **upload them from the computer** (JPG, PNG, WebP up to 8 MB; needs `PUBLIC_URL`, because the site
+  downloads the file from the portal).
+- **Descriptions** with a simple editor (bold, italics, subheadings, lists, links) or straight in
+  HTML; the HTML is cleaned before it is sent. Descriptions holding videos, embeds or forms are
+  left to WordPress, so they are never broken; shortcodes stay as they are, as text.
+- **Specifications**: the product's own ones are edited here (several values separated by `|`);
+  the site's global attributes and those used for variations are shown and kept as they are.
+- **Category and price** also change at a click right in the list; with several categories only
   the first one changes. Variable products keep their prices on the variations.
 - **Delete** moves the product to the **site's trash**, WooCommerce's own (*Products → Trash*):
   it disappears from the shop at once. The **Trash** view shows that same trash, products trashed
@@ -111,6 +123,9 @@ in English, Italian, French and German.
   get a short invitation to it, which stays closed once dismissed, on every device.
 - Multi-client: clients, shops, users (administrator, client), subscription status, plan and
   monthly quota.
+- **Customer profile**: the client sees their company details, logo, subscription (status, plan,
+  expiry, monthly quota, whether publishing is allowed), connected sites and nightly update. Only the
+  administrator changes them, from *Clients*.
 - Category and price are set by the client right in the table; one category can go to many rows
   at once.
 - Portal name, logo and favicon uploadable from the panel; light and dark theme.
@@ -253,7 +268,7 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Engine status, causes of misses, sites refusing to be read | *Settings → How the search went* |
 | A list of codes searched one by one, with the outcome | *Settings → Batch test* |
 | Portal name, logo, favicon | *Settings → Portal appearance* |
-| Products already on the site: search, category, price, trash | *Warehouse* |
+| Products already on the site: search, full product sheet, category, price, trash | *Warehouse* |
 | Add, rename, delete and order the shop's categories | *Categories* |
 | Menu item the categories go under (optional mu-plugin) | on the site, *Appearance → Menu categorie* |
 | Clients, plan, quota, data sources | *Clients* |
@@ -262,7 +277,7 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Codes, categories, prices, publishing | *Products* (client area) |
 | Batches, deleting a batch | *History* |
 | Shop categories, attributes, brands | *Categories* |
-| Client's company details | *Shop* |
+| Client's company details and logo (the client sees them in *Customer profile*) | *Clients → Edit* |
 | Pause between searches, retries, cache | `.env`: `SEARCH_PAUSE`, `SEARCH_MAX_DEFERRALS`, `CACHE_DAYS` |
 | Languages loaded in LibreTranslate | `docker-compose.yml`: `LT_LOAD_ONLY` |
 | SearXNG engines and suspensions | `searxng/settings.yml` |

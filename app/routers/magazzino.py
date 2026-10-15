@@ -2,15 +2,19 @@
 del sito. Eliminare sposta nel cestino di WooCommerce (lo stesso di Prodotti → Cestino in
 WordPress); da lì si ripristina o si elimina per sempre. WordPress svuota il cestino da solo
 dopo i giorni impostati sul sito (EMPTY_TRASH_DAYS, di serie 30)."""
+import json
 import re
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import quality, wc_rest
+from .. import codici, config, quality, wc_rest
+from ..html_sicuro import pulisci_html_ricco, testo_puro, tipo_immagine
 from ..db import get_db
 from ..models import Job, JobItem, ProdottoCestinato, Site, User
 from ..security import require_user
@@ -123,7 +127,7 @@ class ModificaProdotto(BaseModel):
 
 async def _prodotto(site: Site, product_id: int) -> dict:
     try:
-        return await wc_rest.get_product(site, product_id)
+        return await wc_rest.get_product(site, product_id, grezzo=True)
     except wc_rest.SiteError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
 
@@ -216,6 +220,283 @@ async def modifica_prodotto(
     nome = aggiornato.get("name") or wc_rest.html.unescape(prodotto.get("name") or "")
     audit(db, user.email, "magazzino_modifica", f"{site.name} · {nome} (#{product_id}) · {', '.join(sorted(corpo))}")
     return {"ok": True, "prodotto": _riga(aggiornato, site.giorni_cestino or 30), "cambiato": True}
+
+
+# ------------------------------------------------------------ scheda completa
+STATI_SCHEDA = ("publish", "draft", "pending", "private")
+DISPONIBILITA = ("instock", "outofstock", "onbackorder")
+# Foto caricate dal computer: restano qui il tempo che WooCommerce le scarichi.
+CARTELLA_FOTO = "foto-temporanee"
+FOTO_MAX_BYTES = 8 * 1024 * 1024
+FOTO_DURATA = 2 * 24 * 3600
+
+
+def _scheda(p: dict) -> dict:
+    """La scheda come la mostra l'editor del Magazzino."""
+    attributi = []
+    for a in p.get("attributes") or []:
+        attributi.append({
+            "id": a.get("id") or 0, "nome": wc_rest.html.unescape(a.get("name") or ""),
+            "valore": " | ".join(wc_rest.html.unescape(str(o)) for o in (a.get("options") or [])),
+            "globale": bool(a.get("id")), "variante": bool(a.get("variation")), "visibile": a.get("visible", True),
+        })
+    marche = p.get("brands")
+    return {
+        "id": p.get("id"),
+        "tipo": p.get("type") or "simple",
+        "nome": p.get("name") or "",
+        "stato": p.get("status") or "publish",
+        "sku": p.get("sku") or "",
+        "ean": p.get("global_unique_id") or "",
+        "marca": wc_rest.html.unescape((marche[0] or {}).get("name") or "") if marche else "",
+        "marche_attive": marche is not None,
+        "categorie": [c.get("id") for c in (p.get("categories") or []) if c.get("id")],
+        "prezzo": p.get("regular_price") or "",
+        "scontato": p.get("sale_price") or "",
+        "gestisci_scorte": bool(p.get("manage_stock")),
+        "quantita": p.get("stock_quantity"),
+        "disponibilita": p.get("stock_status") or "instock",
+        "descrizione_breve": p.get("short_description") or "",
+        "descrizione": p.get("description") or "",
+        "immagini": [{"id": i.get("id"), "src": i.get("src") or "", "thumb": i.get("thumbnail") or i.get("src") or ""}
+                     for i in (p.get("images") or [])],
+        "specifiche": attributi,
+        "link": p.get("permalink") or "",
+        "carica_foto": bool(config.PUBLIC_URL),
+    }
+
+
+@router.get("/{site_id}/magazzino/{product_id}/scheda")
+async def leggi_scheda(site_id: int, product_id: int, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    site = _visible_site(db, site_id, user)
+    prodotto = wc_rest._nome_in_chiaro(await _prodotto(site, product_id))
+    if prodotto.get("status") == "trash":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Il prodotto è nel cestino: prima ripristinalo.")
+    return _scheda(prodotto)
+
+
+class ImmagineIn(BaseModel):
+    id: int | None = None
+    src: str | None = Field(default=None, max_length=1000)
+
+
+class SpecificaIn(BaseModel):
+    nome: str = Field(max_length=120)
+    valore: str = Field(max_length=500)
+
+
+class SchedaIn(BaseModel):
+    # None = non toccare: l'editor manda solo quello che è cambiato.
+    nome: str | None = Field(default=None, max_length=200)
+    stato: str | None = None
+    sku: str | None = Field(default=None, max_length=100)
+    ean: str | None = Field(default=None, max_length=20)
+    marca: str | None = Field(default=None, max_length=120)
+    categorie: list[int] | None = Field(default=None, max_length=20)
+    prezzo: str | None = Field(default=None, max_length=24)
+    scontato: str | None = Field(default=None, max_length=24)
+    gestisci_scorte: bool | None = None
+    quantita: int | None = Field(default=None, ge=0, le=10_000_000)
+    disponibilita: str | None = None
+    descrizione_breve: str | None = Field(default=None, max_length=20_000)
+    descrizione: str | None = Field(default=None, max_length=200_000)
+    immagini: list[ImmagineIn] | None = Field(default=None, max_length=20)
+    specifiche: list[SpecificaIn] | None = Field(default=None, max_length=80)
+
+
+def _errore_woo(exc: wc_rest.SiteError) -> HTTPException:
+    """I rifiuti più comuni di WooCommerce, detti in italiano."""
+    testo = str(exc)
+    if "duplicated SKU" in testo or "SKU" in testo and "duplicat" in testo:
+        return HTTPException(status.HTTP_409_CONFLICT, "Questo SKU c'è già su un altro prodotto del sito.")
+    if "GTIN" in testo or "global unique" in testo.lower():
+        return HTTPException(status.HTTP_409_CONFLICT, "Questo EAN c'è già su un altro prodotto del sito.")
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, testo)
+
+
+@router.put("/{site_id}/magazzino/{product_id}/scheda")
+async def salva_scheda(
+    site_id: int, product_id: int, data: SchedaIn, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Tutta la scheda: nome, stato, codici, marca, categorie, prezzi, scorte, descrizioni,
+    foto e specifiche. Si scrive solo quello che è cambiato."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    prodotto = wc_rest._nome_in_chiaro(await _prodotto(site, product_id))
+    if prodotto.get("status") == "trash":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Il prodotto è nel cestino: prima ripristinalo.")
+    variabile = (prodotto.get("type") or "simple") == "variable"
+    corpo: dict = {}
+
+    if data.nome is not None:
+        nome = testo_puro(data.nome)
+        if not nome:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Il nome del prodotto non può restare vuoto.")
+        corpo["name"] = nome
+    if data.stato is not None:
+        if data.stato not in STATI_SCHEDA:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Stato non valido.")
+        corpo["status"] = data.stato
+    if data.sku is not None:
+        corpo["sku"] = testo_puro(data.sku)
+    if data.ean is not None:
+        ean = "".join(ch for ch in data.ean if ch.isdigit())
+        if data.ean.strip() and not codici.checksum_gtin(ean):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "EAN non valido: servono 8, 12, 13 o 14 cifre con la cifra di controllo giusta.")
+        corpo["global_unique_id"] = ean
+    if data.categorie is not None:
+        ids = list(dict.fromkeys(int(i) for i in data.categorie if i))
+        if not ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scegli almeno una categoria.")
+        try:
+            esistenti = {c.get("id") for c in await wc_rest.categorie(site)}
+        except wc_rest.SiteError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+        if any(i not in esistenti for i in ids):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "La categoria non c'è più sul sito: rileggi le categorie.")
+        corpo["categories"] = [{"id": i} for i in ids]
+    if data.prezzo is not None or data.scontato is not None:
+        if variabile:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "È un prodotto con varianti: i prezzi stanno sulle varianti e si cambiano dal sito.")
+        prezzo = _clean_price(data.prezzo) if data.prezzo is not None else (prodotto.get("regular_price") or "")
+        scontato = _clean_price(data.scontato) if data.scontato is not None else (prodotto.get("sale_price") or "")
+        if data.prezzo and not prezzo:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prezzo non valido: scrivi un numero, per esempio 129,90.")
+        if data.scontato and not scontato:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prezzo scontato non valido: scrivi un numero, per esempio 99,90.")
+        problema = quality.sale_price_issue({"regular_price": prezzo, "sale_price": scontato})
+        if problema:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, problema)
+        if data.prezzo is not None:
+            corpo["regular_price"] = prezzo
+        if data.scontato is not None:
+            corpo["sale_price"] = scontato
+    if data.gestisci_scorte is not None:
+        corpo["manage_stock"] = data.gestisci_scorte
+    if data.quantita is not None:
+        corpo["stock_quantity"] = data.quantita
+    if data.disponibilita is not None:
+        if data.disponibilita not in DISPONIBILITA:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Disponibilità non valida.")
+        corpo["stock_status"] = data.disponibilita
+    if data.descrizione_breve is not None:
+        corpo["short_description"] = pulisci_html_ricco(data.descrizione_breve)
+    if data.descrizione is not None:
+        corpo["description"] = pulisci_html_ricco(data.descrizione)
+    if data.immagini is not None:
+        foto = []
+        for i in data.immagini:
+            if i.id:
+                foto.append({"id": int(i.id)})
+            elif i.src and re.match(r"^https?://", i.src.strip(), re.I):
+                foto.append({"src": i.src.strip()})
+        corpo["images"] = foto
+    specifiche_scritte: list[dict] = []
+    if data.specifiche is not None:
+        # Quelle globali e quelle delle varianti non passano dall'editor: restano com'erano.
+        fisse = [a for a in (prodotto.get("attributes") or []) if a.get("id") or a.get("variation")]
+        nuove = []
+        for s in data.specifiche:
+            nome, valore = testo_puro(s.nome), testo_puro(s.valore)
+            if nome and valore:
+                opzioni = [v.strip() for v in valore.split("|") if v.strip()] or [valore]
+                nuove.append({"id": 0, "name": nome, "visible": True, "variation": False, "options": opzioni})
+                specifiche_scritte.append({"name": nome, "value": valore})
+        corpo["attributes"] = [dict(a, position=n) for n, a in enumerate(fisse + nuove)]
+        if site.specs_meta:
+            corpo["meta_data"] = [{"key": wc_rest.TD_SPECS_META_KEY, "value": [
+                {"label": s["name"], "value": s["value"]} for s in specifiche_scritte[:wc_rest.TD_SPECS_MAX]]}]
+
+    if data.marca is not None:
+        marca = testo_puro(data.marca)
+        if marca:
+            brand_id = await wc_rest.ensure_brand(site, marca)
+            if not brand_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Marca non assegnata: sul sito le Marche di WooCommerce non sono attive.")
+            corpo["brands"] = [{"id": brand_id}]
+        else:
+            corpo["brands"] = []
+
+    if not corpo:
+        return {"ok": True, "cambiato": False, "scheda": _scheda(prodotto), "prodotto": _riga(prodotto, site.giorni_cestino or 30)}
+    try:
+        aggiornato, _ = await wc_rest._request(site, "PUT", f"/products/{product_id}", json_body=corpo)
+    except wc_rest.SiteError as exc:
+        raise _errore_woo(exc)
+    aggiornato = wc_rest._nome_in_chiaro(aggiornato or {})
+
+    # Le righe del portale legate a questo prodotto si allineano: una nuova pubblicazione
+    # non deve rimettere i dati vecchi.
+    for r in db.scalars(select(JobItem).join(Job, Job.id == JobItem.job_id)
+                        .where(Job.site_id == site.id, JobItem.wc_product_id == product_id)).all():
+        try:
+            scheda = json.loads(r.normalized or "{}")
+        except ValueError:
+            scheda = {}
+        if "name" in corpo:
+            r.title = scheda["title"] = corpo["name"][:255]
+        if data.marca is not None:
+            r.brand = scheda["brand"] = testo_puro(data.marca)[:120]
+        if "description" in corpo:
+            scheda["description"] = corpo["description"]
+        if "short_description" in corpo:
+            scheda["short_description"] = corpo["short_description"]
+        if "images" in corpo:
+            scheda["images"] = [i.get("src") for i in (aggiornato.get("images") or []) if i.get("src")]
+        if specifiche_scritte:
+            scheda["attributes"] = specifiche_scritte
+        if "categories" in corpo:
+            r.wc_category_id = corpo["categories"][0]["id"]
+        if "regular_price" in corpo:
+            r.regular_price = corpo["regular_price"]
+        if "sale_price" in corpo:
+            r.sale_price = corpo["sale_price"]
+        r.normalized = json.dumps(scheda, ensure_ascii=False)
+        r.edited = True
+    db.commit()
+    nome = aggiornato.get("name") or prodotto.get("name") or ""
+    audit(db, user.email, "magazzino_scheda", f"{site.name} · {nome} (#{product_id}) · {', '.join(sorted(corpo))}")
+    return {"ok": True, "cambiato": True, "scheda": _scheda(aggiornato),
+            "prodotto": _riga(aggiornato, site.giorni_cestino or 30)}
+
+
+def _pulisci_foto_vecchie(cartella) -> None:
+    limite = time.time() - FOTO_DURATA
+    for f in cartella.glob("*"):
+        try:
+            if f.is_file() and f.stat().st_mtime < limite:
+                f.unlink()
+        except OSError:
+            pass
+
+
+@router.post("/{site_id}/magazzino/foto")
+async def carica_foto(
+    site_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Una foto dal computer: il portale la tiene per due giorni a un indirizzo pubblico e
+    non indovinabile, da cui WooCommerce la scarica nella libreria media del sito quando si
+    salva la scheda. Per questo serve PUBLIC_URL, raggiungibile dal sito."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    if not config.PUBLIC_URL:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Per caricare foto dal computer il portale deve avere PUBLIC_URL impostato: per ora usa un indirizzo.")
+    blob = await file.read(FOTO_MAX_BYTES + 1)
+    if len(blob) > FOTO_MAX_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "La foto non deve superare gli 8 MB.")
+    tipo = tipo_immagine(blob) if blob else ""
+    if tipo not in (".jpg", ".png", ".webp"):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Formati accettati: JPG, PNG, WebP.")
+    cartella = config.UPLOAD_DIR / CARTELLA_FOTO
+    cartella.mkdir(parents=True, exist_ok=True)
+    _pulisci_foto_vecchie(cartella)
+    nome = secrets.token_hex(16) + tipo
+    (cartella / nome).write_bytes(blob)
+    audit(db, user.email, "magazzino_foto", f"{site.name} · {nome}")
+    return {"src": f"{config.PUBLIC_URL}/media/foto/{nome}"}
 
 
 @router.post("/{site_id}/magazzino/{product_id}/ripristina")

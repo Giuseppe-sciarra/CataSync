@@ -504,6 +504,13 @@ class ProfileIn(BaseModel):
     accent_color: str = ""
 
 
+def _solo_admin(user: User) -> None:
+    """La scheda cliente la compila l'amministratore: il cliente la vede e basta."""
+    if not user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Questi dati li aggiorna l'amministratore del portale: se qualcosa non va, scrivigli.")
+
+
 def _own_client(db: Session, user: User, client_id: int | None = None) -> Client:
     """L'admin può agire su qualunque cliente, il cliente solo sul proprio.
 
@@ -529,6 +536,21 @@ def get_profile(client_id: int | None = None, db: Session = Depends(get_db), use
     data["name"] = row.name
     data["logo"] = f"/media/logo/{row.id}" if row.logo_path else ""
     data["subscription"] = billing.as_json(billing.check(db, row))
+    # Scheda cliente: tutto quello che c'è qui lo imposta l'amministratore.
+    data["attivo"] = bool(row.is_active)
+    data["cliente_dal"] = row.created_at.isoformat() if row.created_at else None
+    data["lingua_schede"] = row.content_lang or "IT"
+    data["siti"] = [
+        {"id": s.id, "nome": s.name, "indirizzo": s.base_url, "attivo": bool(s.is_active)}
+        for s in sorted(row.sites, key=lambda s: s.name.lower())
+    ]
+    data["pubblicati_totale"] = db.scalar(
+        select(func.count(JobItem.id))
+        .join(Job, Job.id == JobItem.job_id)
+        .join(Site, Site.id == Job.site_id)
+        .where(Site.client_id == row.id, JobItem.status == "pushed")
+    ) or 0
+    data["modificabile"] = bool(user.is_admin)
     return data
 
 
@@ -539,6 +561,7 @@ def save_profile(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
+    _solo_admin(user)
     row = _own_client(db, user, client_id)
     for field in PROFILE_FIELDS:
         setattr(row, field, (getattr(data, field) or "").strip()[:190])
@@ -562,6 +585,7 @@ async def upload_logo(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
+    _solo_admin(user)
     row = _own_client(db, user, client_id)
 
     suffix = ALLOWED_LOGO_TYPES.get((file.content_type or "").lower())
@@ -594,6 +618,7 @@ async def upload_logo(
 
 @router.delete("/profile/logo")
 def delete_logo(client_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    _solo_admin(user)
     row = _own_client(db, user, client_id)
     for old in config.UPLOAD_DIR.glob(f"logo-{row.id}.*"):
         old.unlink(missing_ok=True)

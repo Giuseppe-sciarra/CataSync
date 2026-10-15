@@ -23,10 +23,11 @@ hanno bloccati), quali siti sono usciti e cosa è successo aprendo ciascuno.
 Cercando col **codice produttore**, se la pagina trovata riporta l'EAN lo si recupera e
 finisce sul prodotto WooCommerce.
 
-**Magazzino** mostra i prodotti già sul sito, per categoria e con la ricerca: lì si cambiano
-categoria e prezzo e si eliminano (capitolo 16). **Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
+**Magazzino** mostra i prodotti già sul sito, per categoria e con la ricerca: lì se ne modifica la
+scheda intera, si cambiano al volo categoria e prezzo e si eliminano (capitolo 16). **Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
 nome, eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
-**Negozio** contiene i dati anagrafici del cliente.
+**Scheda cliente** mostra anagrafica, logo e abbonamento del cliente, in sola lettura: li
+aggiorna l'amministratore.
 
 **Guida** è la scheda delle istruzioni, tutte in un posto, divise in tre guide: prodotti (i
 quattro passi del caricamento e gli stati), magazzino e categorie, ognuna con le schermate di
@@ -194,8 +195,13 @@ anche da icona sul telefono (`apple-touch-icon`). Si vede subito nella scheda, s
 ricaricare. Un'immagine non quadrata o più piccola di 180 pixel passa con un avviso; un SVG
 con script o gestori di eventi viene rifiutato. *Torna a quella di serie* la toglie.
 
-**Negozio.** Ogni cliente ha la sua scheda con ragione sociale, partita IVA, codice fiscale,
-SDI, PEC, sede, contatti e logo. Sono dati interni al portale: non finiscono sul sito.
+**Scheda cliente.** Ogni cliente ha la sua scheda con ragione sociale, partita IVA, codice
+fiscale, SDI, PEC, sede, contatti e logo. Li compila l'amministratore in *Clienti → Modifica*
+(anche il logo, che si salva subito); il cliente li vede nella scheda **Scheda cliente** ma non li
+può cambiare. Nella stessa scheda il cliente trova l'abbonamento (stato, piano, scadenza con i
+giorni che mancano, quota del mese con la barra, se può pubblicare e, se no, perché), quanti
+prodotti ha pubblicato in tutto, da quando è cliente, i siti collegati e l'aggiornamento notturno.
+Sono dati interni al portale: non finiscono sul sito.
 
 ## 6. Stato dei prodotti
 
@@ -311,6 +317,7 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Categorie: creare, rinominare, eliminare | `POST /products/categories`, `PUT` / `DELETE /products/categories/{id}` |
 | Magazzino: elenco e ricerca | `GET /products` con `status=any` (o `trash`), `category`, `search` + `search_fields[]=name,sku,global_unique_id`, `_fields` |
 | Magazzino: categoria e prezzi | `PUT /products/{id}` (`categories`, `regular_price`, `sale_price`) |
+| Magazzino: scheda completa | `GET /products/{id}`; `PUT /products/{id}` (`name`, `status`, `sku`, `global_unique_id`, prezzi, scorte, `categories`, `images` con `id` o `src`, `short_description`, `description`, `attributes`, `brands`, meta `_td_product_specs`) |
 | Magazzino: nel cestino, ripristino | `DELETE /products/{id}` senza `force`; `PUT /products/{id}` con `status` e `slug` di prima |
 | Magazzino: per sempre, svuota | `DELETE /products/{id}?force=true`; `POST /products/batch` (`delete`, a lotti da cento) |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
@@ -442,8 +449,32 @@ WooCommerce: niente copie nel portale che possano restare indietro.
 - **Ricerca** per nome, SKU o EAN, anche dentro la categoria scelta. Con un WooCommerce vecchio,
   che non conosce `search_fields`, si cerca solo nel nome e nel testo.
 - **Pagine** da 15, 20, 30, 50 o 100 prodotti: la scelta resta nel browser.
-- **Modifica**: categoria (o sottocategoria), prezzo e prezzo scontato, salvati subito sul sito.
-  Se il prodotto sta in più categorie cambia la prima e le altre restano. Lo scontato dev'essere
+- **Modifica** (o un clic sul nome) apre la **scheda completa**, letta in quel momento dal sito:
+  nome, stato (pubblicato, bozza, in revisione, privato), marca, SKU, EAN (con il controllo della
+  cifra finale), prezzo e scontato, scorte (quantità o disponibilità), categorie (se ne aggiungono
+  e se ne tolgono, almeno una resta), foto, descrizione breve, descrizione e specifiche. *Salva sul
+  sito* manda solo quello che è cambiato. Uno SKU o un EAN già usati da un altro prodotto vengono
+  rifiutati da WooCommerce e il portale lo dice in chiaro.
+  - **Foto**: la prima è la principale; si riordinano con le frecce, si tolgono (restano nella
+    libreria media), si aggiungono con l'indirizzo o con *Carica dal computer* (JPG, PNG, WebP fino
+    a 8 MB). Il file caricato resta per due giorni in `uploads/foto-temporanee/` e si legge da
+    `/media/foto/<nome>`: è il sito a scaricarlo da lì e a metterlo nella sua libreria, quindi
+    serve `PUBLIC_URL` raggiungibile dal sito. Senza `PUBLIC_URL` si aggiungono solo con
+    l'indirizzo.
+  - **Descrizioni**: editor semplice (grassetto, corsivo, sottolineato, titoletti, elenchi, link)
+    o HTML. Prima di scrivere sul sito l'HTML viene ripulito: niente script, iframe, moduli,
+    gestori di eventi o link `javascript:`. Una descrizione che ha già video, iframe o moduli non si
+    apre nell'editor (si rovinerebbe): si cambia da WordPress. Gli shortcode (`[...]`) restano come
+    testo. Il testo salvato da WordPress senza `<p>`, a righe vuote, nell'editor diventa a paragrafi;
+    aprire la scheda e chiuderla senza scrivere non cambia niente.
+  - **Specifiche**: gli attributi del prodotto (più valori separati da `|`), e se il sito ha la
+    tabella delle specifiche anche il meta `_td_product_specs`. Gli attributi globali del sito e
+    quelli usati per le varianti si vedono ma restano come sono.
+  - Le righe di Prodotti collegate a quel prodotto si allineano (nome, marca, prezzi, categoria),
+    così una nuova pubblicazione non rimette i dati vecchi.
+- **Categoria e prezzo al volo**: un clic sulla categoria o sul prezzo nella riga apre la modifica
+  veloce, salvata subito sul sito. Se il prodotto sta in più categorie cambia la prima e le altre
+  restano. Lo scontato dev'essere
   sotto il pieno, come in Prodotti. I prodotti con varianti hanno i prezzi sulle varianti, che si
   cambiano dal sito. Le righe del portale collegate a quel prodotto si allineano: una nuova
   pubblicazione non rimette il prezzo vecchio.

@@ -2,13 +2,16 @@
 ripristino ed eliminazione definitiva. WooCommerce è finto (niente rete) ma si comporta come
 quello vero: il cestino è uno stato del prodotto e lo slug prende «__trashed»."""
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 import _ambiente  # noqa: F401
 
 from fastapi.testclient import TestClient
 
-from app import wc_rest
+from app import config, wc_rest
 from app.db import SessionLocal
 from app.main import app
 from app.models import Client, Job, JobItem, ProdottoCestinato
@@ -28,6 +31,16 @@ class WooMagazzino:
                 "permalink": f"https://negozio.example/p/{i}", "type": "simple", "date_modified": "2026-10-10T09:00:00",
             }
         self.chiamate: list[tuple] = []
+        self.marche = [{"id": 701, "name": "Termika"}]
+        self.prodotti[122].update({
+            "brands": [{"id": 701, "name": "Termika"}], "short_description": "<p>Breve</p>",
+            "description": "<p>Lunga</p>", "type": "simple",
+            "images": [{"id": 9, "src": "https://img.example/9.png", "thumbnail": "https://img.example/9-150.png"}],
+            "attributes": [
+                {"id": 3, "name": "Colore", "options": ["Bianco"], "variation": False, "visible": True},
+                {"id": 0, "name": "Potenza", "options": ["24 kW"], "variation": False, "visible": True},
+            ],
+        })
 
     async def __call__(self, site, method, path, params=None, json_body=None, base=wc_rest.BASE):
         self.chiamate.append((method, path, dict(params or {}), json_body))
@@ -51,6 +64,12 @@ class WooMagazzino:
             return [{"id": 15, "name": "Senza categoria", "slug": "senza-categoria", "parent": 0, "count": 0, "menu_order": 9},
                     {"id": 31, "name": "Caldaie", "slug": "caldaie", "parent": 0, "count": 10, "menu_order": 0},
                     {"id": 32, "name": "Pompe", "slug": "pompe", "parent": 0, "count": 15, "menu_order": 1}], {"X-WP-TotalPages": "1"}
+        if path == "/products/brands" and method == "GET":
+            return [b for b in self.marche if params.get("search", "").lower() in b["name"].lower()], {}
+        if path == "/products/brands" and method == "POST":
+            nuova = {"id": 701 + len(self.marche), "name": json_body["name"]}
+            self.marche.append(nuova)
+            return nuova, {}
         if path == "/products/batch" and method == "POST":
             fatti = []
             for pid in json_body.get("delete", []):
@@ -68,6 +87,8 @@ class WooMagazzino:
                 p["date_modified"] = "2026-10-15T10:30:00"
                 return dict(p), {}
             if method == "PUT":
+                if json_body.get("sku") == "DUP":
+                    raise wc_rest.SiteError("HTTP 400 dal sito. Invalid or duplicated SKU.")
                 p.update(json_body)
                 return dict(p), {}
         return {}, {}
@@ -196,6 +217,71 @@ class Magazzino(unittest.TestCase):
         self.assertEqual(self.c.patch(self.url("/120"), json={}).json()["cambiato"], False)
         db.close()
 
+    def test_2c_scheda_completa(self):
+        d = self.c.get(self.url("/122/scheda")).json()
+        # I testi come sono salvati: in «view» WooCommerce li passa da wpautop e dagli shortcode.
+        self.assertEqual(self.woo.chiamate[-1][:3], ("GET", "/products/122", {"context": "edit"}))
+        self.assertEqual((d["nome"], d["marca"], d["descrizione"], d["immagini"][0]["thumb"]),
+                         ("Prodotto & co 22", "Termika", "<p>Lunga</p>", "https://img.example/9-150.png"))
+        self.assertEqual([(s["nome"], s["valore"], s["globale"]) for s in d["specifiche"]],
+                         [("Colore", "Bianco", True), ("Potenza", "24 kW", False)])
+        db = SessionLocal()
+        job = Job(site_id=self.sito, label="Carico scheda", status="done", total=1)
+        db.add(job); db.commit()
+        riga = JobItem(job_id=job.id, gtin="8000000000022", status="pushed", wc_product_id=122,
+                       normalized=json.dumps({"gtin": "8000000000022", "title": "vecchio"}))
+        db.add(riga); db.commit()
+        r = self.c.put(self.url("/122/scheda"), json={
+            "nome": " Caldaia <b>Eco</b> 24 ", "stato": "draft", "sku": "TK-1", "ean": "4006381333931", "marca": "Flussa",
+            "descrizione": '<p onclick="x()">Testo <a href="https://x.it" target="_blank">link</a></p><script>alert(1)</script>',
+            "descrizione_breve": "<p>Breve nuova</p>",
+            "immagini": [{"src": "https://img.example/nuova.jpg"}, {"id": 9}, {"src": "javascript:alert(1)"}],
+            "specifiche": [{"nome": "Potenza", "valore": "28 kW"}, {"nome": "Classe", "valore": "A | A+"}, {"nome": "", "valore": "x"}],
+            "gestisci_scorte": True, "quantita": 7, "prezzo": "1.290,00", "scontato": "",
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        put = self.woo.chiamate[-1][3]
+        self.assertEqual((put["name"], put["status"], put["sku"], put["global_unique_id"]), ("Caldaia Eco 24", "draft", "TK-1", "4006381333931"))
+        self.assertEqual(put["description"], '<p>Testo <a href="https://x.it" target="_blank" rel="noopener">link</a></p>')
+        self.assertEqual(put["images"], [{"src": "https://img.example/nuova.jpg"}, {"id": 9}])
+        self.assertEqual([(a["name"], a["options"], a["position"]) for a in put["attributes"]],
+                         [("Colore", ["Bianco"], 0), ("Potenza", ["28 kW"], 1), ("Classe", ["A", "A+"], 2)])
+        self.assertEqual(put["meta_data"][0]["key"], wc_rest.TD_SPECS_META_KEY)
+        self.assertEqual(put["brands"], [{"id": 702}])                  # marca nuova creata sul sito
+        self.assertEqual((put["manage_stock"], put["stock_quantity"], put["regular_price"], put["sale_price"]), (True, 7, "1290.00", ""))
+        db.refresh(riga)
+        scheda = json.loads(riga.normalized)
+        self.assertEqual((riga.title, riga.brand, riga.edited, scheda["description"][:9]), ("Caldaia Eco 24", "Flussa", True, "<p>Testo "))
+        # errori: EAN sbagliato, SKU già usato, nome vuoto, stato inventato
+        self.assertEqual(self.c.put(self.url("/122/scheda"), json={"ean": "4006381333932"}).status_code, 400)
+        r = self.c.put(self.url("/122/scheda"), json={"sku": "DUP"})
+        self.assertEqual((r.status_code, r.json()["detail"]), (409, "Questo SKU c'è già su un altro prodotto del sito."))
+        self.assertEqual(self.c.put(self.url("/122/scheda"), json={"nome": "  "}).status_code, 400)
+        self.assertEqual(self.c.put(self.url("/122/scheda"), json={"stato": "trash"}).status_code, 400)
+        self.assertEqual(self.c.put(self.url("/122/scheda"), json={}).json()["cambiato"], False)
+        db.close()
+
+    def test_2d_foto_dal_computer(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+        vecchio = config.PUBLIC_URL
+        try:
+            config.PUBLIC_URL = ""
+            r = self.c.post(self.url("/foto"), files={"file": ("a.png", png, "image/png")})
+            self.assertEqual(r.status_code, 409)
+            config.PUBLIC_URL = "https://portale.example"
+            esterno = {"Origin": "https://portale.example"}   # col PUBLIC_URL, la provenienza giusta è quella
+            r = self.c.post(self.url("/foto"), files={"file": ("a.png", png, "image/png")}, headers=esterno)
+            self.assertEqual(r.status_code, 200, r.text)
+            src = r.json()["src"]
+            self.assertRegex(src, r"^https://portale\.example/media/foto/[0-9a-f]{32}\.png$")
+            r = self.c.get("/media/foto/" + src.rsplit("/", 1)[1], headers={"Cookie": ""})
+            self.assertEqual((r.status_code, r.content[:4]), (200, b"\x89PNG"))
+            self.assertEqual(self.c.get("/media/foto/../../etc.png").status_code, 404)
+            r = self.c.post(self.url("/foto"), files={"file": ("a.svg", b"<svg onload=x>", "image/svg+xml")}, headers=esterno)
+            self.assertEqual(r.status_code, 415)
+        finally:
+            config.PUBLIC_URL = vecchio
+
     def test_3_scrivere_vuole_account_attivo(self):
         db = SessionLocal()
         cliente = db.get(Client, self.cliente)
@@ -205,6 +291,7 @@ class Magazzino(unittest.TestCase):
             self.assertEqual(self.c.delete(self.url("/110")).status_code, 402)
             self.assertEqual(self.c.post(self.url("/cestino/svuota")).status_code, 402)
             self.assertEqual(self.c.patch(self.url("/110"), json={"prezzo": "1"}).status_code, 402)
+            self.assertEqual(self.c.put(self.url("/110/scheda"), json={"nome": "x"}).status_code, 402)
             self.assertEqual(self.c.get(self.url()).status_code, 200)   # guardare si può
         finally:
             cliente.is_active = True

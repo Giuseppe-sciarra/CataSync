@@ -41,7 +41,7 @@
   <template x-if="brand && (brand.logo || brand.name)">
     <div class="client-badge">
       <template x-if="brand.logo"><img :src="brand.logo" alt=""></template>
-      <span x-text="brand.name"></span>
+      <span x-text="brand.name" :title="brand.name"></span>
     </div>
   </template>
   <nav>
@@ -57,7 +57,7 @@
     <template x-if="!isAdmin">
       <button :class="tab==='categories' && 'on'" @click="go('categories')">Categorie</button>
     </template>
-    <template x-if="!isAdmin"><button :class="tab==='shop' && 'on'" @click="go('shop')">Negozio</button></template>
+    <template x-if="!isAdmin"><button :class="tab==='shop' && 'on'" @click="go('shop')">Scheda cliente</button></template>
     <button :class="tab==='guida' && 'on'" @click="go('guida')">Guida</button>
     <template x-if="isAdmin">
       <span style="display:contents">
@@ -111,7 +111,7 @@
                 :style="'width:' + Math.min(100, Math.round(sub.used * 100 / sub.quota)) + '%'"></i></span>
         </template>
         <template x-if="!sub.quota">
-          <span class="hint num" x-text="sub.used + ' prodotti pubblicati questo mese'"></span>
+          <span class="hint num" x-text="sub.used + ' ' + (sub.used === 1 ? 'prodotto pubblicato questo mese' : 'prodotti pubblicati questo mese')"></span>
         </template>
       </div>
     </div>
@@ -819,7 +819,8 @@
                       </td>
                       <td>
                         <div class="titolo">
-                          <span x-text="p.nome" translate="no"></span>
+                          <span x-text="p.nome" translate="no" :class="mag.vista==='prodotti' && 'apri-scheda'"
+                                @click="mag.vista==='prodotti' && apriSchedaMag(p)"></span>
                           <a class="mag-vedi" :href="p.link" target="_blank" rel="noopener" x-show="p.link && p.stato === 'publish'"
                              title="Vedi sul sito" aria-label="Vedi sul sito">↗</a>
                         </div>
@@ -831,7 +832,8 @@
                       </td>
                       <td>
                         <template x-if="magModifica.id !== p.id">
-                          <div class="mag-chip-riga">
+                          <div class="mag-chip-riga mag-veloce" @click="mag.vista==='prodotti' && modificaMag(p)"
+                               :title="mag.vista==='prodotti' ? t('Clic per cambiare categoria e prezzo') : ''">
                             <template x-for="c in p.categorie" :key="'pc' + p.id + '-' + c.id">
                               <span class="mag-chip" x-text="c.nome" :title="nomeCatMag(c.id) || c.nome" translate="no"></span>
                             </template>
@@ -852,7 +854,8 @@
                       </td>
                       <td>
                         <template x-if="magModifica.id !== p.id">
-                          <div>
+                          <div class="mag-veloce" @click="mag.vista==='prodotti' && modificaMag(p)"
+                               :title="mag.vista==='prodotti' ? t('Clic per cambiare categoria e prezzo') : ''">
                             <template x-if="p.scontato">
                               <span><s class="hint" x-text="soldi(p.prezzo_pieno)"></s> <strong x-text="soldi(p.scontato)"></strong></span>
                             </template>
@@ -894,7 +897,7 @@
                       <td class="mag-azioni">
                         <template x-if="mag.vista==='prodotti' && magModifica.id !== p.id">
                           <span>
-                            <button class="ghost sm" @click="modificaMag(p)">Modifica</button>
+                            <button class="ghost sm" @click="apriSchedaMag(p)">Modifica</button>
                             <button class="danger sm" @click="chiediCestinaMag(p)">Elimina</button>
                           </span>
                         </template>
@@ -1149,7 +1152,7 @@
           <button class="ghost sm" @click="go('magazzino')">Vai al magazzino</button>
         </header>
         <div class="body istruzioni-corpo">
-          <p style="margin-top:0">Nel Magazzino ci sono i prodotti che sono già sul sito: li trovi, cambi categoria e prezzo, li togli. Ogni modifica va subito sul sito.</p>
+          <p style="margin-top:0">Nel Magazzino ci sono i prodotti che sono già sul sito: li trovi, ne modifichi la scheda (o al volo categoria e prezzo), li togli. Ogni modifica va subito sul sito.</p>
 
           <h4>Trovare un prodotto</h4>
           <p>A sinistra ci sono le categorie: con un clic, a destra compaiono i loro prodotti, anche quelli delle sottocategorie. «Tutti i prodotti» li mostra tutti. Nel campo di ricerca scrivi il nome, lo SKU o l'EAN. In alto a destra scegli quanti prodotti vedere per pagina; in fondo passi da una pagina all'altra.</p>
@@ -1166,8 +1169,18 @@
             </figure>
           </div>
 
-          <h4>Cambiare categoria e prezzo</h4>
-          <p>Premi Modifica sulla riga, scegli la categoria (o la sottocategoria), scrivi il prezzo e, se c'è, quello scontato, poi premi Salva (o Invio); Annulla (o Esc) lascia tutto com'era. Se il prodotto sta in più categorie cambia la prima, le altre restano. I prodotti con varianti hanno i prezzi sulle varianti: quelli si cambiano dal sito.</p>
+          <h4>Modificare la scheda</h4>
+          <p>Premi Modifica sulla riga (o clicca sul nome del prodotto): si apre la scheda com'è sul sito. Cambi nome, stato (pubblicato, bozza, privato), marca, SKU ed EAN; prezzo, prezzo scontato e scorte; le categorie, aggiungendone o togliendone; le foto. Salva sul sito scrive tutto subito; Annulla lascia com'era.</p>
+          <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/scheda.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: la scheda di un prodotto con dati principali, prezzo, scorte, categorie e foto">
+          <p>Foto: la prima è quella principale e con le frecce cambi l'ordine; × toglie una foto dalla scheda (resta nella libreria media del sito). Ne aggiungi una scrivendo il suo indirizzo, oppure con «Carica dal computer» (JPG, PNG o WebP fino a 8 MB).</p>
+          <p>Descrizione breve e descrizione: si scrivono come in un programma di videoscrittura, con grassetto, corsivo, titoletti, elenchi e link. Il pulsante HTML mostra il codice, per chi lo preferisce. Se una descrizione contiene video, codici o moduli inseriti dal sito, per non rovinarli si cambia da WordPress.</p>
+          <p>Specifiche: nome e valore, una per riga; più valori si separano con «|» (per esempio «Metano | GPL»). Quelle globali del sito e quelle usate per le varianti si vedono ma si cambiano da WordPress.</p>
+          <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/descrizione.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: l'editor della descrizione e l'elenco delle specifiche">
+
+          <h4>Cambiare al volo categoria e prezzo</h4>
+          <p>Per fare prima, clicca sulla categoria o sul prezzo nella riga: scegli la categoria (o la sottocategoria), scrivi il prezzo e, se c'è, quello scontato, poi premi Salva (o Invio); Annulla (o Esc) lascia tutto com'era. Se il prodotto sta in più categorie cambia la prima, le altre restano. I prodotti con varianti hanno i prezzi sulle varianti: quelli si cambiano dal sito.</p>
           <img :src="'/static/aiuto/magazzino/' + linguaAiuto + '/modifica.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
                alt="Esempio: un prodotto mentre se ne cambiano categoria e prezzo">
 
@@ -1228,74 +1241,124 @@
   </template>
 
 
-  <!-- ============================================================ NEGOZIO -->
+  <!-- ============================================================ SCHEDA CLIENTE -->
+  <!-- Sola lettura: anagrafica, logo e abbonamento li imposta l'amministratore (Clienti → Apri). -->
   <template x-if="tab==='shop'">
     <div class="stack">
       <div class="card">
-        <header><h2>Dati del negozio</h2></header>
+        <header><h2>Scheda cliente</h2></header>
         <div class="body">
-          <p class="hint" style="margin-top:0">
-            Questi dati restano dentro il portale: servono a te e a chi lavora sul catalogo.
-            Non vengono scritti sul sito né mandati a nessuno.
-          </p>
-
-          <div class="logo-drop" style="margin:14px 0 18px">
+          <div class="cliente-testa">
             <template x-if="profile.logo">
               <img :src="profile.logo + '?v=' + logoBust" alt="Logo del negozio">
             </template>
             <template x-if="!profile.logo">
-              <div class="hint">Nessun logo caricato.</div>
+              <div class="cliente-iniziale" x-text="(profile.name || '?').slice(0, 1).toUpperCase()"></div>
             </template>
-            <div class="grow"></div>
-            <label class="btn ghost sm" style="margin:0;cursor:pointer">
-              Carica logo
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                     style="display:none" @change="uploadLogo($event)">
-            </label>
-            <button class="danger sm" x-show="profile.logo" @click="removeLogo()">Rimuovi</button>
+            <div class="grow">
+              <div class="cliente-nome" x-text="profile.legal_name || profile.name || '—'"></div>
+              <div class="hint" x-show="profile.legal_name && profile.legal_name !== profile.name" x-text="profile.name"></div>
+            </div>
+            <span class="badge" :class="profile.attivo ? 'b-ok' : 'b-err'"
+                  x-text="profile.attivo ? 'Account attivo' : 'Account disattivato'"></span>
           </div>
-          <p class="hint" style="margin-top:-10px">PNG, JPG, WebP o SVG. Massimo 2 MB.</p>
+          <p class="hint" style="margin:14px 0 4px">
+            Questi dati li tiene aggiornati l'amministratore del portale: se qualcosa non è giusto, scrivigli.
+          </p>
 
-          <div class="grid-2" style="margin-top:16px">
-            <div class="field"><label for="pf-legal">Ragione sociale</label>
-              <input id="pf-legal" type="text" x-model="profile.legal_name"></div>
-            <div class="field"><label for="pf-web">Sito web</label>
-              <input id="pf-web" type="text" x-model="profile.website" placeholder="https://"></div>
+          <div class="cliente-blocchi">
+            <section>
+              <h3>Anagrafica</h3>
+              <dl class="kv">
+                <dt>Ragione sociale</dt><dd x-text="profile.legal_name || '—'"></dd>
+                <dt>Partita IVA</dt><dd :class="profile.vat_number && 'mono'" x-text="profile.vat_number || '—'"></dd>
+                <dt>Codice fiscale</dt><dd :class="profile.tax_code && 'mono'" x-text="profile.tax_code || '—'"></dd>
+                <dt>Codice SDI</dt><dd :class="profile.sdi_code && 'mono'" x-text="profile.sdi_code || '—'"></dd>
+              </dl>
+            </section>
+            <section>
+              <h3>Sede</h3>
+              <dl class="kv">
+                <dt>Indirizzo</dt><dd x-text="profile.address || '—'"></dd>
+                <dt>Comune</dt><dd x-text="[profile.zip_code, profile.city, profile.province ? '(' + profile.province + ')' : ''].filter(Boolean).join(' ') || '—'"></dd>
+                <dt>Paese</dt><dd x-text="profile.country || '—'"></dd>
+              </dl>
+            </section>
+            <section>
+              <h3>Contatti</h3>
+              <dl class="kv">
+                <dt>Telefono</dt><dd x-text="profile.phone || '—'"></dd>
+                <dt>Email</dt><dd x-text="profile.contact_email || '—'"></dd>
+                <dt>PEC</dt><dd x-text="profile.pec || '—'"></dd>
+                <dt>Sito web</dt>
+                <dd>
+                  <template x-if="profile.website">
+                    <a :href="linkSito(profile.website)" target="_blank" rel="noopener" x-text="profile.website"></a>
+                  </template>
+                  <template x-if="!profile.website"><span>—</span></template>
+                </dd>
+              </dl>
+            </section>
           </div>
-          <div class="grid-3">
-            <div class="field"><label for="pf-vat">Partita IVA</label>
-              <input id="pf-vat" type="text" class="mono" x-model="profile.vat_number"></div>
-            <div class="field"><label for="pf-cf">Codice fiscale</label>
-              <input id="pf-cf" type="text" class="mono" x-model="profile.tax_code"></div>
-            <div class="field"><label for="pf-sdi">Codice SDI</label>
-              <input id="pf-sdi" type="text" class="mono" x-model="profile.sdi_code"></div>
-          </div>
+        </div>
+      </div>
 
-          <h3 style="margin:8px 0 10px">Sede</h3>
-          <div class="field"><label for="pf-addr">Indirizzo</label>
-            <input id="pf-addr" type="text" x-model="profile.address"></div>
-          <div class="grid-3">
-            <div class="field"><label for="pf-zip">CAP</label>
-              <input id="pf-zip" type="text" class="mono" x-model="profile.zip_code"></div>
-            <div class="field"><label for="pf-city">Comune</label>
-              <input id="pf-city" type="text" x-model="profile.city"></div>
-            <div class="field"><label for="pf-prov">Provincia</label>
-              <input id="pf-prov" type="text" class="mono" x-model="profile.province" maxlength="4"></div>
-          </div>
+      <div class="card">
+        <header><h2>Abbonamento</h2></header>
+        <div class="body">
+          <template x-if="sub">
+            <div>
+              <dl class="kv">
+                <dt>Stato</dt><dd><span class="badge" :class="sub.allowed ? 'b-ok' : 'b-err'" x-text="sub.status_label"></span></dd>
+                <dt>Piano</dt><dd x-text="sub.plan || '—'"></dd>
+                <dt>Scadenza</dt>
+                <dd>
+                  <span x-text="sub.expires_at ? fmtDay(sub.expires_at) : 'nessuna'"></span>
+                  <span class="hint" x-show="giorniAllaScadenza() !== null" x-text="testoScadenza()"></span>
+                </dd>
+                <dt>Pubblicazione</dt>
+                <dd>
+                  <span class="badge" :class="sub.allowed ? 'b-ok' : 'b-err'"
+                        x-text="sub.allowed ? 'consentita' : 'bloccata'"></span>
+                  <span class="hint" x-show="!sub.allowed && sub.reason" x-text="t(sub.reason)"></span>
+                </dd>
+                <dt>Quota del mese</dt>
+                <dd class="num" x-text="sub.quota ? tt('{0} su {1}', sub.used, sub.quota) : tt('{0} pubblicati, nessun limite', sub.used)"></dd>
+                <dt>Pubblicati in tutto</dt><dd class="num" x-text="profile.pubblicati_totale || 0"></dd>
+                <dt>Cliente dal</dt><dd x-text="profile.cliente_dal ? fmtDay(profile.cliente_dal) : '—'"></dd>
+              </dl>
+              <template x-if="sub.quota">
+                <div class="quota-barra" :class="sub.used >= sub.quota && 'piena'"
+                     :title="tt('{0} su {1}', sub.used, sub.quota)">
+                  <span :style="'width:' + Math.min(100, Math.round(sub.used * 100 / sub.quota)) + '%'"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+          <p class="hint" style="margin-top:14px">
+            Piano, scadenza e quota li imposta l'amministratore del portale. Senza abbonamento attivo
+            le schede si scaricano e si vedono in anteprima, ma non si pubblicano sul sito.
+            La quota la consumano solo i prodotti nuovi pubblicati sul sito.
+          </p>
+        </div>
+      </div>
 
-          <h3 style="margin:8px 0 10px">Contatti</h3>
-          <div class="grid-3">
-            <div class="field"><label for="pf-tel">Telefono</label>
-              <input id="pf-tel" type="text" x-model="profile.phone"></div>
-            <div class="field"><label for="pf-mail">Email</label>
-              <input id="pf-mail" type="email" x-model="profile.contact_email"></div>
-            <div class="field"><label for="pf-pec">PEC</label>
-              <input id="pf-pec" type="email" x-model="profile.pec"></div>
-          </div>
-
-          <div class="row" style="margin-top:8px">
-            <button @click="saveProfile()">Salva i dati</button>
-          </div>
+      <div class="card" x-show="(profile.siti || []).length">
+        <header><h2>Siti collegati</h2></header>
+        <div class="body">
+          <table>
+            <thead><tr><th>Sito</th><th>Indirizzo</th><th class="right">Stato</th></tr></thead>
+            <tbody>
+              <template x-for="s in (profile.siti || [])" :key="s.id">
+                <tr>
+                  <td x-text="s.nome"></td>
+                  <td><a :href="s.indirizzo" target="_blank" rel="noopener" class="mono" x-text="s.indirizzo"></a></td>
+                  <td class="right"><span class="badge" :class="s.attivo ? 'b-ok' : 'b-wait'"
+                                          x-text="s.attivo ? 'attivo' : 'sospeso'"></span></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1316,24 +1379,6 @@
           </div>
         </div>
       </template>
-
-      <div class="card">
-        <header><h2>Abbonamento</h2></header>
-        <div class="body">
-          <template x-if="sub">
-            <dl class="kv">
-              <dt>Stato</dt><dd><span class="badge" :class="sub.allowed ? 'b-ok' : 'b-err'" x-text="sub.status_label"></span></dd>
-              <dt>Piano</dt><dd x-text="sub.plan || '—'"></dd>
-              <dt>Scadenza</dt><dd x-text="sub.expires_at ? fmtDay(sub.expires_at) : 'nessuna'"></dd>
-              <dt>Quota mensile</dt><dd class="num" x-text="sub.quota ? (sub.used + ' su ' + sub.quota) : (sub.used + ' pubblicati, nessun limite')"></dd>
-            </dl>
-          </template>
-          <p class="hint" style="margin-top:14px">
-            Piano, scadenza e quota li imposta l'amministratore del portale. Senza abbonamento attivo
-            le schede si scaricano e si vedono in anteprima, ma non si pubblicano sul sito.
-          </p>
-        </div>
-      </div>
     </div>
   </template>
 
@@ -2041,12 +2086,46 @@
               <p class="hint">Vuoto = nessuna scadenza. Passata la data la pubblicazione si blocca da sola.</p>
             </div>
 
-            <h3 style="margin:16px 0 10px">Anagrafica</h3>
+            <h3 style="margin:16px 0 4px">Anagrafica</h3>
+            <p class="hint" style="margin:0 0 10px">
+              Il cliente la vede nella sua «Scheda cliente» ma non la può cambiare: la aggiorni tu da qui.
+            </p>
+            <template x-if="modal.data.id">
+              <div>
+                <div class="logo-drop" style="margin:0 0 6px">
+                  <template x-if="modal.data.has_logo">
+                    <img :src="'/media/logo/' + modal.data.id + '?v=' + logoBust" alt="Logo del cliente">
+                  </template>
+                  <template x-if="!modal.data.has_logo">
+                    <div class="hint">Nessun logo caricato.</div>
+                  </template>
+                  <div class="grow"></div>
+                  <label class="btn ghost sm" style="margin:0;cursor:pointer">
+                    Carica logo
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                           style="display:none" @change="uploadLogo($event, modal.data.id)">
+                  </label>
+                  <button class="danger sm" x-show="modal.data.has_logo" @click="removeLogo(modal.data.id)">Rimuovi</button>
+                </div>
+                <p class="hint" style="margin:0 0 12px">Logo del cliente: PNG, JPG, WebP o SVG. Massimo 2 MB. Il logo si salva subito.</p>
+              </div>
+            </template>
+            <template x-if="!modal.data.id">
+              <p class="hint" style="margin:0 0 12px">Il logo si carica dopo aver salvato il cliente.</p>
+            </template>
             <div class="grid-2">
               <div class="field"><label>Ragione sociale</label>
                 <input type="text" x-model="modal.data.legal_name"></div>
+              <div class="field"><label>Sito web</label>
+                <input type="text" x-model="modal.data.website" placeholder="https://"></div>
+            </div>
+            <div class="grid-3">
               <div class="field"><label>Partita IVA</label>
                 <input type="text" class="mono" x-model="modal.data.vat_number"></div>
+              <div class="field"><label>Codice fiscale</label>
+                <input type="text" class="mono" x-model="modal.data.tax_code"></div>
+              <div class="field"><label>Codice SDI</label>
+                <input type="text" class="mono" x-model="modal.data.sdi_code"></div>
             </div>
             <div class="grid-3">
               <div class="field"><label>Email</label>
@@ -2056,13 +2135,17 @@
               <div class="field"><label>Telefono</label>
                 <input type="text" x-model="modal.data.phone"></div>
             </div>
-            <div class="grid-3">
-              <div class="field"><label>Indirizzo</label>
-                <input type="text" x-model="modal.data.address"></div>
+            <div class="field"><label>Indirizzo</label>
+              <input type="text" x-model="modal.data.address"></div>
+            <div class="grid-4">
+              <div class="field"><label>CAP</label>
+                <input type="text" class="mono" x-model="modal.data.zip_code"></div>
               <div class="field"><label>Comune</label>
                 <input type="text" x-model="modal.data.city"></div>
               <div class="field"><label>Provincia</label>
                 <input type="text" class="mono" x-model="modal.data.province" maxlength="4"></div>
+              <div class="field"><label>Paese</label>
+                <input type="text" x-model="modal.data.country"></div>
             </div>
 
             <div class="field"><label>Note interne</label>
@@ -2340,6 +2423,187 @@
             <div class="row" style="margin-top:16px;gap:10px">
               <button class="danger" @click="eliminaCategoria()" :disabled="catBusy">Elimina la categoria</button>
               <button class="ghost" @click="modal.kind = null">Annulla</button>
+            </div>
+          </div>
+        </template>
+
+
+        <!-- magazzino: la scheda completa del prodotto -->
+        <template x-if="modal.kind==='magscheda' && scheda">
+          <div class="scheda-mag">
+            <div class="scheda-testa">
+              <strong x-text="scheda.nome" translate="no"></strong>
+              <a class="btn ghost sm" :href="scheda.link" target="_blank" rel="noopener" x-show="scheda.link && scheda.stato === 'publish'">Vedi sul sito ↗</a>
+            </div>
+
+            <div class="scheda-colonne">
+              <section>
+                <h3>Dati principali</h3>
+                <div class="field"><label for="sc-nome">Nome prodotto</label>
+                  <input id="sc-nome" type="text" x-model="scheda.nome" maxlength="200"></div>
+                <div class="grid-2">
+                  <div class="field"><label for="sc-stato">Stato</label>
+                    <select id="sc-stato" x-model="scheda.stato">
+                      <option value="publish" :selected="scheda.stato === 'publish'">Pubblicato</option>
+                      <option value="draft" :selected="scheda.stato === 'draft'">Bozza</option>
+                      <option value="pending" :selected="scheda.stato === 'pending'">In revisione</option>
+                      <option value="private" :selected="scheda.stato === 'private'">Privato</option>
+                    </select></div>
+                  <div class="field"><label for="sc-marca">Marca</label>
+                    <input id="sc-marca" type="text" x-model="scheda.marca" maxlength="120" :disabled="!scheda.marche_attive"
+                           list="sc-marche" :placeholder="scheda.marche_attive ? '' : t('Marche non attive sul sito')">
+                    <datalist id="sc-marche">
+                      <template x-for="b in brands" :key="'sb' + b.id"><option :value="b.name"></option></template>
+                    </datalist></div>
+                </div>
+                <div class="grid-2">
+                  <div class="field"><label for="sc-sku">SKU</label>
+                    <input id="sc-sku" type="text" class="mono" x-model="scheda.sku" maxlength="100"></div>
+                  <div class="field"><label for="sc-ean">EAN</label>
+                    <input id="sc-ean" type="text" class="mono" inputmode="numeric" x-model="scheda.ean" maxlength="20"></div>
+                </div>
+
+                <h3>Prezzo e scorte</h3>
+                <template x-if="scheda.tipo !== 'variable'">
+                  <div class="grid-2">
+                    <div class="field"><label for="sc-prezzo">Prezzo</label>
+                      <input id="sc-prezzo" type="text" class="mono" inputmode="decimal" x-model="scheda.prezzo" placeholder="129,90"></div>
+                    <div class="field"><label for="sc-sconto">Prezzo scontato</label>
+                      <input id="sc-sconto" type="text" class="mono" inputmode="decimal" x-model="scheda.scontato" placeholder="facoltativo"></div>
+                  </div>
+                </template>
+                <template x-if="scheda.tipo === 'variable'">
+                  <p class="hint">I prezzi stanno sulle varianti: si cambiano dal sito.</p>
+                </template>
+                <label class="spunta-riga">
+                  <input type="checkbox" x-model="scheda.gestisci_scorte"> Gestisci le scorte (quantità in magazzino)
+                </label>
+                <div class="grid-2">
+                  <template x-if="scheda.gestisci_scorte">
+                    <div class="field"><label for="sc-qta">Quantità</label>
+                      <input id="sc-qta" type="number" min="0" x-model.number="scheda.quantita"></div>
+                  </template>
+                  <template x-if="!scheda.gestisci_scorte">
+                    <div class="field"><label for="sc-disp">Disponibilità</label>
+                      <select id="sc-disp" x-model="scheda.disponibilita">
+                        <option value="instock" :selected="scheda.disponibilita === 'instock'">Disponibile</option>
+                        <option value="outofstock" :selected="scheda.disponibilita === 'outofstock'">Esaurito</option>
+                        <option value="onbackorder" :selected="scheda.disponibilita === 'onbackorder'">Su ordinazione</option>
+                      </select></div>
+                  </template>
+                </div>
+
+                <h3>Categorie</h3>
+                <div class="mag-chip-riga" style="margin-bottom:8px">
+                  <template x-for="(id, i) in scheda.categorie" :key="'scc' + id">
+                    <span class="mag-chip con-x">
+                      <span x-text="nomeCatMag(id) || id" translate="no"></span>
+                      <button type="button" class="x" @click="scheda.categorie.length > 1 && scheda.categorie.splice(i, 1)"
+                              :disabled="scheda.categorie.length < 2" title="Togli" aria-label="Togli">×</button>
+                    </span>
+                  </template>
+                </div>
+                <div class="row riga">
+                  <select x-model.number="nuovaCatScheda" aria-label="Categoria da aggiungere">
+                    <option :value="0" :selected="!nuovaCatScheda">— aggiungi una categoria —</option>
+                    <template x-for="r in righeMagCat" :key="'nc' + r.c.id">
+                      <option :value="r.c.id" :disabled="scheda.categorie.includes(r.c.id)"
+                              x-text="'  '.repeat(r.livello) + r.c.nome" translate="no"></option>
+                    </template>
+                  </select>
+                  <button class="ghost sm" @click="aggiungiCatScheda()" :disabled="!nuovaCatScheda">Aggiungi</button>
+                </div>
+              </section>
+
+              <section>
+                <h3>Foto</h3>
+                <p class="hint" style="margin-top:0">La prima è la foto principale. Con le frecce cambi l'ordine.</p>
+                <div class="scheda-foto">
+                  <template x-for="(f, i) in scheda.immagini" :key="'sf' + i + (f.id || f.src)">
+                    <figure :class="i === 0 && 'principale'">
+                      <img :src="f.thumb || f.src" alt="" loading="lazy">
+                      <span class="badge-foto" x-show="i === 0">Principale</span>
+                      <div class="foto-azioni">
+                        <button type="button" class="ghost sm icona" @click="spostaFoto(i, -1)" :disabled="i === 0" title="Prima" aria-label="Prima">◀</button>
+                        <button type="button" class="ghost sm icona" @click="spostaFoto(i, 1)" :disabled="i === scheda.immagini.length - 1" title="Dopo" aria-label="Dopo">▶</button>
+                        <button type="button" class="danger sm icona" @click="scheda.immagini.splice(i, 1)" title="Togli la foto" aria-label="Togli la foto">×</button>
+                      </div>
+                    </figure>
+                  </template>
+                  <template x-if="!scheda.immagini.length">
+                    <div class="hint">Nessuna foto.</div>
+                  </template>
+                </div>
+                <div class="row riga" style="margin-top:10px">
+                  <input type="text" class="mono" x-model="nuovaFotoUrl" placeholder="Indirizzo di una foto (https://…)" aria-label="Indirizzo di una foto"
+                         @keydown.enter.prevent="aggiungiFotoUrl()">
+                  <button class="ghost sm" @click="aggiungiFotoUrl()" :disabled="!/^https?:\/\//i.test(nuovaFotoUrl.trim())">Aggiungi</button>
+                </div>
+                <div class="row" style="margin-top:8px" x-show="scheda.carica_foto">
+                  <label class="btn ghost sm" style="margin:0;cursor:pointer">
+                    <span x-text="schedaFotoBusy ? t('Carico…') : t('Carica dal computer')"></span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple style="display:none" @change="caricaFotoScheda($event)">
+                  </label>
+                  <span class="hint">JPG, PNG o WebP, fino a 8 MB.</span>
+                </div>
+                <p class="hint" x-show="!scheda.carica_foto">Per caricare foto dal computer serve PUBLIC_URL nella configurazione del portale: intanto si aggiungono con l'indirizzo.</p>
+              </section>
+            </div>
+
+            <template x-for="campo in ['descrizione_breve', 'descrizione']" :key="'ed' + campo">
+              <section class="scheda-testo">
+                <div class="row" style="justify-content:space-between">
+                  <h3 x-text="campo === 'descrizione' ? t('Descrizione') : t('Descrizione breve')"></h3>
+                  <button type="button" class="ghost sm" x-show="!schedaSpeciale[campo]" @click="schedaHtml[campo] = !schedaHtml[campo]"
+                          x-text="schedaHtml[campo] ? t('Editor') : t('HTML')"></button>
+                </div>
+                <template x-if="schedaSpeciale[campo]">
+                  <div class="notice n-warn">Questa descrizione contiene elementi speciali (video, codice, moduli): per non rovinarli si modifica dal sito.</div>
+                </template>
+                <template x-if="!schedaSpeciale[campo] && !schedaHtml[campo]">
+                  <div class="editor-ricco">
+                    <div class="editor-barra" role="toolbar" :aria-label="t('Formattazione')">
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'bold')" title="Grassetto"><b translate="no">A</b></button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'italic')" title="Corsivo"><i translate="no">A</i></button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'underline')" title="Sottolineato"><u translate="no">A</u></button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'formatBlock', 'h3')" title="Titoletto">H</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'formatBlock', 'p')" title="Paragrafo">¶</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'insertUnorderedList')" title="Elenco puntato">•</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'insertOrderedList')" title="Elenco numerato">1.</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="linkEd(campo)" title="Link">🔗</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'unlink')" title="Togli il link">⛓</button>
+                      <button type="button" class="ghost sm" @mousedown.prevent="comandoEd(campo, 'removeFormat')" title="Togli la formattazione">⌫</button>
+                    </div>
+                    <div class="editor-area" contenteditable="true" :data-campo="campo" translate="no"
+                         :class="campo === 'descrizione_breve' && 'breve'"
+                         x-init="$el.innerHTML = htmlPulito(scheda[campo])"
+                         @input="scheda[campo] = $el.innerHTML" @blur="scheda[campo] = $el.innerHTML"></div>
+                  </div>
+                </template>
+                <template x-if="!schedaSpeciale[campo] && schedaHtml[campo]">
+                  <textarea class="mono editor-html" x-model="scheda[campo]" :rows="campo === 'descrizione' ? 14 : 5" translate="no"></textarea>
+                </template>
+              </section>
+            </template>
+
+            <section class="scheda-testo">
+              <h3>Specifiche</h3>
+              <p class="hint" style="margin-top:0">Più valori si separano con «|». Le specifiche globali del sito e quelle usate per le varianti si cambiano dal sito.</p>
+              <template x-for="(s, i) in scheda.specifiche" :key="'ss' + i">
+                <div class="row riga" style="margin-bottom:6px">
+                  <input type="text" style="flex:0 0 220px" x-model="s.nome" placeholder="Nome" :disabled="s.globale || s.variante" aria-label="Nome della specifica">
+                  <input type="text" x-model="s.valore" placeholder="Valore" :disabled="s.globale || s.variante" aria-label="Valore della specifica">
+                  <span class="hint" x-show="s.globale || s.variante" x-text="s.variante ? t('varianti') : t('globale')"></span>
+                  <button type="button" class="danger sm" x-show="!s.globale && !s.variante" @click="scheda.specifiche.splice(i, 1)">Togli</button>
+                </div>
+              </template>
+              <button type="button" class="ghost sm" @click="scheda.specifiche.push({ nome: '', valore: '', globale: false, variante: false })">Aggiungi specifica</button>
+            </section>
+
+            <div class="scheda-piede">
+              <button @click="salvaSchedaMag()" :disabled="schedaBusy" x-text="schedaBusy ? t('Salvo sul sito…') : t('Salva sul sito')"></button>
+              <button class="ghost" @click="modal.kind = null">Annulla</button>
+              <span class="hint" x-show="schedaCambiata" >Ci sono modifiche da salvare.</span>
             </div>
           </div>
         </template>

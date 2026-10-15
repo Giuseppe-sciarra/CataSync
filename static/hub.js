@@ -101,6 +101,11 @@ function hub(isAdmin) {
     magCategorie: [],
     magModifica: { id: null, categoria: 0, altre: [], prezzo: '', scontato: '', busy: false },
     magTimer: null,
+    // Scheda completa di un prodotto del sito (Magazzino → Modifica).
+    scheda: null, schedaOrig: '', schedaBusy: false, schedaFotoBusy: false,
+    schedaHtml: { descrizione: false, descrizione_breve: false },
+    schedaSpeciale: { descrizione: false, descrizione_breve: false },
+    nuovaFotoUrl: '', nuovaCatScheda: 0,
     magRichiesta: 0,
     guidaSezione: 'import',
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
@@ -265,39 +270,64 @@ function hub(isAdmin) {
       } catch (e) { this.fail(e.message); }
     },
 
-    async saveProfile() {
-      try {
-        const body = {};
-        ['legal_name','vat_number','tax_code','sdi_code','pec','address','zip_code',
-         'city','province','country','phone','contact_email','website','accent_color']
-          .forEach(k => { body[k] = this.profile[k] || ''; });
-        this.profile = await this.api('/api/profile', { method: 'PUT', body: JSON.stringify(body) });
-        this.say('Dati del negozio salvati.');
-      } catch (e) { this.fail(e.message); }
+    // Scheda cliente (sola lettura per il cliente): i link al sito senza schema
+    // li apro comunque in https.
+    linkSito(indirizzo) {
+      const s = String(indirizzo || '').trim();
+      return /^https?:\/\//i.test(s) ? s : 'https://' + s;
     },
 
-    async uploadLogo(event) {
+    giorniAllaScadenza() {
+      if (!this.sub || !this.sub.expires_at) return null;
+      const fine = new Date(this.sub.expires_at);
+      if (isNaN(fine)) return null;
+      const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+      fine.setHours(0, 0, 0, 0);
+      return Math.round((fine - oggi) / 86400000);
+    },
+
+    testoScadenza() {
+      const g = this.giorniAllaScadenza();
+      if (g === null) return '';
+      if (g < 0) return this.t('già passata');
+      if (g === 0) return this.t('scade oggi');
+      if (g === 1) return this.t('domani');
+      return this.tt('tra {0} giorni', g);
+    },
+
+    // Logo del cliente: lo carica e lo toglie solo l'amministratore, dalla scheda del cliente.
+    async uploadLogo(event, clienteId) {
       const file = event.target.files[0];
       if (!file) return;
       const body = new FormData();
       body.append('file', file);
       try {
-        const res = await fetch('/api/profile/logo', { method: 'POST', body: body });
+        const res = await fetch('/api/profile/logo?client_id=' + encodeURIComponent(clienteId), { method: 'POST', body: body });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Caricamento non riuscito.');
-        this.profile.logo = data.logo;
         this.logoBust = Date.now();
-        if (this.brand) this.brand.logo = data.logo + '?v=' + this.logoBust;
+        if (this.modal && this.modal.kind === 'client' && this.modal.data.id === clienteId) {
+          this.modal.data.has_logo = true;
+        }
+        const c = this.clients.find(x => x.id === clienteId);
+        if (c) c.has_logo = true;
         this.say('Logo aggiornato.');
       } catch (e) { this.fail(e.message); }
       event.target.value = '';
     },
 
-    async removeLogo() {
+    async removeLogo(clienteId) {
       if (!confirm('Rimuovo il logo?')) return;
-      await this.api('/api/profile/logo', { method: 'DELETE' });
-      this.profile.logo = '';
-      if (this.brand) this.brand.logo = '';
+      try {
+        await this.api('/api/profile/logo?client_id=' + encodeURIComponent(clienteId), { method: 'DELETE' });
+        if (this.modal && this.modal.kind === 'client' && this.modal.data.id === clienteId) {
+          this.modal.data.has_logo = false;
+        }
+        const c = this.clients.find(x => x.id === clienteId);
+        if (c) c.has_logo = false;
+        this.logoBust = Date.now();
+        this.say('Logo tolto.');
+      } catch (e) { this.fail(e.message); }
     },
 
     // --------------------------------------------------------------- http
@@ -717,6 +747,167 @@ function hub(isAdmin) {
         this.magModifica.busy = false;
         this.fail(e.message);
       }
+    },
+    // ------------------------------------------------ scheda completa
+    async apriSchedaMag(p) {
+      this.annullaModMag();
+      this.loadTaxonomy();   // le marche del sito, per i suggerimenti
+      try {
+        const s = await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + p.id + '/scheda');
+        s.prezzo = this.prezzoPerCampo(s.prezzo);
+        s.scontato = this.prezzoPerCampo(s.scontato);
+        if (s.quantita === null || s.quantita === undefined) s.quantita = 0;
+        this.schedaSpeciale = { descrizione: this.contieneSpeciale(s.descrizione), descrizione_breve: this.contieneSpeciale(s.descrizione_breve) };
+        // Le descrizioni si mettono nella forma che produce l'editor già all'apertura: così
+        // entrare e uscire dall'editor senza scrivere non conta come modifica.
+        ['descrizione', 'descrizione_breve'].forEach(k => {
+          if (!this.schedaSpeciale[k]) s[k] = this.htmlPulito(this.conParagrafi(s[k]));
+        });
+        this.scheda = s;
+        this.schedaOrig = JSON.stringify(s);
+        this.schedaHtml = { descrizione: false, descrizione_breve: false };
+        this.nuovaFotoUrl = ''; this.nuovaCatScheda = 0;
+        this.modal = { error: null, kind: 'magscheda', title: this.t('Modifica la scheda'), data: { id: p.id } };
+      } catch (e) { this.fail(e.message); }
+    },
+    // WordPress salva spesso il testo senza <p>, con le righe vuote a separare i paragrafi
+    // (li aggiunge lui quando mostra la pagina): nell'editor li rendo paragrafi veri.
+    conParagrafi(testo) {
+      const s = String(testo || '');
+      if (!s.trim() || /<(p|div|ul|ol|h[1-6]|table|blockquote|pre|figure)\b/i.test(s) || !/\n/.test(s)) return s;
+      return s.trim().split(/\n\s*\n/).map(par => '<p>' + par.trim().replace(/\n/g, '<br>') + '</p>').join('');
+    },
+    // Video, codice, moduli: l'editor li perderebbe, quindi quella descrizione si cambia dal sito.
+    contieneSpeciale(html) {
+      return /<(iframe|script|style|video|audio|object|embed|form|input|button|select|textarea|svg|canvas)\b/i.test(html || '');
+    },
+    // Le stesse regole del server: formattazione, link e immagini sì; codice attivo no.
+    // Si pulisce PRIMA di metterlo nella pagina: un <img onerror> non deve partire nemmeno qui.
+    htmlPulito(html) {
+      const permessi = new Set(['p', 'br', 'ul', 'ol', 'li', 'strong', 'b', 'em', 'i', 'u', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'sup', 'sub', 'blockquote', 'a', 'img', 'span', 'div', 'hr',
+        's', 'del', 'pre', 'code', 'figure', 'figcaption', 'dl', 'dt', 'dd', 'caption']);
+      const via = new Set(['script', 'style', 'iframe', 'object', 'svg', 'math', 'form', 'select', 'textarea', 'noscript',
+        'template', 'audio', 'video', 'canvas', 'button', 'embed', 'link', 'meta']);
+      const attributi = { a: ['href', 'target', 'rel', 'title'], img: ['src', 'alt', 'width', 'height', 'title'], td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan'] };
+      const doc = new DOMParser().parseFromString('<div>' + (html || '') + '</div>', 'text/html');
+      const pulisci = (nodo, dove) => {
+        for (const n of Array.from(nodo.childNodes)) {
+          if (n.nodeType === 3) { dove.appendChild(document.createTextNode(n.textContent)); continue; }
+          if (n.nodeType !== 1) continue;
+          const tag = n.tagName.toLowerCase();
+          if (via.has(tag)) continue;
+          if (!permessi.has(tag)) { pulisci(n, dove); dove.appendChild(document.createTextNode(' ')); continue; }
+          const el = document.createElement(tag);
+          for (const nome of attributi[tag] || []) {
+            const v = n.getAttribute(nome);
+            if (v === null) continue;
+            if ((nome === 'href' || nome === 'src') && !/^(https?:|mailto:|tel:|#|\/(?!\/))/i.test(v.trim())) continue;
+            if (nome === 'src' && !/^https?:/i.test(v.trim())) continue;
+            el.setAttribute(nome, v);
+          }
+          const cls = n.getAttribute('class');
+          if (cls && /^[\w\- ]{1,200}$/.test(cls)) el.setAttribute('class', cls);
+          if (tag === 'img' && !el.getAttribute('src')) continue;
+          pulisci(n, el);
+          dove.appendChild(el);
+        }
+      };
+      const fuori = document.createElement('div');
+      pulisci(doc.body.firstChild || doc.body, fuori);
+      return fuori.innerHTML;
+    },
+    editorDi(campo) {
+      return document.querySelector('.editor-area[data-campo="' + campo + '"]');
+    },
+    comandoEd(campo, comando, valore) {
+      const el = this.editorDi(campo);
+      if (!el) return;
+      el.focus();
+      document.execCommand(comando, false, comando === 'formatBlock' ? '<' + valore + '>' : (valore || null));
+      this.scheda[campo] = el.innerHTML;
+    },
+    linkEd(campo) {
+      const url = (window.prompt(this.t('Indirizzo del link (https://…)'), 'https://') || '').trim();
+      if (!/^(https?:\/\/|mailto:|tel:)/i.test(url)) return;
+      this.comandoEd(campo, 'createLink', url);
+    },
+    aggiungiCatScheda() {
+      const id = this.nuovaCatScheda;
+      if (id && !this.scheda.categorie.includes(id)) this.scheda.categorie.push(id);
+      this.nuovaCatScheda = 0;
+    },
+    spostaFoto(i, verso) {
+      const l = this.scheda.immagini, j = i + verso;
+      if (j < 0 || j >= l.length) return;
+      [l[i], l[j]] = [l[j], l[i]];
+      this.scheda.immagini = l.slice();
+    },
+    aggiungiFotoUrl() {
+      const url = this.nuovaFotoUrl.trim();
+      if (!/^https?:\/\//i.test(url)) return;
+      this.scheda.immagini.push({ id: null, src: url, thumb: url });
+      this.nuovaFotoUrl = '';
+    },
+    async caricaFotoScheda(event) {
+      const files = Array.from(event.target.files || []);
+      this.schedaFotoBusy = true;
+      for (const file of files) {
+        const body = new FormData();
+        body.append('file', file);
+        try {
+          const res = await fetch('/api/sites/' + this.form.site_id + '/magazzino/foto', { method: 'POST', body });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(this.errorText(data, res.status));
+          this.scheda.immagini.push({ id: null, src: data.src, thumb: data.src });
+        } catch (e) { this.fail(e.message); }
+      }
+      this.schedaFotoBusy = false;
+      event.target.value = '';
+    },
+    // Solo quello che è cambiato: il resto della scheda sul sito non si tocca.
+    diffScheda() {
+      if (!this.scheda || !this.schedaOrig) return {};
+      const o = JSON.parse(this.schedaOrig), s = this.scheda, body = {};
+      const uguale = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      ['nome', 'stato', 'sku', 'ean', 'gestisci_scorte', 'disponibilita'].forEach(k => { if (!uguale(s[k], o[k])) body[k] = s[k]; });
+      if (s.marche_attive && !uguale(s.marca, o.marca)) body.marca = s.marca;
+      if (s.tipo !== 'variable') {
+        if (!uguale(s.prezzo, o.prezzo)) body.prezzo = s.prezzo;
+        if (!uguale(s.scontato, o.scontato)) body.scontato = s.scontato;
+      }
+      if (s.gestisci_scorte && !uguale(s.quantita, o.quantita)) body.quantita = Math.max(0, parseInt(s.quantita, 10) || 0);
+      if (!uguale(s.categorie, o.categorie)) body.categorie = s.categorie;
+      ['descrizione', 'descrizione_breve'].forEach(k => { if (!this.schedaSpeciale[k] && s[k] !== o[k]) body[k] = s[k]; });
+      const foto = l => l.map(f => f.id ? { id: f.id } : { src: f.src });
+      if (!uguale(foto(s.immagini), foto(o.immagini))) body.immagini = foto(s.immagini);
+      const spec = l => l.filter(x => !x.globale && !x.variante).map(x => ({ nome: x.nome.trim(), valore: x.valore.trim() }));
+      if (!uguale(spec(s.specifiche), spec(o.specifiche))) body.specifiche = spec(s.specifiche);
+      return body;
+    },
+    get schedaCambiata() {
+      return this.modal.kind === 'magscheda' && Object.keys(this.diffScheda()).length > 0;
+    },
+    async salvaSchedaMag() {
+      const body = this.diffScheda();
+      if (!Object.keys(body).length) { this.modal.kind = null; return; }
+      this.schedaBusy = true;
+      this.modal.error = null;
+      try {
+        const r = await this.api('/api/sites/' + this.form.site_id + '/magazzino/' + this.scheda.id + '/scheda', {
+          method: 'PUT', body: JSON.stringify(body)
+        });
+        const i = this.mag.prodotti.findIndex(x => x.id === this.scheda.id);
+        if (i >= 0 && r.prodotto) this.mag.prodotti.splice(i, 1, r.prodotto);
+        this.say(this.tt('«{0}» aggiornato sul sito.', (r.prodotto && r.prodotto.nome) || this.scheda.nome));
+        this.modal.kind = null;
+        if (body.categorie) this.caricaCategorieMag();
+      } catch (e) {
+        this.modal.error = e.message;
+        const el = document.querySelector('.modal > .body');
+        if (el) el.scrollTop = 0;
+      }
+      this.schedaBusy = false;
     },
     chiediCestinaMag(p) {
       this.modal = { error: null, kind: 'magcestina', title: this.t('Sposta nel cestino'), data: { p, giorni: this.mag.giorni } };
@@ -1810,8 +2001,9 @@ function hub(isAdmin) {
             })
           : { name: '', notes: '', is_active: true, monthly_quota: 0, content_lang: this.linguaUI(),
               subscription_status: 'trial', plan_name: 'Prova', subscription_until_day: '',
-              legal_name: '', vat_number: '', address: '', city: '', province: '',
-              contact_email: '', pec: '', phone: '' }
+              legal_name: '', vat_number: '', tax_code: '', sdi_code: '', website: '',
+              address: '', zip_code: '', city: '', province: '', country: 'Italia',
+              contact_email: '', pec: '', phone: '', has_logo: false }
       };
     },
 

@@ -223,6 +223,19 @@ def portal_favicon(db=Depends(get_db)):
     return _risposta_immagine(percorso, tipo, "public, max-age=604800")
 
 
+@app.get("/media/foto/{nome}", include_in_schema=False)
+def foto_temporanea(nome: str):
+    """Foto caricate dal Magazzino: pubbliche perché WooCommerce le deve scaricare, con un
+    nome casuale lungo 32 cifre, e solo per due giorni."""
+    import re as _re
+    if not _re.fullmatch(r"[0-9a-f]{32}\.(?:jpg|png|webp)", nome):
+        return JSONResponse({"detail": "Non disponibile."}, status_code=404)
+    path = config.UPLOAD_DIR / "foto-temporanee" / nome
+    if not path.is_file():
+        return JSONResponse({"detail": "Non disponibile."}, status_code=404)
+    return _risposta_immagine(path, "", "public, max-age=3600")
+
+
 @app.get("/media/logo/{client_id}", include_in_schema=False)
 def logo(client_id: int, db=Depends(get_db), user: User = Depends(require_user)):
     """Il logo lo vede solo chi ha diritto a quel cliente: non è un file pubblico."""

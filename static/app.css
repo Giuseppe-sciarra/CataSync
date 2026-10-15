@@ -174,13 +174,15 @@ input:focus, select:focus, textarea:focus {
 .field > input, .field > select, .field > textarea { margin-top: auto; }
 .field > .hint { margin-bottom: 0; }
 
-.grid-2, .grid-3 { display: grid; gap: 12px; align-items: start; }
+.grid-2, .grid-3, .grid-4 { display: grid; gap: 12px; align-items: start; }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* CAP · Comune · Provincia · Paese */
+.grid-4 { grid-template-columns: minmax(0, .8fr) minmax(0, 2fr) minmax(0, .7fr) minmax(0, 1.2fr); }
 
 /* Sotto i 640px le colonne affiancate diventano illeggibili: si impilano. */
 @media (max-width: 640px) {
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }
 
 button, .btn {
@@ -289,7 +291,7 @@ td.right, th.right { text-align: right; }
 }
 
 @media (max-width: 720px) {
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .wrap { padding: 16px 12px 48px; }
   .topbar { padding: 0 12px; gap: 8px; }
   .topbar .who { display: none; }
@@ -341,9 +343,10 @@ td.right, th.right { text-align: right; }
 .theme-btn svg { width: 16px; height: 16px; }
 
 /* --------------------------------------------------- intestazione cliente */
-.client-badge { display: flex; align-items: center; gap: 9px; }
+.client-badge { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .client-badge img { height: 26px; max-width: 110px; object-fit: contain; border-radius: 3px; background: #fff; padding: 2px; }
-.client-badge span { color: var(--topbar-ink); font-weight: 600; }
+/* Una riga sola: le ragioni sociali lunghe si accorciano con i puntini (il nome intero è nel title). */
+.client-badge span { color: var(--topbar-ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 
 /* ------------------------------------------------------------ abbonamento */
 .sub-bar {
@@ -895,3 +898,80 @@ button.icona { width: 30px; padding: 0; font-size: 10px; }
   .mag-cat { position: static; max-height: 260px; }
   .seg { margin-left: 0; }
 }
+
+/* Magazzino: scheda completa del prodotto */
+.mag-veloce { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+.mag-veloce:hover { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.apri-scheda { cursor: pointer; }
+.apri-scheda:hover { text-decoration: underline; text-underline-offset: 3px; }
+.scheda-mag h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 10px; }
+.scheda-mag section > h3:first-child { margin-top: 4px; }
+.scheda-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--line-soft); font-size: 15px; }
+.scheda-colonne { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px; }
+.spunta-riga { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 4px 0 10px; }
+.spunta-riga input { width: auto; }
+.mag-chip.con-x { display: inline-flex; align-items: center; gap: 4px; padding-right: 3px; }
+.mag-chip .x { height: 20px; min-width: 20px; padding: 0 5px; border: 0; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; }
+.mag-chip .x:hover { background: var(--line-soft); color: var(--ink); }
+.scheda-foto { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.scheda-foto figure { position: relative; margin: 0; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: #fff; overflow: hidden; }
+.scheda-foto figure.principale { box-shadow: 0 0 0 2px var(--accent); }
+.scheda-foto img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.badge-foto { position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; }
+.foto-azioni { display: flex; justify-content: center; gap: 4px; padding: 6px; border-top: 1px solid var(--line-soft); background: var(--surface); }
+.foto-azioni button { height: 28px; min-width: 30px; padding: 0 8px; }
+.scheda-testo { margin-top: 6px; }
+.scheda-testo .row h3 { margin-bottom: 8px; }
+.editor-ricco { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.editor-ricco:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.editor-barra { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.editor-barra button { height: 30px; min-width: 32px; padding: 0 8px; }
+.editor-area { min-height: 220px; max-height: 460px; overflow: auto; padding: 12px 14px; outline: none; font-size: 14px; line-height: 1.55; color: var(--ink); }
+.editor-area.breve { min-height: 90px; }
+.editor-area p { margin: 0 0 10px; }
+/* I titoletti dentro la descrizione sono contenuto, non etichette della scheda. */
+.scheda-mag .editor-area h2, .scheda-mag .editor-area h3, .scheda-mag .editor-area h4 {
+  margin: 14px 0 8px; text-transform: none; letter-spacing: normal; color: var(--ink); font-weight: 650;
+}
+.scheda-mag .editor-area h2 { font-size: 19px; }
+.scheda-mag .editor-area h3 { font-size: 16.5px; }
+.scheda-mag .editor-area h4 { font-size: 15px; }
+.scheda-mag .editor-area > :first-child { margin-top: 0; }
+.editor-area ul, .editor-area ol { margin: 0 0 10px; padding-left: 22px; }
+.editor-area img { max-width: 100%; height: auto; }
+.editor-area a { color: var(--accent-ink); }
+.editor-area table { border-collapse: collapse; margin: 0 0 10px; }
+.editor-area td, .editor-area th { border: 1px solid var(--line); padding: 4px 8px; }
+.editor-html { width: 100%; font-size: 12.5px; line-height: 1.5; }
+.scheda-piede { position: sticky; bottom: -18px; display: flex; align-items: center; gap: 10px; margin: 20px -18px -18px; padding: 14px 18px;
+                background: var(--surface); border-top: 1px solid var(--line-soft); }
+@media (max-width: 900px) { .scheda-colonne { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------------------------------------------------------------- scheda cliente
+   Sola lettura per il cliente: i dati li imposta l'amministratore. */
+.cliente-testa { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.cliente-testa img {
+  height: 64px; max-width: 200px; object-fit: contain; background: #fff;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px;
+}
+.cliente-iniziale {
+  width: 64px; height: 64px; border-radius: var(--radius-sm); display: grid; place-items: center;
+  background: var(--accent-soft, rgba(0,0,0,.05)); color: var(--accent);
+  font-size: 28px; font-weight: 700;
+}
+.cliente-nome { font-size: 19px; font-weight: 650; line-height: 1.25; }
+.cliente-blocchi {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 28px;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+}
+.cliente-blocchi h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cliente-blocchi .kv { grid-template-columns: 132px 1fr; }
+.cliente-blocchi .kv dd { overflow-wrap: anywhere; }
+@media (max-width: 980px) { .cliente-blocchi { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .cliente-blocchi { grid-template-columns: 1fr; } }
+.quota-barra {
+  height: 8px; border-radius: 99px; background: var(--line-soft); overflow: hidden;
+  margin-top: 14px; max-width: 420px;
+}
+.quota-barra span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.quota-barra.piena span { background: var(--err); }
