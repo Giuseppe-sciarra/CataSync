@@ -27,6 +27,16 @@ finisce sul prodotto WooCommerce.
 nome, eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
 **Negozio** contiene i dati anagrafici del cliente.
 
+**Guida** è la scheda delle istruzioni, tutte in un posto: i quattro passi del caricamento,
+gli stati dei prodotti e le categorie, ognuno con la schermata di esempio (in italiano per
+l'interfaccia in italiano, in inglese per le altre lingue). Ci si arriva anche dai pulsanti 📖
+di Prodotti e Categorie, già sulla sezione giusta. Chi entra per la prima volta trova in cima
+a Prodotti un invito alla Guida: chiuso una volta (o aperta la Guida), il portale lo ricorda
+sull'utente, quindi resta chiuso su ogni browser e dispositivo.
+
+Le immagini della Guida stanno in `static/aiuto/` e si rifanno da un portale di prova con
+dati dimostrativi: nomi inventati, siti `.example`.
+
 ## 2. La ricerca sul web
 
 ### Il giro di un codice

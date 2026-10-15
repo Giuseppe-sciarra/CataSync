@@ -21,6 +21,7 @@ multi-client, nothing to install on the shops.
 | **Edit** — name, brand, category, prices, description, photos and specifications before publishing.<br>![Edit](docs/screenshots/en/04-edit.png) | **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/en/05-products-dark.png) |
 | **Search settings** — engine, translation, headless browser, and how the last searches went.<br>![Settings](docs/screenshots/en/06-settings.png) | **Portal appearance** — name, logo and favicon of your portal.<br>![Appearance](docs/screenshots/en/07-appearance.png) |
 | **Categories** — add (also inside another one), rename, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Delete** — before deleting a category it shows what is inside and what happens to it.<br>![Delete a category](docs/screenshots/en/09-delete-category.png) |
+| **Guide** — a tab of its own that walks through loading products and managing categories, with screenshots.<br>![Guide](docs/screenshots/en/10-guide.png) | |
 
 The data shown is a demo with made-up names and `.example` sites. The interface is available
 in English, Italian, French and German.
@@ -93,6 +94,9 @@ in English, Italian, French and German.
   you choose** on the site, in the same order.
 
 **Portal**
+- **Guide** tab: loading products step by step, what each product status means and how to manage
+  categories, with example screenshots in the interface language (Italian or English). New users
+  get a short invitation to it, which stays closed once dismissed, on every device.
 - Multi-client: clients, shops, users (administrator, client), subscription status, plan and
   monthly quota.
 - Category and price are set by the client right in the table; one category can go to many rows

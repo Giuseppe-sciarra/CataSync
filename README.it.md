@@ -21,6 +21,7 @@ negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 | **Correggi la scheda** — nome, marca, categoria, prezzi, descrizione, foto e specifiche prima di pubblicare.<br>![Correggi la scheda](docs/screenshots/it/04-edit.png) | **Tema scuro** — automatico, chiaro o scuro.<br>![Tema scuro](docs/screenshots/it/05-products-dark.png) |
 | **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
 | **Categorie** — aggiungi (anche dentro un'altra), rinomini, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Elimina** — prima di eliminare una categoria mostra cosa c'è dentro e che fine fa.<br>![Elimina una categoria](docs/screenshots/it/09-delete-category.png) |
+| **Guida** — una scheda a sé che spiega passo passo come caricare i prodotti e gestire le categorie, con le schermate.<br>![Guida](docs/screenshots/it/10-guide.png) | |
 
 I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
 inglese, francese e tedesco.
@@ -96,6 +97,10 @@ inglese, francese e tedesco.
   che scegli** sul sito, nello stesso ordine.
 
 **Portale**
+- Scheda **Guida**: come si caricano i prodotti passo passo, cosa vuol dire ogni stato e come si
+  gestiscono le categorie, con le schermate di esempio nella lingua dell'interfaccia (italiano o
+  inglese). Chi entra per la prima volta trova un invito alla Guida, che una volta chiuso resta
+  chiuso su ogni dispositivo.
 - Multi-cliente: clienti, negozi, utenti (amministratore, cliente), stato dell'abbonamento,
   piano e quota mensile.
 - Categoria e prezzo li mette il cliente direttamente in tabella; una categoria si assegna a

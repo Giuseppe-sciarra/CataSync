@@ -29,7 +29,16 @@ function hub(isAdmin) {
                 caricoScelto: null },
     // Legenda «Come funziona»: aperta finché il cliente non la chiude; poi resta
     // raggiungibile dal pulsante «?». La scelta si ricorda nel browser.
-    legendaAperta: (function () { try { return localStorage.getItem('td_legenda') !== 'chiusa'; } catch (e) { return true; } })(),
+    // Avvisi chiusi dall'utente ('benvenuto' = l'invito alla Guida in cima a Prodotti). Li
+    // tiene il server, per tutti i dispositivi; il browser ne tiene una copia solo per non
+    // farli lampeggiare prima che arrivi la risposta.
+    guideChiuse: (function () {
+      try {
+        const salvate = JSON.parse(localStorage.getItem('td_guide_chiuse') || '[]');
+        if (localStorage.getItem('td_legenda') === 'chiusa' && !salvate.includes('benvenuto')) salvate.push('benvenuto');
+        return salvate;
+      } catch (e) { return []; }
+    })(),
     bulk: { category_id: '', regular_price: '' },
     _timerRiga: {},
     ultimoJob: null,        // l'importazione appena lanciata: banner di avanzamento
@@ -81,6 +90,8 @@ function hub(isAdmin) {
     // Categorie: creazione, ordine fra sorelle (padre -> id), trascinamento.
     catNuova: { name: '', parent: 0, busy: false },
     catRinomina: { id: null, name: '', busy: false },
+    // Immagini delle istruzioni: in italiano per l'italiano, in inglese per le altre lingue.
+    linguaAiuto: 'it',
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
     single: { gtin: '', busy: false, product: null, message: '', onSite: null, fonte: '', diagnosi: null },
     modal: { kind: null, title: '', data: {} },
@@ -112,8 +123,10 @@ function hub(isAdmin) {
       this.form.lang = this.linguaUI();
       this.ricercaProvaLingua = this.form.lang;
       this.lotto.lingua = this.form.lang;
+      this.linguaAiuto = this.linguaUI() === 'IT' ? 'it' : 'en';
       window.addEventListener('languagechange', () => {
         if (!this.linguaScelta) this.form.lang = this.linguaUI();
+        this.linguaAiuto = this.linguaUI() === 'IT' ? 'it' : 'en';
       });
       await this.loadMe();
       await this.loadSites();
@@ -194,8 +207,41 @@ function hub(isAdmin) {
         if (me && me.authenticated) {
           this.brand = me.brand;
           this.sub = me.subscription;
+          this.allineaGuide(me.guide_chiuse || []);
         }
       } catch (e) {}
+    },
+    // Il server comanda. Unica eccezione: la «Come funziona» chiusa in questo browser con la
+    // versione di prima, che il server non sa: chi l'aveva chiusa non rivede l'invito.
+    allineaGuide(dalServer) {
+      let vecchia = false;
+      try { vecchia = localStorage.getItem('td_legenda') === 'chiusa'; localStorage.removeItem('td_legenda'); } catch (e) {}
+      this.guideChiuse = dalServer.slice();
+      if (vecchia && !dalServer.includes('benvenuto')) this.ricordaGuida('benvenuto', false);
+      try { localStorage.setItem('td_guide_chiuse', JSON.stringify(this.guideChiuse)); } catch (e) {}
+    },
+    // La Guida è una pagina sola: ci si arriva dalla barra o dai pulsanti 📖, già sulla sezione.
+    apriGuida(sezione) {
+      if (sezione === 'import') this.ricordaGuida('benvenuto', false);   // vista la guida, l'invito non serve più
+      this.go('guida');
+      this.$nextTick(() => this.vaiGuida(sezione));
+    },
+    vaiGuida(sezione) {
+      const el = document.getElementById('guida-' + sezione);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    guidaAperta(nome) {
+      return !this.guideChiuse.includes(nome);
+    },
+    async ricordaGuida(nome, aperta) {
+      const chiuse = this.guideChiuse.filter(n => n !== nome);
+      if (!aperta) chiuse.push(nome);
+      if (chiuse.length === this.guideChiuse.length && chiuse.every(n => this.guideChiuse.includes(n))) return;
+      this.guideChiuse = chiuse;
+      try { localStorage.setItem('td_guide_chiuse', JSON.stringify(chiuse)); } catch (e) {}
+      try {
+        await this.api('/api/auth/me/guide', { method: 'PUT', body: JSON.stringify({ guida: nome, aperta: !!aperta }) });
+      } catch (e) { /* resta almeno in questo browser */ }
     },
 
     async loadProfile() {
@@ -744,14 +790,6 @@ function hub(isAdmin) {
       this.catalogo.filtro = null;
       this.catalogo.sel = {};
       this.go('catalogo');
-    },
-    chiudiLegenda() {
-      this.legendaAperta = false;
-      try { localStorage.setItem('td_legenda', 'chiusa'); } catch (e) {}
-    },
-    apriLegenda() {
-      this.legendaAperta = true;
-      try { localStorage.removeItem('td_legenda'); } catch (e) {}
     },
 
     get numSel() { return Object.values(this.catalogo.sel).filter(Boolean).length; },

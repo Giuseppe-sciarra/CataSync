@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.0 — 2026-10-15
+
+### Added
+- Scheda **Guida**: le istruzioni tutte in un posto (caricare i prodotti in quattro passi, gli
+  stati dei prodotti, le categorie), ognuna con la schermata di esempio in italiano o in inglese.
+  I pulsanti 📖 di Prodotti e Categorie portano alla sezione giusta.
+- Per chi entra la prima volta, in cima a Prodotti, un invito alla Guida. Chiuso una volta resta
+  chiuso: lo ricorda il portale sull'utente, non il browser, quindi vale su ogni dispositivo.
+
+### Changed
+- La «Come funziona» non sta più dentro la pagina Prodotti: è nella Guida. Chi l'aveva già chiusa
+  non vede nemmeno l'invito.
+
+### Fixed
+- Mentre la ricerca è in corso la riga dice «Scheda in arrivo…» invece di «Scheda non trovata».
+
 ## 2.2.0 — 2026-10-15
 
 ### Added

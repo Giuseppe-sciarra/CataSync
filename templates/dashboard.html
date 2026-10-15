@@ -55,6 +55,7 @@
       <button :class="tab==='categories' && 'on'" @click="go('categories')">Categorie</button>
     </template>
     <template x-if="!isAdmin"><button :class="tab==='shop' && 'on'" @click="go('shop')">Negozio</button></template>
+    <button :class="tab==='guida' && 'on'" @click="go('guida')">Guida</button>
     <template x-if="isAdmin">
       <span style="display:contents">
         <button :class="tab==='clients' && 'on'" @click="go('clients')">Clienti</button>
@@ -139,7 +140,7 @@
                 </select>
               </template>
               <div class="grow"></div>
-              <button class="ghost sm" x-show="!legendaAperta" @click="apriLegenda()">📖 Come funziona</button>
+              <button class="ghost sm" @click="apriGuida('import')">📖 Guida</button>
               <button class="ghost sm" @click="go('single')">Prova un solo codice</button>
             </header>
             <div class="body">
@@ -201,53 +202,14 @@
             </div>
           </div>
 
-          <!-- ================= LEGENDA: come funziona, in parole povere -->
-          <template x-if="legendaAperta">
-            <div class="card legenda">
-              <header>
-                <h2>Come funziona</h2>
-                <div class="grow"></div>
-                <button class="ghost sm" @click="chiudiLegenda()">Ho capito, nascondi</button>
-              </header>
-              <div class="body">
-                <ol class="passi">
-                  <li>
-                    <span class="n">1</span>
-                    <div><strong>Incolla i codici</strong> nel riquadro qui sopra: l'EAN (le cifre sotto il codice a barre)
-                      oppure il codice del produttore (es. <span class="mono">97924465</span>), uno per riga. Non il tuo codice di magazzino.</div>
-                  </li>
-                  <li>
-                    <span class="n">2</span>
-                    <div><strong>Premi «Cerca le schede»</strong>. Cerchiamo nome, foto, descrizione e specifiche sul web,
-                      nella lingua scelta. Ci vuole qualche secondo a prodotto: le righe compaiono qui sotto man mano.</div>
-                  </li>
-                  <li>
-                    <span class="n">3</span>
-                    <div><strong>Metti categoria e prezzo</strong> direttamente in tabella (quelli li sai solo tu).
-                      Seleziona più righe per assegnare la stessa categoria a tutte in un colpo.</div>
-                  </li>
-                  <li>
-                    <span class="n">4</span>
-                    <div><strong>Premi «Pubblica sul sito»</strong>: i prodotti pronti vanno online. I codici già sul sito vengono aggiornati, non duplicati.</div>
-                  </li>
-                </ol>
-
-                <div class="stati-legenda">
-                  <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>stiamo cercando la scheda, aspetta.</span></div>
-                  <div class="voce"><span class="pill p-da_completare">Manca: prezzo, categoria</span><span>scheda trovata, tocca a te: scrivi quello che manca nella riga.</span></div>
-                  <div class="voce"><span class="pill p-pronto">Pronto da pubblicare</span><span>tutto compilato: aspetta solo «Pubblica sul sito».</span></div>
-                  <div class="voce"><span class="pill p-sul_sito">Sul sito</span><span>pubblicato. «Vedi sul sito» lo apre; se lo modifichi qui, si aggiorna anche lì.</span></div>
-                  <div class="voce"><span class="pill p-non_trovato">Non trovato</span><span>nessun sito pubblica questo codice, o chi lo pubblica non si lascia leggere: «Perché?» ti dice cosa è successo, poi «Compila a mano» o prova col codice produttore.</span></div>
-                  <div class="voce"><span class="pill p-problema">Problema</span><span>qualcosa è andato storto nella ricerca: «Riprova».</span></div>
-                  <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>con la scritta «motori bloccati» sotto: i motori di ricerca ci hanno rallentati, riprovo da solo all'ora indicata.</span></div>
-                </div>
-
-                <p class="hint" style="margin-top:12px">
-                  <strong>Ultimo carico / Tutti i prodotti</strong>: la tabella mostra di norma solo i prodotti dell'ultimo carico, così quelli vecchi non sono sempre tra i piedi.
-                  Col menu in alto a sinistra passi a «Da sistemare» (tutto ciò che aspetta te, di qualunque carico) o a «Tutti i prodotti».
-                  Lo <strong>Storico</strong> in alto tiene i carichi passati uno per uno.
-                </p>
-              </div>
+          <!-- ================= primo accesso: un invito alla Guida, che si chiude e resta chiuso -->
+          <template x-if="guidaAperta('benvenuto')">
+            <div class="notice n-ok benvenuto">
+              <span>Prima volta qui? La Guida spiega in quattro passi come si caricano i prodotti, con esempi.</span>
+              <span class="row" style="gap:8px">
+                <button class="sm" @click="apriGuida('import')">Apri la guida</button>
+                <button class="ghost sm" @click="ricordaGuida('benvenuto', false)">Ho capito, nascondi</button>
+              </span>
             </div>
           </template>
 
@@ -289,7 +251,7 @@
                 <option value="da_fare">Da sistemare (tutti i carichi)</option>
                 <option value="tutti">Tutti i prodotti</option>
               </select>
-              <button class="ghost sm" x-show="!legendaAperta" @click="apriLegenda()" title="Rimostra la guida «Come funziona»">📖 Guida</button>
+              <button class="ghost sm" @click="apriGuida('import')" title="Come si caricano i prodotti, con esempi">📖 Guida</button>
               <div class="grow"></div>
               <button class="ghost" x-show="catalogo.da_arricchire" @click="riprovaSchedeIncomplete()"
                       x-text="'Riprova schede incomplete' + (catalogo.da_arricchire ? ' (' + catalogo.da_arricchire + ')' : '')"></button>
@@ -361,7 +323,7 @@
                           <template x-if="!r.image"><div class="thumb vuoto"></div></template>
                         </td>
                         <td>
-                          <div class="titolo" x-text="r.title || 'Scheda non trovata'"></div>
+                          <div class="titolo" x-text="r.title || (r.stato === 'in_corso' ? 'Scheda in arrivo…' : 'Scheda non trovata')"></div>
                           <div class="hint">
                             <span x-text="r.brand"></span><span x-show="r.brand"> · </span>
                             <span x-show="r.tipo_codice==='mpn'">cod. </span><span class="gtin" x-text="r.gtin"></span>
@@ -783,12 +745,14 @@
             </template>
           </select>
           <button class="ghost sm" @click="loadTaxonomy(true)">Rileggi dal sito</button>
+          <button class="ghost sm" @click="apriGuida('categorie')" title="Come si aggiungono, rinominano, ordinano ed eliminano le categorie, con esempi">📖 Istruzioni</button>
         </header>
         <div class="body">
           <p class="hint" style="margin-top:0">
             Le categorie del negozio, nell'ordine in cui le mostra il sito: da qui si creano, anche dentro
             un'altra, si rinominano, si eliminano e si mettono in ordine trascinandole o con le frecce.
           </p>
+
 
           <template x-if="taxError">
             <div class="notice n-err" x-text="taxError"></div>
@@ -891,6 +855,117 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================ GUIDA -->
+  <template x-if="tab==='guida'">
+    <div class="stack pagina-guida">
+      <div class="card">
+        <header><h2>Guida</h2></header>
+        <div class="body">
+          <p class="hint" style="margin-top:0">Tutto quello che serve per usare il portale, con esempi.</p>
+          <nav class="guida-indice">
+            <button class="ghost sm" @click="vaiGuida('import')">Caricare i prodotti</button>
+            <button class="ghost sm" @click="vaiGuida('stati')">Gli stati dei prodotti</button>
+            <button class="ghost sm" @click="vaiGuida('categorie')">Le categorie</button>
+          </nav>
+        </div>
+      </div>
+
+      <div class="card legenda" id="guida-import">
+        <header><h2>Caricare i prodotti</h2></header>
+        <div class="body">
+          <ol class="passi">
+            <li>
+              <span class="n">1</span>
+              <div><p><strong>Incolla i codici</strong> nel riquadro «Aggiungi prodotti» della pagina Prodotti: l'EAN (le cifre sotto il codice a barre)
+                oppure il codice del produttore (es. <span class="mono">97924465</span>), uno per riga. Non il tuo codice di magazzino.</p>
+                <img class="passo-img" :src="'/static/aiuto/import/' + linguaAiuto + '/incolla.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                     alt="Esempio: codici incollati nel riquadro e pulsante per cercare le schede"></div>
+            </li>
+            <li>
+              <span class="n">2</span>
+              <div><p><strong>Premi «Cerca le schede»</strong>. Cerchiamo nome, foto, descrizione e specifiche sul web,
+                nella lingua scelta. Ci vuole qualche secondo a prodotto: le righe compaiono man mano nella tabella «I tuoi prodotti».</p>
+                <img class="passo-img" :src="'/static/aiuto/import/' + linguaAiuto + '/cerca.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                     alt="Esempio: ricerca in corso, con le righe che aspettano la scheda"></div>
+            </li>
+            <li>
+              <span class="n">3</span>
+              <div><p><strong>Metti categoria e prezzo</strong> direttamente in tabella (quelli li sai solo tu).
+                Seleziona più righe per assegnare la stessa categoria a tutte in un colpo.</p>
+                <img class="passo-img" :src="'/static/aiuto/import/' + linguaAiuto + '/categoria-prezzo.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                     alt="Esempio: righe a cui mancano categoria e prezzo"></div>
+            </li>
+            <li>
+              <span class="n">4</span>
+              <div><p><strong>Premi «Pubblica sul sito»</strong>: i prodotti pronti vanno online. I codici già sul sito vengono aggiornati, non duplicati.</p>
+                <img class="passo-img" :src="'/static/aiuto/import/' + linguaAiuto + '/pubblica.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                     alt="Esempio: prodotti pronti da pubblicare e prodotto già sul sito"></div>
+            </li>
+          </ol>
+
+          <h3 id="guida-stati" class="guida-sotto">Gli stati dei prodotti</h3>
+          <div class="stati-legenda">
+            <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>stiamo cercando la scheda, aspetta.</span></div>
+            <div class="voce"><span class="pill p-da_completare">Manca: prezzo, categoria</span><span>scheda trovata, tocca a te: scrivi quello che manca nella riga.</span></div>
+            <div class="voce"><span class="pill p-pronto">Pronto da pubblicare</span><span>tutto compilato: aspetta solo «Pubblica sul sito».</span></div>
+            <div class="voce"><span class="pill p-sul_sito">Sul sito</span><span>pubblicato. «Vedi sul sito» lo apre; se lo modifichi qui, si aggiorna anche lì.</span></div>
+            <div class="voce"><span class="pill p-non_trovato">Non trovato</span><span>nessun sito pubblica questo codice, o chi lo pubblica non si lascia leggere: «Perché?» ti dice cosa è successo, poi «Compila a mano» o prova col codice produttore.</span></div>
+            <div class="voce"><span class="pill p-problema">Problema</span><span>qualcosa è andato storto nella ricerca: «Riprova».</span></div>
+            <div class="voce"><span class="pill p-in_corso">In ricerca…</span><span>con la scritta «motori bloccati» sotto: i motori di ricerca ci hanno rallentati, riprovo da solo all'ora indicata.</span></div>
+          </div>
+
+          <p class="hint" style="margin-top:12px">
+            <strong>Ultimo carico / Tutti i prodotti</strong>: la tabella mostra di norma solo i prodotti dell'ultimo carico, così quelli vecchi non sono sempre tra i piedi.
+            Col menu accanto a «I tuoi prodotti» passi a «Da sistemare» (tutto ciò che aspetta te, di qualunque carico) o a «Tutti i prodotti».
+            Lo <strong>Storico</strong> in alto tiene i carichi passati uno per uno.
+          </p>
+        </div>
+      </div>
+
+      <div class="card" id="guida-categorie">
+        <header>
+          <h2>Le categorie</h2>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="go('categories')">Vai alle categorie</button>
+        </header>
+        <div class="body istruzioni-corpo">
+          <p style="margin-top:0">Dalla pagina Categorie si aggiungono, si rinominano, si eliminano e si mettono in ordine le categorie del negozio: ogni modifica va sul sito.</p>
+          <h4>Aggiungere una categoria</h4>
+          <p>Scrivi il nome, scegli in «Dentro» dove metterla e premi Crea (o Invio).</p>
+          <div class="istruzioni-esempi">
+            <figure>
+              <figcaption>«Dentro» su nessuna: categoria principale</figcaption>
+              <p>La nuova categoria è principale e va in fondo all'elenco, sotto tutte le altre. Poi la puoi spostare dove vuoi.</p>
+              <img :src="'/static/aiuto/categorie/' + linguaAiuto + '/principale.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                   alt="Esempio: categoria principale aggiunta in fondo all'elenco">
+            </figure>
+            <figure>
+              <figcaption>«Dentro» su una categoria: sottocategoria</figcaption>
+              <p>La nuova categoria diventa una sottocategoria di quella scelta e va sotto di lei, dopo le sottocategorie che ha già. «Dentro» resta sulla stessa categoria, così ne aggiungi altre di fila.</p>
+              <img :src="'/static/aiuto/categorie/' + linguaAiuto + '/sottocategoria.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+                   alt="Esempio: sottocategoria aggiunta sotto la categoria scelta">
+            </figure>
+          </div>
+
+          <h4>Rinominare</h4>
+          <p>Premi Rinomina sulla riga, scrivi il nuovo nome e premi Salva (o Invio); Annulla (o Esc) lascia tutto com'era. Il nome cambia anche sul sito, l'indirizzo della categoria resta lo stesso.</p>
+          <img :src="'/static/aiuto/categorie/' + linguaAiuto + '/rinomina.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: una categoria mentre la si rinomina">
+
+          <h4>Mettere in ordine</h4>
+          <p>Trascina una categoria dalla maniglia a sinistra oppure usa le frecce, poi premi «Salva l'ordine» per portare l'ordine sul sito, o Annulla. Le sottocategorie si spostano solo fra loro.</p>
+          <img :src="'/static/aiuto/categorie/' + linguaAiuto + '/ordine.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: categoria spostata e avviso per salvare l'ordine">
+
+          <h4>Eliminare</h4>
+          <p>Premi Elimina: prima di confermare, una finestra dice quanti prodotti e sottocategorie ci sono dentro. I prodotti restano sul sito, le sottocategorie salgono di un livello. Non si torna indietro.</p>
+          <img :src="'/static/aiuto/categorie/' + linguaAiuto + '/elimina.png'" @load="$el.style.width = ($el.naturalWidth / 2) + 'px'" loading="lazy"
+               alt="Esempio: conferma prima di eliminare una categoria">
         </div>
       </div>
     </div>

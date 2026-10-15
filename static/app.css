@@ -697,7 +697,9 @@ button.x:hover { background: var(--surface-2); border-color: var(--line); color:
 .esiti li.ok { border-left-color: var(--ok); color: var(--ink); }
 
 /* ----------------------------------------------------------- legenda */
-.legenda .passi { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.legenda .passi { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 28px; }
+.legenda .passo-img { display: block; max-width: 100%; height: auto; margin-top: 10px;
+                      border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--surface); }
 .legenda .passi li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; }
 .legenda .n {
   flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%;
@@ -710,7 +712,7 @@ button.x:hover { background: var(--surface-2); border-color: var(--line); color:
 .cat-head select.vista { max-width: 230px; height: 36px; margin-left: 6px; }
 button.aiuto { width: 32px; padding: 0; font-weight: 700; }
 @media (max-width: 900px) {
-  .legenda .passi { grid-template-columns: 1fr 1fr; }
+  .legenda .passi { grid-template-columns: 1fr; }
   .stati-legenda { grid-template-columns: 1fr; }
 }
 
@@ -808,6 +810,24 @@ table.lotto td { vertical-align: top; }
 .cat-nuova select { flex: 0 1 300px; max-width: 320px; }
 .cat-nuova label { margin: 0; }
 .cat-azioni { gap: 8px; flex-wrap: nowrap; }
+/* Guida: una pagina sola, con esempi */
+.guida-indice { display: flex; flex-wrap: wrap; gap: 8px; }
+.pagina-guida .card { scroll-margin-top: 16px; }
+.guida-sotto { margin: 4px 0 12px; font-size: 15px; scroll-margin-top: 16px; }
+.benvenuto { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pagina-guida .legenda .passi { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.pagina-guida .legenda .passi li > div { display: grid; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.pagina-guida .legenda .passi li > div > p { margin: 0; }
+.pagina-guida .legenda .passo-img { margin-top: 0; }
+@media (max-width: 900px) { .pagina-guida .legenda .passi li > div { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+.istruzioni-corpo { font-size: 13.5px; }
+.istruzioni-corpo h4 { margin: 20px 0 6px; font-size: 14.5px; }
+.istruzioni-corpo p { margin: 0 0 8px; max-width: 78ch; }
+.istruzioni-corpo img { display: block; max-width: 100%; height: auto; margin: 6px 0 4px;
+                        border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--surface); }
+.istruzioni-esempi { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.istruzioni-esempi figure { margin: 0; }
+.istruzioni-esempi figcaption { font-weight: 600; margin: 4px 0 4px; }
 .cat-riga input.cat-rinomina { flex: 0 1 320px; min-width: 140px; width: auto; }
 .cat-avviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cat-albero { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-soft); border-radius: var(--radius); overflow: hidden; }

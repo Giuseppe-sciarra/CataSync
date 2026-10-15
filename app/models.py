@@ -77,6 +77,9 @@ class User(Base):
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Avvisi della guida che l'utente ha chiuso, separati da virgola: restano chiusi su ogni
+    # browser e dispositivo.
+    guide_chiuse: Mapped[str] = mapped_column(String(255), default="")
 
     client: Mapped[Client | None] = relationship(back_populates="users")
 

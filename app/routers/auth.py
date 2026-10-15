@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,20 @@ class PasswordIn(BaseModel):
     new_password: str
 
 
+# Gli avvisi della guida che si possono chiudere: per ora l'invito alla Guida che i nuovi
+# utenti trovano in cima alla pagina Prodotti.
+GUIDE = ("benvenuto",)
+
+
+def guide_chiuse(user: User) -> list[str]:
+    return [g for g in (user.guide_chiuse or "").split(",") if g in GUIDE]
+
+
+class GuidaIn(BaseModel):
+    guida: str = Field(pattern="^(" + "|".join(GUIDE) + ")$")
+    aperta: bool
+
+
 def user_payload(db: Session, user: User) -> dict:
     data = {
         "id": user.id,
@@ -47,6 +61,7 @@ def user_payload(db: Session, user: User) -> dict:
         "client_name": user.client.name if user.client else "",
         "brand": None,
         "subscription": None,
+        "guide_chiuse": guide_chiuse(user),
     }
     if user.client:
         data["brand"] = {
@@ -109,6 +124,17 @@ def me(db: Session = Depends(get_db), user: User | None = Depends(current_user))
     if not user:
         return {"authenticated": False}
     return {"authenticated": True, **user_payload(db, user)}
+
+
+@router.put("/me/guide")
+def ricorda_guida(data: GuidaIn, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    """Ricorda se l'utente ha chiuso o riaperto una guida, per tutti i suoi dispositivi."""
+    chiuse = [g for g in guide_chiuse(user) if g != data.guida]
+    if not data.aperta:
+        chiuse.append(data.guida)
+    user.guide_chiuse = ",".join(chiuse)
+    db.commit()
+    return {"ok": True, "guide_chiuse": chiuse}
 
 
 @router.post("/password")

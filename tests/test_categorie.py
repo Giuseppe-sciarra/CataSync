@@ -258,6 +258,21 @@ class Categorie(unittest.TestCase):
         finally:
             self.entra("categorie@example.com")
 
+    def test_7_invito_alla_guida_ricordato(self):
+        """Chiuso una volta, l'invito alla Guida resta chiuso: lo sa il server, non il browser."""
+        self.assertEqual(self.c.get("/api/auth/me").json()["guide_chiuse"], [])
+        r = self.c.put("/api/auth/me/guide", json={"guida": "benvenuto", "aperta": False})
+        self.assertEqual((r.status_code, r.json()["guide_chiuse"]), (200, ["benvenuto"]))
+        self.assertEqual(self.c.put("/api/auth/me/guide", json={"guida": "benvenuto", "aperta": False}).json()["guide_chiuse"],
+                         ["benvenuto"])   # due volte: niente doppioni
+        self.entra("categorie@example.com")   # nuova sessione, come da un altro browser
+        self.assertEqual(self.c.get("/api/auth/me").json()["guide_chiuse"], ["benvenuto"])
+        self.assertEqual(self.c.put("/api/auth/me/guide", json={"guida": "altro", "aperta": False}).status_code, 422)
+        self.assertEqual(self.c.put("/api/auth/me/guide", json={"guida": "benvenuto", "aperta": True}).json()["guide_chiuse"], [])
+        self.c.post("/api/auth/logout")
+        self.assertEqual(self.c.put("/api/auth/me/guide", json={"guida": "benvenuto", "aperta": False}).status_code, 401)
+        self.entra("categorie@example.com")
+
 
 if __name__ == "__main__":
     unittest.main()
