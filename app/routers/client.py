@@ -770,7 +770,11 @@ def prices_template(job_id: int, db: Session = Depends(get_db), user: User = Dep
 # (l'ordine di Prodotti → Categorie in WooCommerce, che il mu-plugin del menu segue).
 
 class CategoriaNuova(BaseModel):
-    # Sempre una categoria principale: da CataSync le sottocategorie non si creano.
+    name: str = Field(min_length=1, max_length=190)
+    parent: int = Field(default=0, ge=0)   # 0 = categoria principale
+
+
+class NomeCategoria(BaseModel):
     name: str = Field(min_length=1, max_length=190)
 
 
@@ -805,24 +809,68 @@ async def _categorie_del_sito(site: Site) -> list[dict]:
 async def crea_categoria(
     site_id: int, data: CategoriaNuova, db: Session = Depends(get_db), user: User = Depends(require_user)
 ):
-    """Nuova categoria principale sul sito, in fondo all'elenco."""
+    """Nuova categoria sul sito (principale o dentro un'altra), in fondo alle sorelle."""
     site = _visible_site(db, site_id, user)
     _scrittura_sul_sito(site)
     nome = " ".join(data.name.split())
     if not nome:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scrivi il nome della categoria.")
 
-    principali = [c for c in await _categorie_del_sito(site) if not c.get("parent")]
-    if any((c.get("name") or "").strip().lower() == nome.lower() for c in principali):
-        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria principale «{nome}».")
-    in_fondo = max(((c.get("menu_order") or 0) for c in principali), default=-1) + 1
+    esistenti = await _categorie_del_sito(site)
+    # La madre dev'essere ancora sul sito, e non «Senza categoria», che non si mostra.
+    if data.parent and not any(c.get("id") == data.parent and not wc_rest.e_riserva(c) for c in esistenti):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "La categoria madre non c'è più sul sito: rileggi le categorie.")
+    sorelle = [c for c in esistenti if (c.get("parent") or 0) == data.parent]
+    if any((c.get("name") or "").strip().lower() == nome.lower() for c in sorelle):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria «{nome}» a questo livello.")
+    in_fondo = max(((c.get("menu_order") or 0) for c in sorelle), default=-1) + 1
 
     try:
-        creata = await wc_rest.create_category(site, nome, menu_order=in_fondo)
+        creata = await wc_rest.create_category(site, nome, parent=data.parent, menu_order=in_fondo)
     except wc_rest.SiteError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
     audit(db, user.email, "category_create", f"{site.name} · {nome}")
     return {"ok": True, "id": creata.get("id"), "name": creata.get("name", nome)}
+
+
+@router.patch("/sites/{site_id}/categories/{term_id}")
+async def rinomina_categoria(
+    site_id: int, term_id: int, data: NomeCategoria, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Nuovo nome della categoria, sul sito e nel portale. L'indirizzo (slug) resta quello di
+    prima: i link alla categoria non si rompono."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    nome = " ".join(data.name.split())
+    if not nome:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scrivi il nome della categoria.")
+
+    esistenti = await _categorie_del_sito(site)
+    categoria = next((c for c in esistenti if c.get("id") == term_id), None)
+    if not categoria:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "La categoria non c'è più sul sito: rileggi le categorie.")
+    if wc_rest.e_riserva(categoria):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "«Senza categoria» è quella di riserva di WooCommerce: non si rinomina.")
+    prima = categoria.get("name") or ""
+    if nome == prima:
+        return {"ok": True, "id": term_id, "name": nome, "cambiata": False}
+    padre = categoria.get("parent") or 0
+    if any(c.get("id") != term_id and (c.get("parent") or 0) == padre
+           and (c.get("name") or "").strip().lower() == nome.lower() for c in esistenti):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria «{nome}» a questo livello.")
+
+    try:
+        aggiornata = await wc_rest.update_category(site, term_id, name=nome)
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    nuovo = aggiornata.get("name") or nome
+    db.execute(
+        update(CategoryMap).where(CategoryMap.site_id == site.id, CategoryMap.wc_term_id == term_id).values(wc_label=nuovo)
+    )
+    db.commit()
+    audit(db, user.email, "category_rename", f"{site.name} · {prima} → {nuovo}")
+    return {"ok": True, "id": term_id, "name": nuovo, "cambiata": True}
 
 
 @router.delete("/sites/{site_id}/categories/{term_id}")

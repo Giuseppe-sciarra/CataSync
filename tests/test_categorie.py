@@ -1,6 +1,7 @@
-"""Categorie del sito da CataSync: creazione (solo principali, in fondo all'elenco),
-eliminazione con la pulizia nel portale, ordine a lotti, menu del sito tramite il
+"""Categorie del sito da CataSync: creazione in fondo alle sorelle (anche sottocategorie),
+nuovo nome, eliminazione con la pulizia nel portale, ordine a lotti, menu del sito tramite il
 mu-plugin. WooCommerce e il plugin sono finti (niente rete), ma rispondono come quelli veri."""
+import html
 import json
 import os
 import unittest
@@ -28,6 +29,7 @@ class WooFinto:
         self.prossimo = 30
         self.lotti: list[dict] = []
         self.creati: list[dict] = []
+        self.rinominate: list[tuple] = []
         self.plugin = True
         self.menu = {"attivo": False, "menu_id": 0, "voce_id": 0, "sottocategorie": True}
 
@@ -65,6 +67,11 @@ class WooFinto:
         if path.startswith("/products/categories/"):
             cid = int(path.rsplit("/", 1)[1])
             if method == "GET":
+                return dict(self.cats[cid]), {}
+            if method == "PUT":   # come WordPress: «&» torna indietro come «&amp;»
+                self.cats[cid].update({k: html.escape(v, quote=False) if k == "name" else v
+                                       for k, v in json_body.items()})
+                self.rinominate.append((cid, json_body))
                 return dict(self.cats[cid]), {}
             if method == "DELETE":
                 via = self.cats.pop(cid)
@@ -109,40 +116,69 @@ class Categorie(unittest.TestCase):
     def url(self, coda=""):
         return f"/api/sites/{self.sito}/categories{coda}"
 
-    def test_1_crea_principali_in_fondo(self):
+    def test_1_crea_in_fondo_alle_sorelle(self):
         r = self.c.post(self.url(), json={"name": "  Radiatori   da  bagno "})
         self.assertEqual(r.status_code, 201, r.text)
         self.assertEqual(self.woo.creati[-1], {"name": "Radiatori da bagno", "menu_order": 2})
-        # Sottocategorie no: una madre mandata lo stesso non conta, la categoria nasce principale.
         r = self.c.post(self.url(), json={"name": "Murali", "parent": 21})
         self.assertEqual(r.status_code, 201, r.text)
-        self.assertEqual(self.woo.creati[-1], {"name": "Murali", "menu_order": 3})
+        self.assertEqual(self.woo.creati[-1], {"name": "Murali", "parent": 21, "menu_order": 1})
         r = self.c.post(self.url(), json={"name": "caldaie"})
         self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.json()["detail"], "C'è già una categoria principale «caldaie».")
+        self.assertEqual(r.json()["detail"], "C'è già una categoria «caldaie» a questo livello.")
+        self.assertEqual(self.c.post(self.url(), json={"name": "murali", "parent": 21}).status_code, 409)
+        self.assertEqual(self.c.post(self.url(), json={"name": "Nuova", "parent": 999}).status_code, 400)
+        self.assertEqual(self.c.post(self.url(), json={"name": "Nuova", "parent": 15}).status_code, 400)
         self.assertEqual(self.c.post(self.url(), json={"name": ""}).status_code, 422)
-        # Nell'elenco del portale: nome da solo, ordine, e senza «Senza categoria».
+        # Nell'elenco del portale: nome da solo, percorso, ordine, e senza «Senza categoria».
         cats = self.c.get(f"/api/sites/{self.sito}/taxonomy").json()["categories"]
         self.assertNotIn(15, [c["id"] for c in cats])
         murali = next(c for c in cats if c["nome"] == "Murali")
-        self.assertEqual((murali["name"], murali["menu_order"]), ("Murali", 3))
-        sotto = next(c for c in cats if c["id"] == 23)   # quelle che il sito ha già restano com'erano
-        self.assertEqual((sotto["name"], sotto["nome"]), ("Caldaie › Condensazione", "Condensazione"))
+        self.assertEqual((murali["name"], murali["menu_order"]), ("Caldaie › Murali", 1))
 
     def test_2_ordine_a_lotti(self):
         ids = [c["id"] for c in self.c.get(f"/api/sites/{self.sito}/taxonomy").json()["categories"]]
         radiatori = next(i for i in ids if self.woo.cats[i]["name"] == "Radiatori da bagno")
         murali = next(i for i in ids if self.woo.cats[i]["name"] == "Murali")
         prima = len(self.woo.lotti)
-        r = self.c.put(self.url("/order"), json={"ids": [22, 21, 23, radiatori, murali]})
+        r = self.c.put(self.url("/order"), json={"ids": [22, 21, 23, murali, radiatori]})
         self.assertEqual(r.status_code, 200, r.text)
         cambi = {u["id"]: u["menu_order"] for u in self.woo.lotti[prima]["update"]}
         # Pompe prima, Caldaie seconda; «Senza categoria», che non era nell'elenco, va in fondo.
-        self.assertEqual(cambi, {22: 0, 21: 1, 15: 4})
+        self.assertEqual(cambi, {22: 0, 21: 1, 15: 3})
         self.assertEqual(r.json()["cambiate"], 3)
-        r = self.c.put(self.url("/order"), json={"ids": [22, 21, 23, radiatori, murali]})
+        r = self.c.put(self.url("/order"), json={"ids": [22, 21, 23, murali, radiatori]})
         self.assertEqual(r.json()["cambiate"], 0)
         self.assertEqual(len(self.woo.lotti), prima + 1)   # niente da cambiare: nessuna chiamata
+
+    def test_2b_rinomina(self):
+        db = SessionLocal()
+        db.add(CategoryMap(site_id=self.sito, source_category="pompe di calore", wc_term_id=22, wc_label="Pompe"))
+        db.commit()
+        r = self.c.patch(self.url("/22"), json={"name": "  Pompe  &  circolatori "})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json(), {"ok": True, "id": 22, "name": "Pompe & circolatori", "cambiata": True})
+        self.assertEqual(self.woo.rinominate[-1], (22, {"name": "Pompe & circolatori"}))   # lo slug non si tocca
+        self.assertEqual(self.woo.cats[22]["slug"], "pompe")
+        mappa = db.query(CategoryMap).filter(CategoryMap.wc_term_id == 22).one()
+        db.refresh(mappa)
+        self.assertEqual(mappa.wc_label, "Pompe & circolatori")
+        db.close()
+        # Nell'elenco il nome è in chiaro, non «&amp;»; lo stesso nome non rifà la chiamata.
+        cats = self.c.get(f"/api/sites/{self.sito}/taxonomy").json()["categories"]
+        self.assertEqual(next(c for c in cats if c["id"] == 22)["nome"], "Pompe & circolatori")
+        quante = len(self.woo.rinominate)
+        r = self.c.patch(self.url("/22"), json={"name": "Pompe & circolatori"})
+        self.assertEqual((r.status_code, r.json()["cambiata"], len(self.woo.rinominate)), (200, False, quante))
+        # Solo maiuscole diverse: si può. Stesso nome di una sorella: no. Di un'altra a un altro livello: sì.
+        self.assertEqual(self.c.patch(self.url("/22"), json={"name": "pompe & circolatori"}).status_code, 200)
+        r = self.c.patch(self.url("/22"), json={"name": "CALDAIE"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"], "C'è già una categoria «CALDAIE» a questo livello.")
+        self.assertEqual(self.c.patch(self.url("/23"), json={"name": "Pompe & circolatori"}).status_code, 200)
+        self.assertEqual(self.c.patch(self.url("/15"), json={"name": "Varie"}).status_code, 400)
+        self.assertEqual(self.c.patch(self.url("/999"), json={"name": "Varie"}).status_code, 404)
+        self.assertEqual(self.c.patch(self.url("/22"), json={"name": ""}).status_code, 422)
 
     def test_3_elimina_e_pulisce_il_portale(self):
         r = self.c.post("/api/jobs", json={"site_id": self.sito, "eans": "8059893356383"})
@@ -199,6 +235,7 @@ class Categorie(unittest.TestCase):
         try:
             self.assertEqual(self.c.post(self.url(), json={"name": "Sospesa"}).status_code, 402)
             self.assertEqual(self.c.put(self.url("/order"), json={"ids": []}).status_code, 402)
+            self.assertEqual(self.c.patch(self.url("/22"), json={"name": "Sospesa"}).status_code, 402)
             self.assertEqual(self.c.put(f"/api/sites/{self.sito}/menu", json={"attivo": False}).status_code, 402)
             self.assertEqual(self.c.get(f"/api/sites/{self.sito}/menu").status_code, 200)   # leggere si può
         finally:
@@ -216,6 +253,7 @@ class Categorie(unittest.TestCase):
         try:
             self.assertEqual(self.c.post(self.url(), json={"name": "Intrusa"}).status_code, 403)
             self.assertEqual(self.c.delete(self.url("/22")).status_code, 403)
+            self.assertEqual(self.c.patch(self.url("/22"), json={"name": "Intrusa"}).status_code, 403)
             self.assertEqual(self.c.get(f"/api/sites/{self.sito}/menu").status_code, 403)
         finally:
             self.entra("categorie@example.com")

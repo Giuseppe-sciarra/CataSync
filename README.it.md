@@ -20,7 +20,7 @@ negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 | **Perché?** — ogni mancato dice il motivo: le domande fatte, i motori che hanno risposto o bloccato, i siti aperti e cosa è successo su ciascuno.<br>![Perché](docs/screenshots/it/02-why.png) | **Niente online** — tre ricerche e nessuna pagina con quel codice: prova il codice produttore o compila la scheda a mano.<br>![Non pubblicato online](docs/screenshots/it/03-why-unknown.png) |
 | **Correggi la scheda** — nome, marca, categoria, prezzi, descrizione, foto e specifiche prima di pubblicare.<br>![Correggi la scheda](docs/screenshots/it/04-edit.png) | **Tema scuro** — automatico, chiaro o scuro.<br>![Tema scuro](docs/screenshots/it/05-products-dark.png) |
 | **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
-| **Categorie** — aggiungi, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Elimina** — prima di eliminare una categoria mostra cosa c'è dentro e che fine fa.<br>![Elimina una categoria](docs/screenshots/it/09-delete-category.png) |
+| **Categorie** — aggiungi (anche dentro un'altra), rinomini, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Elimina** — prima di eliminare una categoria mostra cosa c'è dentro e che fine fa.<br>![Elimina una categoria](docs/screenshots/it/09-delete-category.png) |
 
 I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
 inglese, francese e tedesco.
@@ -83,9 +83,11 @@ inglese, francese e tedesco.
   anche le immagini.
 
 **Categorie**
-- Le **categorie del negozio si gestiscono dal portale**: le aggiungi, le elimini, le metti in
-  ordine trascinandole o con le frecce. L'ordine è quello di WooCommerce (*Prodotti → Categorie*);
-  una categoria nuova è una categoria principale e va in fondo.
+- Le **categorie del negozio si gestiscono dal portale**: le aggiungi (anche dentro un'altra), le
+  rinomini, le elimini, le metti in ordine trascinandole o con le frecce. L'ordine è quello di
+  WooCommerce (*Prodotti → Categorie*); una categoria nuova va in fondo al suo livello.
+- Rinominando cambia il nome sul sito e nel portale; l'indirizzo della categoria (slug) resta
+  quello, così i link non si rompono.
 - Eliminando una categoria i prodotti restano sul sito (quelli senza altre categorie finiscono in
   «Senza categoria») e le sottocategorie salgono di un livello; nel portale i prodotti che la
   usavano tornano da completare.
@@ -237,7 +239,7 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
 | Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
 | Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
-| Aggiungere, eliminare e ordinare le categorie del negozio | *Categorie* |
+| Aggiungere, rinominare, eliminare e ordinare le categorie del negozio | *Categorie* |
 | Voce di menu sotto cui vanno le categorie (mu-plugin facoltativo) | sul sito, *Aspetto → Menu categorie* |
 | Clienti, piano, quota, fonti dati | *Clienti* |
 | Chiavi REST, lingua del negozio, politiche di scrittura, campi obbligatori, aggiornamento notturno | *Siti → Modifica* |
@@ -299,7 +301,7 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
   l'intestazione `Authorization` (certe configurazioni Apache), CataSync riprova da solo con le
   chiavi nell'indirizzo.
 - **`FERNET_KEY` persa** — le chiavi REST dei negozi e quelle dei motori vanno reinserite.
-- **Categorie: «HTTP 403 dal sito»** quando aggiungi o elimini — l'utente della chiave REST del
+- **Categorie: «HTTP 403 dal sito»** quando aggiungi, rinomini o elimini — l'utente della chiave REST del
   negozio non può gestire le categorie dei prodotti: genera la chiave con un utente amministratore
   o gestore del negozio.
 - **Le categorie non compaiono nel menu** — il mu-plugin va direttamente in

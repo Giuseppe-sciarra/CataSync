@@ -20,7 +20,7 @@ multi-client, nothing to install on the shops.
 | **Why?** — every miss says why: the queries, the engines that answered or blocked, the sites opened and what happened on each.<br>![Why](docs/screenshots/en/02-why.png) | **Nothing online** — three searches and no page with that code: try the manufacturer code or fill the sheet in by hand.<br>![Not published online](docs/screenshots/en/03-why-unknown.png) |
 | **Edit** — name, brand, category, prices, description, photos and specifications before publishing.<br>![Edit](docs/screenshots/en/04-edit.png) | **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/en/05-products-dark.png) |
 | **Search settings** — engine, translation, headless browser, and how the last searches went.<br>![Settings](docs/screenshots/en/06-settings.png) | **Portal appearance** — name, logo and favicon of your portal.<br>![Appearance](docs/screenshots/en/07-appearance.png) |
-| **Categories** — add, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Delete** — before deleting a category it shows what is inside and what happens to it.<br>![Delete a category](docs/screenshots/en/09-delete-category.png) |
+| **Categories** — add (also inside another one), rename, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Delete** — before deleting a category it shows what is inside and what happens to it.<br>![Delete a category](docs/screenshots/en/09-delete-category.png) |
 
 The data shown is a demo with made-up names and `.example` sites. The interface is available
 in English, Italian, French and German.
@@ -80,9 +80,11 @@ in English, Italian, French and German.
   too.
 
 **Categories**
-- The shop's **categories managed from the portal**: add them, delete them, put them in order by
-  dragging them or with the arrows. The order is WooCommerce's own (*Products → Categories*); a new
-  category is a main category and goes at the end.
+- The shop's **categories managed from the portal**: add them (also inside another one), rename
+  them, delete them, put them in order by dragging them or with the arrows. The order is
+  WooCommerce's own (*Products → Categories*); a new category goes at the end of its level.
+- Renaming changes the name on the site and in the portal; the category's address (slug) stays the
+  same, so links to it keep working.
 - Deleting a category keeps its products on the site (those with no other category end up in
   “Uncategorized”) and moves its subcategories up one level; in the portal, the products that used
   it go back to incomplete.
@@ -235,7 +237,7 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Engine status, causes of misses, sites refusing to be read | *Settings → How the search went* |
 | A list of codes searched one by one, with the outcome | *Settings → Batch test* |
 | Portal name, logo, favicon | *Settings → Portal appearance* |
-| Add, delete and order the shop's categories | *Categories* |
+| Add, rename, delete and order the shop's categories | *Categories* |
 | Menu item the categories go under (optional mu-plugin) | on the site, *Appearance → Menu categorie* |
 | Clients, plan, quota, data sources | *Clients* |
 | REST keys, shop language, write policies, required fields, nightly update | *Sites → Edit* |
@@ -295,7 +297,7 @@ the volumes; `docker compose down -v` deletes them.
   shop's public one. If the server drops the `Authorization` header (some Apache setups),
   CataSync retries with the keys in the address by itself.
 - **`FERNET_KEY` lost** — the shops' REST keys and the engine keys have to be entered again.
-- **Categories: “HTTP 403 from the site”** when adding or deleting — the user who owns the shop's
+- **Categories: “HTTP 403 from the site”** when adding, renaming or deleting — the user who owns the shop's
   REST key cannot manage product categories: generate the key with an administrator or shop
   manager account.
 - **The categories don't show up in the menu** — the mu-plugin must sit directly in

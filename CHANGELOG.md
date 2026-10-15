@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.2.0 — 2026-10-15
+
+### Added
+- **Rinomina** nella scheda Categorie: il nome si cambia sul posto (Invio salva, Esc annulla) e
+  cambia sul sito e nel portale. Lo slug resta quello, così i link alla categoria non si rompono;
+  un ordine non ancora salvato non si perde.
+- Di nuovo le **sottocategorie**: con «Dentro» la categoria nuova nasce dentro un'altra, in fondo
+  alle sue sorelle.
+
+### Fixed
+- I nomi delle categorie con «&» arrivavano da WooCommerce come «&amp;» e si vedevano così; ora sono
+  in chiaro, anche nei controlli sui doppioni.
+
 ## 2.1.1 — 2026-10-15
 
 ### Changed

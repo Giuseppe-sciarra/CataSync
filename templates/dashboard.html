@@ -786,8 +786,8 @@
         </header>
         <div class="body">
           <p class="hint" style="margin-top:0">
-            Le categorie del negozio, nell'ordine in cui le mostra il sito: da qui si creano, si eliminano
-            e si mettono in ordine trascinandole o con le frecce.
+            Le categorie del negozio, nell'ordine in cui le mostra il sito: da qui si creano, anche dentro
+            un'altra, si rinominano, si eliminano e si mettono in ordine trascinandole o con le frecce.
           </p>
 
           <template x-if="taxError">
@@ -797,6 +797,13 @@
           <div class="row cat-nuova">
             <input type="text" x-model="catNuova.name" maxlength="190" placeholder="Nome della nuova categoria"
                    @keydown.enter="creaCategoria()">
+            <label class="hint" for="cat-dentro">Dentro</label>
+            <select id="cat-dentro" x-model.number="catNuova.parent">
+              <option :value="0" :selected="catNuova.parent == 0">— nessuna: categoria principale —</option>
+              <template x-for="c in catValide" :key="'np' + c.id">
+                <option :value="c.id" :selected="c.id == catNuova.parent" x-text="c.name" translate="no"></option>
+              </template>
+            </select>
             <button @click="creaCategoria()" :disabled="!catNuova.name.trim() || catNuova.busy || ordineCambiato"
                     :title="ordineCambiato ? t('Prima salva o annulla il nuovo ordine.') : ''">Crea</button>
           </div>
@@ -813,20 +820,39 @@
 
           <ul class="cat-albero">
             <template x-for="r in righeCategorie" :key="'cr' + r.c.id">
-              <li class="cat-riga" draggable="true"
+              <li class="cat-riga" :draggable="catRinomina.id === r.c.id ? 'false' : 'true'"
                   :class="{ 'trascinata': catTrascinata === r.c.id, 'bersaglio': catBersaglio === r.c.id }"
                   :style="'padding-left:' + (10 + r.livello * 24) + 'px'"
                   @dragstart="trascinaInizio($event, r.c)" @dragend="trascinaFine()"
                   @dragover="trascinaSopra($event, r.c)" @drop="trascinaRilascia($event, r.c)">
                 <span class="cat-maniglia" aria-hidden="true">&#8942;&#8942;</span>
-                <span class="cat-nome" x-text="r.c.nome || r.c.name" translate="no"></span>
+                <template x-if="catRinomina.id !== r.c.id">
+                  <span class="cat-nome" x-text="r.c.nome || r.c.name" translate="no"></span>
+                </template>
+                <template x-if="catRinomina.id === r.c.id">
+                  <input type="text" class="cat-rinomina" x-model="catRinomina.name" maxlength="190"
+                         aria-label="Nuovo nome della categoria" translate="no"
+                         @keydown.enter.prevent="salvaRinomina()" @keydown.escape.prevent="annullaRinomina()"
+                         x-init="$nextTick(() => { $el.focus(); $el.select(); })">
+                </template>
                 <span class="hint num" x-text="r.c.count + ' prod.'"></span>
                 <span class="grow"></span>
-                <button class="ghost sm icona" @click="spostaCategoria(r.c, -1)" :disabled="r.primo"
-                        title="Sposta su" aria-label="Sposta su">&#9650;</button>
-                <button class="ghost sm icona" @click="spostaCategoria(r.c, 1)" :disabled="r.ultimo"
-                        title="Sposta giù" aria-label="Sposta giù">&#9660;</button>
-                <button class="danger sm" @click="chiediEliminaCategoria(r.c)" :disabled="ordineCambiato">Elimina</button>
+                <template x-if="catRinomina.id === r.c.id">
+                  <span class="row cat-azioni">
+                    <button class="sm" @click="salvaRinomina()" :disabled="!catRinomina.name.trim() || catRinomina.busy">Salva</button>
+                    <button class="ghost sm" @click="annullaRinomina()" :disabled="catRinomina.busy">Annulla</button>
+                  </span>
+                </template>
+                <template x-if="catRinomina.id !== r.c.id">
+                  <span class="row cat-azioni">
+                    <button class="ghost sm icona" @click="spostaCategoria(r.c, -1)" :disabled="r.primo"
+                            title="Sposta su" aria-label="Sposta su">&#9650;</button>
+                    <button class="ghost sm icona" @click="spostaCategoria(r.c, 1)" :disabled="r.ultimo"
+                            title="Sposta giù" aria-label="Sposta giù">&#9660;</button>
+                    <button class="ghost sm" @click="iniziaRinomina(r.c)">Rinomina</button>
+                    <button class="danger sm" @click="chiediEliminaCategoria(r.c)" :disabled="ordineCambiato">Elimina</button>
+                  </span>
+                </template>
               </li>
             </template>
           </ul>
@@ -834,7 +860,7 @@
             <div class="empty"><p>Nessuna categoria sul sito: crea la prima qui sopra.</p></div>
           </template>
           <p class="hint" x-show="righeCategorie.length">
-            <span x-show="righeCategorie.some(r => r.livello > 0)">Le sottocategorie che il sito ha già si spostano solo fra loro, sotto la loro categoria.</span>
+            <span x-show="righeCategorie.some(r => r.livello > 0)">Le sottocategorie si spostano solo fra loro, sotto la loro categoria.</span>
             «Senza categoria» non compare: è quella di riserva di WooCommerce.
           </p>
         </div>

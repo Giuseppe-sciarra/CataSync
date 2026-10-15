@@ -805,6 +805,10 @@ table.lotto td { vertical-align: top; }
 /* ===================================================== categorie e menu del sito */
 .cat-nuova { gap: 8px; margin: 4px 0 14px; }
 .cat-nuova input[type="text"] { flex: 1 1 240px; max-width: 360px; }
+.cat-nuova select { flex: 0 1 300px; max-width: 320px; }
+.cat-nuova label { margin: 0; }
+.cat-azioni { gap: 8px; flex-wrap: nowrap; }
+.cat-riga input.cat-rinomina { flex: 0 1 320px; min-width: 140px; width: auto; }
 .cat-avviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cat-albero { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-soft); border-radius: var(--radius); overflow: hidden; }
 .cat-riga { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 10px; cursor: grab;

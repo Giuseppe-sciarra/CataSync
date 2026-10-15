@@ -24,7 +24,7 @@ Cercando col **codice produttore**, se la pagina trovata riporta l'EAN lo si rec
 finisce sul prodotto WooCommerce.
 
 **Storico** elenca i carichi; **Categorie** gestisce le categorie del sito (creazione,
-eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
+nome, eliminazione, ordine: vedi il capitolo 15) e mostra attributi globali e marche;
 **Negozio** contiene i dati anagrafici del cliente.
 
 ## 2. La ricerca sul web
@@ -297,7 +297,7 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Creare | `POST /products` |
 | Aggiornare | `PUT /products/{id}` |
 | Marca nuova | `POST /products/brands` |
-| Categorie: creare, eliminare | `POST` / `DELETE /products/categories` |
+| Categorie: creare, rinominare, eliminare | `POST /products/categories`, `PUT` / `DELETE /products/categories/{id}` |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
 
 Autenticazione Basic su HTTPS. Se il server mangia l'intestazione `Authorization` — capita
@@ -361,18 +361,20 @@ Il numero giusto lo rimetti in `VERSION.txt`.
 Nella scheda **Categorie** ci sono le categorie del negozio, nell'ordine in cui le mostra il sito:
 è l'ordine di *Prodotti → Categorie* in WooCommerce (il campo `menu_order`).
 
-- **Crea**: basta il nome. È sempre una categoria principale (sottocategorie da qui non se ne
-  creano) e va in fondo all'elenco. Due categorie principali con lo stesso nome non si possono avere.
-- **Ordine**: si trascina una categoria sopra o sotto un'altra, oppure si usano le frecce, e si
-  preme **Salva l'ordine**. Finché l'ordine non è salvato, creare ed eliminare sono fermi.
-- **Elimina**: prima una finestra dice quanti prodotti ci sono dentro. I prodotti restano sul sito
-  (WooCommerce mette in «Senza categoria» quelli che non hanno altre categorie). Nel portale le
+- **Crea**: nome e, se serve, la categoria madre («Dentro»). La nuova va in fondo al suo livello.
+  Due categorie con lo stesso nome allo stesso livello non si possono avere.
+- **Rinomina**: il nome si cambia sul posto (Invio salva, Esc annulla) e cambia sul sito e nel
+  portale. L'indirizzo della categoria (slug) resta quello di prima, così i link non si rompono.
+  Rinominare non tocca un ordine non ancora salvato.
+- **Ordine**: si trascina una categoria sopra o sotto una sorella, oppure si usano le frecce, e si
+  preme **Salva l'ordine**. Vale fra sorelle: una sottocategoria si sposta fra le sottocategorie
+  della stessa madre. Finché l'ordine non è salvato, creare ed eliminare sono fermi.
+- **Elimina**: prima una finestra dice quanti prodotti (e quante sottocategorie, se ce ne sono) ci
+  sono dentro. I prodotti restano sul sito (WooCommerce mette in «Senza categoria» quelli che non
+  hanno altre categorie), le sottocategorie salgono di un livello. Nel portale le
   righe che la usavano e non sono ancora pubblicate tornano da completare, e i carichi che l'avevano
   come categoria di riserva la perdono.
 - «Senza categoria» non compare e non si elimina: è la categoria di riserva di WooCommerce.
-
-Se il sito ha già delle sottocategorie, fatte da WordPress, compaiono rientrate sotto la loro
-categoria: si spostano solo fra loro e, se si elimina la categoria madre, salgono di un livello.
 
 Le categorie create dal sito finiscono dove le mette WooCommerce: senza un ordine proprio stanno in
 cima, finché non le sposti.
@@ -380,6 +382,9 @@ cima, finché non le sposti.
 Creare, eliminare e ordinare scrive sul sito: serve l'account attivo, come per pubblicare (la
 quota dei prodotti qui non conta). L'utente della chiave REST deve poter gestire le categorie dei
 prodotti (amministratore o gestore del negozio), altrimenti il sito risponde 403.
+
+I nomi con «&» (per esempio «Pompe & circolatori») si vedono e si confrontano come sono scritti:
+WooCommerce li manda come «&amp;», il portale li rimette in chiaro.
 
 ### Il menu del sito (facoltativo)
 

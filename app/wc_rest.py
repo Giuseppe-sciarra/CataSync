@@ -9,6 +9,7 @@ Authorization, quindi al primo 401 si riprova con le chiavi nell'indirizzo, che 
 la modalità che WooCommerce prevede proprio per quel caso.
 """
 import asyncio
+import html
 import logging
 from urllib.parse import urlparse
 
@@ -181,9 +182,18 @@ def e_riserva(categoria: dict) -> bool:
     return (categoria.get("slug") or "").lower() in ("uncategorized", "senza-categoria")
 
 
+def _nome_in_chiaro(categoria):
+    """WordPress salva «&» come «&amp;» e WooCommerce lo rende così: nel portale serve il
+    testo vero, sia per mostrarlo sia per confrontare i nomi."""
+    if isinstance(categoria, dict) and isinstance(categoria.get("name"), str):
+        categoria["name"] = html.unescape(categoria["name"])
+    return categoria
+
+
 async def categorie(site) -> list[dict]:
     """Le categorie del sito così come le dà WooCommerce, compresa «Senza categoria»."""
-    return await _paged(site, "/products/categories", {"orderby": "name", "order": "asc"}, max_pages=20)
+    cats = await _paged(site, "/products/categories", {"orderby": "name", "order": "asc"}, max_pages=20)
+    return [_nome_in_chiaro(c) for c in cats]
 
 
 async def taxonomy(site) -> dict:
@@ -243,7 +253,7 @@ async def create_category(
     if image_url.startswith("http"):
         body["image"] = {"src": image_url}
     created, _ = await _request(site, "POST", "/products/categories", json_body=body)
-    return created
+    return _nome_in_chiaro(created)
 
 
 async def update_category(
@@ -267,11 +277,11 @@ async def update_category(
     if not body:
         return {}
     updated, _ = await _request(site, "PUT", f"/products/categories/{term_id}", json_body=body)
-    return updated
+    return _nome_in_chiaro(updated)
 
 
 async def get_category(site, term_id: int) -> dict:
-    return await _get(site, f"/products/categories/{term_id}")
+    return _nome_in_chiaro(await _get(site, f"/products/categories/{term_id}"))
 
 
 async def delete_category(site, term_id: int) -> dict:

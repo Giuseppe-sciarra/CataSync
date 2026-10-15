@@ -79,7 +79,8 @@ function hub(isAdmin) {
       product_status: 'publish', fallback_category_id: null, auto_push: false
     },
     // Categorie: creazione, ordine fra sorelle (padre -> id), trascinamento.
-    catNuova: { name: '', busy: false },
+    catNuova: { name: '', parent: 0, busy: false },
+    catRinomina: { id: null, name: '', busy: false },
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
     single: { gtin: '', busy: false, product: null, message: '', onSite: null, fonte: '', diagnosi: null },
     modal: { kind: null, title: '', data: {} },
@@ -373,6 +374,7 @@ function hub(isAdmin) {
     onSiteChange() {
       this.categories = []; this.attributes = []; this.brands = [];
       this.catOrdine = {}; this.catOrdineSalvato = '{}';
+      this.catRinomina = { id: null, name: '', busy: false };
       this.loadTaxonomy();
     },
 
@@ -483,13 +485,55 @@ function hub(isAdmin) {
       this.catNuova.busy = true;
       try {
         const r = await this.api('/api/sites/' + this.form.site_id + '/categories', {
-          method: 'POST', body: JSON.stringify({ name: nome })
+          method: 'POST', body: JSON.stringify({ name: nome, parent: this.catNuova.parent || 0 })
         });
-        this.catNuova = { name: '', busy: false };
+        this.catNuova = { name: '', parent: this.catNuova.parent, busy: false };
         this.say(this.tt('Categoria «{0}» creata.', r.name || nome));
         await this.loadTaxonomy(true);
       } catch (e) { this.fail(e.message); }
       this.catNuova.busy = false;
+    },
+    // Rinomina sul posto: il nuovo nome va sul sito e si aggiorna qui senza rileggere tutto,
+    // così un ordine non ancora salvato non si perde.
+    iniziaRinomina(c) {
+      this.catRinomina = { id: c.id, name: c.nome || c.name || '', busy: false };
+    },
+    annullaRinomina() {
+      this.catRinomina = { id: null, name: '', busy: false };
+    },
+    async salvaRinomina() {
+      const id = this.catRinomina.id;
+      const nome = this.catRinomina.name.replace(/\s+/g, ' ').trim();
+      const c = this.categories.find(x => x.id === id);
+      if (!id || !nome || this.catRinomina.busy) return;
+      if (c && nome === (c.nome || c.name)) { this.annullaRinomina(); return; }
+      this.catRinomina.busy = true;
+      try {
+        const r = await this.api('/api/sites/' + this.form.site_id + '/categories/' + id, {
+          method: 'PATCH', body: JSON.stringify({ name: nome })
+        });
+        if (c) { c.nome = r.name || nome; this.rifaiPercorsi(); }
+        this.annullaRinomina();
+        this.say(this.tt('Categoria rinominata in «{0}».', r.name || nome));
+      } catch (e) {
+        this.catRinomina.busy = false;
+        this.fail(e.message);
+      }
+    },
+    // «Madre › Figlia», come lo scrive il server: serve alle tendine delle categorie.
+    rifaiPercorsi() {
+      const per = {};
+      this.categories.forEach(c => { per[c.id] = c; });
+      for (const c of this.categories) {
+        const parti = [c.nome || ''];
+        let padre = c.parent, giri = 0;
+        while (padre && per[padre] && giri < 6) {
+          parti.unshift(per[padre].nome || '');
+          padre = per[padre].parent;
+          giri++;
+        }
+        c.name = parti.filter(Boolean).join(' › ');
+      }
     },
     chiediEliminaCategoria(c) {
       const figlie = this.catValide.filter(x => x.parent === c.id).length;
