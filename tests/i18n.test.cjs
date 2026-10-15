@@ -51,3 +51,65 @@ test('niente frasi tradotte a metà: una parola nota in testa a una frase ignota
     api.t('Container tuo, nessuna chiave e nessun costo. Interroga Google, Yandex, DuckDuckGo e gli altri; i motori da usare si scelgono qui sotto.', 'de'),
     'Ihr eigener Container, ohne Schlüssel und ohne Kosten. Er fragt Google, Yandex, DuckDuckGo und die anderen ab; die zu verwendenden Suchmaschinen wählen Sie unten aus.');
 });
+
+// Testi fissi delle pagine: nodi di testo e attributi (title, placeholder, aria-label, alt),
+// spezzati come li vede il browser (un <code> o un <strong> separa due nodi). Quello che sta in
+// <code>, <script>, <style> o sotto translate="no" non si traduce.
+function testiDellePagine() {
+  const testi = new Set();
+  for (const file of ['templates/dashboard.html', 'templates/login.html']) {
+    let html = fs.readFileSync(path.join(radice, file), 'utf8')
+      .replace(/<!--[\s\S]*?-->/g, ' ').replace(/\{%[\s\S]*?%\}/g, ' ').replace(/\{\{[\s\S]*?\}\}/g, 'TD Sync Catalog');
+    const pila = [];
+    // Un tag con gli attributi fra virgolette (dentro possono esserci «>» e «=>»), oppure testo.
+    const re = /<!doctype[^>]*>|<(\/?)([a-zA-Z][\w-]*)((?:\s+[^\s=>"'\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*\/?>|([^<]+)/gi;
+    const entita = s => s.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&nbsp;/g, ' ')
+      .replace(/&times;/g, '×').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    let m;
+    while ((m = re.exec(html))) {
+      if (m[4] !== undefined) {
+        const muto = pila.some(e => e.muto);
+        const s = entita(m[4]).replace(/\s+/g, ' ').trim();
+        if (!muto && /\p{L}{3,}/u.test(s)) testi.add(s);
+        continue;
+      }
+      if (!m[2]) continue;   // <!doctype>
+      const [, chiude, nome, attributi] = m;
+      const tag = nome.toLowerCase();
+      if (chiude) {
+        const i = pila.map(e => e.tag).lastIndexOf(tag);
+        if (i >= 0) pila.length = i;
+        continue;
+      }
+      for (const a of attributi.matchAll(/\s(title|placeholder|aria-label|alt)="([^"]*)"/g)) {
+        const s = entita(a[2]).replace(/\s+/g, ' ').trim();
+        if (/\p{L}{3,}/u.test(s) && !/translate="no"/.test(attributi)) testi.add(s);
+      }
+      const vuoto = /\/\s*$/.test(attributi) || ['input', 'br', 'img', 'meta', 'link', 'hr', 'source'].includes(tag);
+      if (!vuoto) pila.push({ tag, muto: ['code', 'script', 'style', 'pre', 'textarea'].includes(tag) || /translate="no"/.test(attributi) });
+    }
+  }
+  return [...testi];
+}
+
+test('ogni testo fisso delle pagine ha la sua traduzione, intera', () => {
+  // Nomi propri, codici e indirizzi: restano come sono in tutte le lingue.
+  const uguali = /^(?:\(AGPL-3\.0\)|EAN|· EAN|Email|PEC|SerpAPI|TD Sync Catalog|Bearer token|Consumer key|Consumer secret|X-Api-Key|cod\.|dati\.articolo|English|Español|Italiano|Français|Deutsch|https?:\/\/\S*(?: https?:\/\/\S*)*|[\d\s A-Z]+)$/u;
+  const modelli = Object.keys(catalogo).filter(k => /\{\d+\}/.test(k))
+    .map(k => new RegExp('^' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{\d+\\\}/g, '.+?') + '$'));
+  const tradotto = s => catalogo[s] || uguali.test(s) || modelli.some(r => r.test(s));
+  // «Accedi · TD Sync Catalog»: pezzi uniti da « · », ognuno col suo posto nel catalogo.
+  const mancanti = testiDellePagine().filter(s => !tradotto(s) && !s.split(/\s+·\s+/).every(tradotto));
+  assert.deepStrictEqual(mancanti, []);
+});
+
+test('i testi scritti nel JavaScript (t, tt, say, fail) sono nel catalogo', () => {
+  const js = fs.readFileSync(path.join(radice, 'static/hub.js'), 'utf8');
+  const testi = new Set();
+  for (const m of js.matchAll(/this\.(?:t|tt|say|fail)\(\s*(['"])((?:\\.|(?!\1).)*)\1/g)) {
+    const s = m[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\s+/g, ' ').trim();
+    if (/\p{L}{3,}/u.test(s)) testi.add(s);
+  }
+  const mancanti = [...testi].filter(s => !catalogo[s]);
+  assert.deepStrictEqual(mancanti, []);
+});

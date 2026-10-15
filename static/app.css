@@ -801,3 +801,22 @@ table.lotto td { vertical-align: top; }
 .piede a:hover { color: var(--ink); }
 .piede.piede-login { padding: 14px 0 0; margin: 0; }
 
+
+/* ===================================================== categorie e menu del sito */
+.cat-nuova { gap: 8px; margin: 4px 0 14px; }
+.cat-nuova input[type="text"] { flex: 1 1 240px; max-width: 360px; }
+.cat-nuova select { flex: 0 1 300px; max-width: 320px; }
+.cat-nuova label { margin: 0; }
+.cat-avviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cat-albero { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-soft); border-radius: var(--radius); overflow: hidden; }
+.cat-riga { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 10px; cursor: grab;
+            border-top: 1px solid var(--line-soft); background: var(--surface); }
+.cat-riga:first-child { border-top: 0; }
+.cat-riga:hover { background: var(--surface-2); }
+.cat-riga.trascinata { opacity: .45; }
+.cat-riga.bersaglio { background: var(--accent-soft); box-shadow: inset 0 2px 0 var(--accent); }
+.cat-maniglia { color: var(--muted); font-size: 14px; letter-spacing: -4px; width: 14px; user-select: none; }
+.cat-nome { font-weight: 500; overflow-wrap: anywhere; }
+button.icona { width: 30px; padding: 0; font-size: 10px; }
+label.spunta { display: flex; gap: 8px; align-items: center; font-weight: 500; margin: 10px 0 0; }
+label.spunta input { width: auto; }

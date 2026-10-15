@@ -782,60 +782,154 @@
               <option :value="s.id" :selected="s.id == form.site_id" x-text="s.name"></option>
             </template>
           </select>
-          <button class="ghost sm" @click="loadTaxonomy(true)">Rileggi dal sito</button>
+          <button class="ghost sm" @click="loadTaxonomy(true); caricaMenu()">Rileggi dal sito</button>
         </header>
         <div class="body">
           <p class="hint" style="margin-top:0">
-            Qui vedi categorie, attributi e marche già presenti sul sito. Le corrispondenze
-            dicono in quale categoria far atterrare i prodotti in base alla categoria indicata dalla fonte
-            (quella che si legge nella scheda trovata, per esempio «Pompe di circolazione»).
+            Le categorie del negozio, nell'ordine in cui le mostra il sito. Da qui si creano, si eliminano
+            e si mettono in ordine trascinandole o con le frecce; se sul sito c'è il mu-plugin del menu,
+            il menu le segue.
           </p>
 
           <template x-if="taxError">
             <div class="notice n-err" x-text="taxError"></div>
           </template>
 
-          <div class="grid-3" style="margin-top:12px">
-            <div>
-              <h3>Categorie</h3>
-              <div class="specs">
-                <table><tbody>
-                  <template x-for="c in categories" :key="c.id">
-                    <tr>
-                      <td x-text="c.name"></td>
-                      <td class="right hint num" x-text="c.count + ' prod.'"></td>
-                    </tr>
-                  </template>
-                </tbody></table>
-              </div>
-            </div>
-            <div>
-              <h3>Attributi globali</h3>
-              <div class="specs">
-                <table><tbody>
-                  <template x-for="a in attributes" :key="a.id">
-                    <tr><td x-text="a.name"></td><td class="right hint mono" x-text="a.slug"></td></tr>
-                  </template>
-                </tbody></table>
-              </div>
-            </div>
-            <div>
-              <h3>Marche</h3>
-              <div class="specs">
-                <table><tbody>
-                  <template x-for="b in brands" :key="b.id">
-                    <tr><td x-text="b.name"></td></tr>
-                  </template>
-                </tbody></table>
-              </div>
-            </div>
+          <div class="row cat-nuova">
+            <input type="text" x-model="catNuova.name" maxlength="190" placeholder="Nome della nuova categoria"
+                   @keydown.enter="creaCategoria()">
+            <label class="hint" for="cat-dentro">Dentro</label>
+            <select id="cat-dentro" x-model.number="catNuova.parent">
+              <option :value="0" :selected="catNuova.parent == 0">— nessuna: categoria principale —</option>
+              <template x-for="c in catValide" :key="'np' + c.id">
+                <option :value="c.id" :selected="c.id == catNuova.parent" x-text="c.name" translate="no"></option>
+              </template>
+            </select>
+            <button @click="creaCategoria()" :disabled="!catNuova.name.trim() || catNuova.busy || ordineCambiato"
+                    :title="ordineCambiato ? t('Prima salva o annulla il nuovo ordine.') : ''">Crea</button>
           </div>
+
+          <template x-if="ordineCambiato">
+            <div class="notice n-warn cat-avviso">
+              <span>Ordine cambiato: salvalo per portarlo sul sito.</span>
+              <span class="row" style="gap:8px">
+                <button class="ghost sm" @click="annullaOrdine()">Annulla</button>
+                <button class="sm" @click="salvaOrdine()" :disabled="catBusy">Salva l'ordine</button>
+              </span>
+            </div>
+          </template>
+
+          <ul class="cat-albero">
+            <template x-for="r in righeCategorie" :key="'cr' + r.c.id">
+              <li class="cat-riga" draggable="true"
+                  :class="{ 'trascinata': catTrascinata === r.c.id, 'bersaglio': catBersaglio === r.c.id }"
+                  :style="'padding-left:' + (10 + r.livello * 24) + 'px'"
+                  @dragstart="trascinaInizio($event, r.c)" @dragend="trascinaFine()"
+                  @dragover="trascinaSopra($event, r.c)" @drop="trascinaRilascia($event, r.c)">
+                <span class="cat-maniglia" aria-hidden="true">&#8942;&#8942;</span>
+                <span class="cat-nome" x-text="r.c.nome || r.c.name" translate="no"></span>
+                <span class="hint num" x-text="r.c.count + ' prod.'"></span>
+                <span class="grow"></span>
+                <button class="ghost sm icona" @click="spostaCategoria(r.c, -1)" :disabled="r.primo"
+                        title="Sposta su" aria-label="Sposta su">&#9650;</button>
+                <button class="ghost sm icona" @click="spostaCategoria(r.c, 1)" :disabled="r.ultimo"
+                        title="Sposta giù" aria-label="Sposta giù">&#9660;</button>
+                <button class="danger sm" @click="chiediEliminaCategoria(r.c)" :disabled="ordineCambiato">Elimina</button>
+              </li>
+            </template>
+          </ul>
+          <template x-if="!righeCategorie.length && !taxError">
+            <div class="empty"><p>Nessuna categoria sul sito: crea la prima qui sopra.</p></div>
+          </template>
+          <p class="hint" x-show="righeCategorie.length">
+            L'ordine vale fra sorelle: si sposta una categoria sopra o sotto un'altra dello stesso livello.
+            «Senza categoria» non compare: è quella di riserva di WooCommerce.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <header>
+          <h2>Menu del sito</h2>
+          <div class="grow"></div>
+          <template x-if="menuSito && menuSito.plugin">
+            <span class="badge" :class="menuSito.attivo ? 'b-ok' : 'b-wait'"
+                  x-text="menuSito.attivo ? 'attivo' : 'spento'"></span>
+          </template>
+        </header>
+        <div class="body">
+          <template x-if="menuErrore">
+            <div class="notice n-err" style="margin-top:0" x-text="menuErrore"></div>
+          </template>
+          <template x-if="!menuSito && !menuErrore">
+            <p class="hint" style="margin-top:0">Lettura del menu dal sito…</p>
+          </template>
+
+          <template x-if="menuSito && menuSito.plugin === false">
+            <div>
+              <p class="hint" style="margin-top:0">
+                Per mettere le categorie nel menu del sito serve il mu-plugin «CataSync – Menu delle categorie».
+                Scaricalo e copialo nella cartella <code>wp-content/mu-plugins/</code> del negozio: parte da solo,
+                non va attivato. Poi premi «Rileggi dal sito» e scegli la voce del menu.
+              </p>
+              <a class="btn" href="/api/wordpress/catasync-category-menu.php" download>Scarica il mu-plugin</a>
+            </div>
+          </template>
+
+          <template x-if="menuSito && menuSito.plugin">
+            <div>
+              <p class="hint" style="margin-top:0">
+                Ogni categoria, creata da qui o dal sito, va sotto la voce scelta, nello stesso ordine delle
+                categorie; il nome della voce segue quello della categoria. Le altre voci che metti a mano
+                sotto quella voce restano, dopo le categorie.
+              </p>
+              <div class="grid-2">
+                <div class="field"><label for="menu-scelto">Menu</label>
+                  <select id="menu-scelto" x-model.number="menuForm.menu_id" @change="menuForm.voce_id = 0">
+                    <option :value="0" :selected="menuForm.menu_id == 0">— scegli il menu —</option>
+                    <template x-for="m in menuSito.menus" :key="'mm' + m.id">
+                      <option :value="m.id" :selected="m.id == menuForm.menu_id" x-text="m.nome" translate="no"></option>
+                    </template>
+                  </select>
+                </div>
+                <div class="field"><label for="voce-scelta">Voce sotto cui mettere le categorie</label>
+                  <select id="voce-scelta" x-model.number="menuForm.voce_id" :disabled="!menuForm.menu_id">
+                    <option :value="0" :selected="menuForm.voce_id == 0">— scegli la voce —</option>
+                    <template x-for="v in vociMenuScelto" :key="'mv' + v.id">
+                      <option :value="v.id" :selected="v.id == menuForm.voce_id" :disabled="v.categoria"
+                              x-text="'— '.repeat(v.livello) + v.titolo" translate="no"></option>
+                    </template>
+                  </select>
+                </div>
+              </div>
+              <label class="spunta">
+                <input type="checkbox" x-model="menuForm.sottocategorie">
+                Sottocategorie sotto la loro categoria (spento: solo le categorie principali)
+              </label>
+              <label class="spunta">
+                <input type="checkbox" x-model="menuForm.attivo">
+                Tieni il menu allineato alle categorie
+              </label>
+              <template x-if="menuSito.attivo && menuSito.problema">
+                <div class="notice n-warn" x-text="menuSito.problema"></div>
+              </template>
+              <div class="row" style="margin-top:12px;gap:8px">
+                <button @click="salvaMenu()" :disabled="menuBusy || (menuForm.attivo && (!menuForm.menu_id || !menuForm.voce_id))">Salva</button>
+                <button class="ghost" @click="allineaMenu()" :disabled="menuBusy || !menuSito.voce_id">Allinea adesso</button>
+                <span class="hint" x-text="testoUltimoAllineamento()"></span>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
       <div class="card">
         <header><h2>Corrispondenze categoria</h2></header>
         <div class="body">
+          <p class="hint" style="margin-top:0">
+            Dicono in quale categoria far atterrare i prodotti in base alla categoria indicata dalla fonte
+            (quella che si legge nella scheda trovata, per esempio «Pompe di circolazione»).
+          </p>
           <div class="row" style="margin-bottom:12px">
             <input type="text" style="max-width:280px" x-model="mapForm.source_category"
                    placeholder="Categoria della fonte (come appare nella scheda)">
@@ -862,6 +956,34 @@
           <template x-if="!mapping.length">
             <div class="empty"><p>Nessuna corrispondenza. I prodotti finiranno nella categoria di riserva scelta al momento dell'importazione.</p></div>
           </template>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><h2>Attributi e marche del sito</h2></header>
+        <div class="body">
+          <div class="grid-2">
+            <div>
+              <h3>Attributi globali</h3>
+              <div class="specs">
+                <table><tbody>
+                  <template x-for="a in attributes" :key="a.id">
+                    <tr><td x-text="a.name"></td><td class="right hint mono" x-text="a.slug"></td></tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </div>
+            <div>
+              <h3>Marche</h3>
+              <div class="specs">
+                <table><tbody>
+                  <template x-for="b in brands" :key="b.id">
+                    <tr><td x-text="b.name"></td></tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1947,6 +2069,34 @@
           </div>
         </template>
 
+        <!-- eliminazione di una categoria -->
+        <template x-if="modal.kind==='catdel'">
+          <div>
+            <div class="notice n-err" style="margin-top:0">
+              Elimini dal sito la categoria <strong x-text="modal.data.nome" translate="no"></strong>.
+              Non si torna indietro.
+            </div>
+            <dl class="kv">
+              <dt>Prodotti dentro</dt>
+              <dd>
+                <span x-text="modal.data.count"></span>
+                <div class="hint">Restano sul sito: quelli che non hanno altre categorie finiscono in «Senza categoria».</div>
+              </dd>
+              <dt>Sottocategorie</dt>
+              <dd>
+                <span x-text="modal.data.figlie"></span>
+                <div class="hint">Non si eliminano: salgono di un livello.</div>
+              </dd>
+              <dt>Nel portale</dt>
+              <dd>Le corrispondenze verso questa categoria si tolgono; i prodotti che la usavano tornano da completare.</dd>
+            </dl>
+            <div class="row" style="margin-top:16px;gap:10px">
+              <button class="danger" @click="eliminaCategoria()" :disabled="catBusy">Elimina la categoria</button>
+              <button class="ghost" @click="modal.kind = null">Annulla</button>
+            </div>
+          </div>
+        </template>
+
         <!-- fonte dati -->
         <template x-if="modal.kind==='provider'">
           <div>
@@ -2118,7 +2268,7 @@
         </template>
 
       </div>
-      <footer x-show="modal.kind !== 'preview' && modal.kind !== 'purge' && modal.kind !== 'perche'">
+      <footer x-show="modal.kind !== 'preview' && modal.kind !== 'purge' && modal.kind !== 'perche' && modal.kind !== 'catdel'">
         <button class="ghost" @click="modal.kind=null">Annulla</button>
         <button @click="saveModal()">Salva</button>
       </footer>

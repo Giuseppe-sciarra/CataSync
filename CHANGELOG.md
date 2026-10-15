@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.1.0 — 2026-10-15
+
+### Added
+- **Categorie del sito da CataSync** (scheda Categorie): si creano, anche dentro un'altra, si
+  eliminano e si mettono in ordine trascinandole o con le frecce. L'ordine è quello di Prodotti →
+  Categorie in WooCommerce; le nuove vanno in fondo al loro livello. Eliminandone una, i prodotti
+  restano sul sito, le sottocategorie salgono di un livello e nel portale si tolgono corrispondenze
+  e categorie rimaste appese (le righe non ancora pubblicate tornano da completare).
+- **Mu-plugin «CataSync – Menu delle categorie»** (`wordpress/catasync-category-menu.php`, si
+  scarica anche dalla scheda Categorie): ogni categoria, creata da CataSync o dal sito, va sotto la
+  voce di menu scelta, con le sottocategorie sotto la loro categoria (si può spegnere), nello stesso
+  ordine delle categorie. Il nome segue la categoria, le categorie eliminate spariscono, le voci
+  messe a mano restano dopo le categorie. Si imposta dal sito (Aspetto → Menu categorie) o da
+  CataSync (Categorie → Menu del sito), con le stesse chiavi REST di WooCommerce.
+- Controlli delle traduzioni su tutti i testi fissi delle pagine e del JavaScript: un testo nuovo
+  senza traduzione fa fallire la verifica su GitHub.
+
+### Changed
+- Scheda Categorie riorganizzata: albero delle categorie, menu del sito, corrispondenze, attributi
+  e marche.
+- Creare, eliminare e ordinare le categorie e cambiare il menu del sito vogliono l'account attivo,
+  come pubblicare; la quota dei prodotti qui non conta.
+
+### Fixed
+- Messaggi dell'abbonamento (sospeso, scaduto, quota esaurita) che restavano in italiano con
+  l'interfaccia in un'altra lingua.
+
 ## 2.0.1 — 2026-10-11
 
 ### Added

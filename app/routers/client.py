@@ -3,7 +3,10 @@ import csv
 import io
 import json
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -19,6 +22,8 @@ from ..worker import pubblica_riga, requeue_ready
 router = APIRouter(prefix="/api", tags=["client"])
 
 MAX_EAN_PER_JOB = 5000
+# Il mu-plugin di WordPress per il menu delle categorie (cartella wordpress/ del progetto).
+MU_PLUGIN = Path(__file__).resolve().parents[2] / "wordpress" / "catasync-category-menu.php"
 
 
 def _visible_site(db: Session, site_id: int, user: User) -> Site:
@@ -761,6 +766,202 @@ def prices_template(job_id: int, db: Session = Depends(get_db), user: User = Dep
 
 
 # --------------------------------------------------------------- categorie
+# Le categorie stanno sul sito: qui si creano, si eliminano e si mettono in ordine
+# (l'ordine di Prodotti → Categorie in WooCommerce, che il mu-plugin del menu segue).
+
+class CategoriaNuova(BaseModel):
+    name: str = Field(min_length=1, max_length=190)
+    parent: int = Field(default=0, ge=0)
+
+
+class OrdineCategorie(BaseModel):
+    # Gli id nell'ordine voluto, dall'alto in basso: conta l'ordine fra sorelle.
+    ids: list[int] = Field(default_factory=list, max_length=5000)
+
+
+class MenuScelta(BaseModel):
+    attivo: bool | None = None
+    menu_id: int | None = Field(default=None, ge=0)
+    voce_id: int | None = Field(default=None, ge=0)
+    sottocategorie: bool | None = None
+
+
+def _scrittura_sul_sito(site: Site) -> None:
+    """Categorie e menu scrivono sul sito: servono account e abbonamento attivi, come per
+    pubblicare. La quota dei prodotti qui non conta."""
+    motivo = billing.scrittura_bloccata(site.client)
+    if motivo:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, motivo)
+
+
+async def _categorie_del_sito(site: Site) -> list[dict]:
+    try:
+        return await wc_rest.categorie(site)
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+
+
+@router.post("/sites/{site_id}/categories", status_code=201)
+async def crea_categoria(
+    site_id: int, data: CategoriaNuova, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Nuova categoria sul sito, in fondo alle sorelle."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    nome = " ".join(data.name.split())
+    if not nome:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Scrivi il nome della categoria.")
+
+    esistenti = await _categorie_del_sito(site)
+    if data.parent and not any(c.get("id") == data.parent for c in esistenti):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "La categoria madre non c'è più sul sito: rileggi le categorie.")
+    sorelle = [c for c in esistenti if (c.get("parent") or 0) == data.parent]
+    if any((c.get("name") or "").strip().lower() == nome.lower() for c in sorelle):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"C'è già una categoria «{nome}» a questo livello.")
+    in_fondo = max(((c.get("menu_order") or 0) for c in sorelle), default=-1) + 1
+
+    try:
+        creata = await wc_rest.create_category(site, nome, parent=data.parent, menu_order=in_fondo)
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    audit(db, user.email, "category_create", f"{site.name} · {nome}")
+    return {"ok": True, "id": creata.get("id"), "name": creata.get("name", nome)}
+
+
+@router.delete("/sites/{site_id}/categories/{term_id}")
+async def elimina_categoria(
+    site_id: int, term_id: int, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Elimina la categoria dal sito. I prodotti restano (WooCommerce mette in «Senza
+    categoria» quelli che non ne hanno altre), le sottocategorie salgono di un livello.
+    Nel portale si tolgono le corrispondenze verso questa categoria e le righe che la
+    usavano tornano da completare."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    try:
+        categoria = await wc_rest.get_category(site, term_id)
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    if wc_rest.e_riserva(categoria):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "«Senza categoria» è quella di riserva di WooCommerce: non si elimina.")
+    try:
+        await wc_rest.delete_category(site, term_id)
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+
+    corrispondenze = db.execute(
+        delete(CategoryMap).where(CategoryMap.site_id == site.id, CategoryMap.wc_term_id == term_id)
+    ).rowcount
+    db.execute(
+        update(Job).where(Job.site_id == site.id, Job.fallback_category_id == term_id).values(fallback_category_id=None)
+    )
+    righe = 0
+    for item in db.scalars(
+        select(JobItem).join(Job, Job.id == JobItem.job_id).where(Job.site_id == site.id, JobItem.wc_category_id == term_id)
+    ).all():
+        item.wc_category_id = None
+        righe += 1
+        if item.status in ("ready", "incomplete", "not_found"):
+            _revalidate(db, item, site, db.get(Job, item.job_id).kind)
+    db.commit()
+    audit(db, user.email, "category_delete", f"{site.name} · {categoria.get('name', term_id)}")
+    return {
+        "ok": True,
+        "name": categoria.get("name", ""),
+        "prodotti": categoria.get("count", 0),
+        "corrispondenze": corrispondenze,
+        "righe": righe,
+    }
+
+
+@router.put("/sites/{site_id}/categories/order")
+async def ordina_categorie(
+    site_id: int, data: OrdineCategorie, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Salva l'ordine: ogni categoria prende la sua posizione fra le sorelle (0, 1, 2…).
+    Le sorelle che non sono nell'elenco vanno in fondo, nell'ordine che avevano."""
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    esistenti = await _categorie_del_sito(site)
+    per_id = {c["id"]: c for c in esistenti}
+
+    posizioni: dict[int, int] = {}
+    contatori: dict[int, int] = {}
+    for cid in data.ids:
+        c = per_id.get(cid)
+        if not c or cid in posizioni:
+            continue
+        padre = c.get("parent") or 0
+        posizioni[cid] = contatori.get(padre, 0)
+        contatori[padre] = posizioni[cid] + 1
+    for padre in list(contatori):
+        resto = sorted(
+            (c for c in esistenti if (c.get("parent") or 0) == padre and c["id"] not in posizioni),
+            key=lambda c: ((c.get("menu_order") or 0), (c.get("name") or "").lower()),
+        )
+        for c in resto:
+            posizioni[c["id"]] = contatori[padre]
+            contatori[padre] += 1
+
+    cambi = [(cid, pos) for cid, pos in posizioni.items() if (per_id[cid].get("menu_order") or 0) != pos]
+    if cambi:
+        try:
+            await wc_rest.order_categories(site, cambi)
+        except wc_rest.SiteError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    audit(db, user.email, "category_order", f"{site.name} · {len(cambi)} categorie")
+    return {"ok": True, "cambiate": len(cambi)}
+
+
+# ------------------------------------------------ menu del sito (mu-plugin)
+@router.get("/sites/{site_id}/menu")
+async def menu_del_sito(site_id: int, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    """Dove finiscono le categorie nel menu del sito. plugin=false: il mu-plugin non c'è."""
+    site = _visible_site(db, site_id, user)
+    try:
+        stato = await wc_rest.menu_stato(site)
+    except wc_rest.PluginMancante:
+        return {"plugin": False}
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    return {**stato, "plugin": True}
+
+
+@router.put("/sites/{site_id}/menu")
+async def salva_menu_del_sito(
+    site_id: int, data: MenuScelta, db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    try:
+        stato = await wc_rest.menu_salva(site, data.model_dump(exclude_none=True))
+    except wc_rest.PluginMancante:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    audit(db, user.email, "menu_set", f"{site.name} · menu {data.menu_id} voce {data.voce_id} attivo {data.attivo}")
+    return {**stato, "plugin": True}
+
+
+@router.post("/sites/{site_id}/menu/allinea")
+async def allinea_menu_del_sito(site_id: int, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    site = _visible_site(db, site_id, user)
+    _scrittura_sul_sito(site)
+    try:
+        stato = await wc_rest.menu_allinea(site)
+    except wc_rest.PluginMancante:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
+    except wc_rest.SiteError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    audit(db, user.email, "menu_align", site.name)
+    return {**stato, "plugin": True}
+
+
+@router.get("/wordpress/catasync-category-menu.php")
+def scarica_mu_plugin(user: User = Depends(require_user)):
+    """Il mu-plugin da mettere in wp-content/mu-plugins/ del negozio."""
+    return FileResponse(MU_PLUGIN, media_type="application/x-httpd-php", filename=MU_PLUGIN.name)
 
 
 # ------------------------------------------------- eliminazione con i prodotti

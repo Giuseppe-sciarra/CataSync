@@ -30,6 +30,27 @@ class Catalogo(unittest.TestCase):
         mancanti = [f for f in frasi if f not in voci and f not in NOMI_PROPRI]
         self.assertEqual(mancanti, [])
 
+    def test_messaggi_dell_abbonamento(self):
+        from datetime import datetime, timedelta, timezone
+
+        from app import billing
+        from app.models import Client
+
+        voci = catalogo()
+        modelli = [re.compile("^" + re.escape(k).replace(r"\{0\}", ".+?").replace(r"\{1\}", ".+?") + "$")
+                   for k in voci if "{0}" in k]
+        ieri = datetime.now(timezone.utc) - timedelta(days=1)
+        messaggi = [
+            billing.scrittura_bloccata(Client(name="x", is_active=False, subscription_status="active")),
+            billing.scrittura_bloccata(Client(name="x", is_active=True, subscription_status="suspended")),
+            billing.scrittura_bloccata(Client(name="x", is_active=True, subscription_status="expired")),
+            billing.scrittura_bloccata(Client(name="x", is_active=True, subscription_status="active", subscription_until=ieri)),
+            "Quota del mese esaurita (5/5 prodotti). Riparte il primo del mese prossimo.",
+        ]
+        for m in messaggi:
+            self.assertTrue(m)
+            self.assertTrue(m in voci or any(r.match(m) for r in modelli), m)
+
     def test_ogni_voce_in_tre_lingue(self):
         for chiave, voce in catalogo().items():
             self.assertEqual(set(voce), {"en", "fr", "de"}, chiave)

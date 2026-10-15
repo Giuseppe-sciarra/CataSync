@@ -20,6 +20,7 @@ negozio. Sul tuo server, multi-cliente, niente da installare sui siti.
 | **Perché?** — ogni mancato dice il motivo: le domande fatte, i motori che hanno risposto o bloccato, i siti aperti e cosa è successo su ciascuno.<br>![Perché](docs/screenshots/it/02-why.png) | **Niente online** — tre ricerche e nessuna pagina con quel codice: prova il codice produttore o compila la scheda a mano.<br>![Non pubblicato online](docs/screenshots/it/03-why-unknown.png) |
 | **Correggi la scheda** — nome, marca, categoria, prezzi, descrizione, foto e specifiche prima di pubblicare.<br>![Correggi la scheda](docs/screenshots/it/04-edit.png) | **Tema scuro** — automatico, chiaro o scuro.<br>![Tema scuro](docs/screenshots/it/05-products-dark.png) |
 | **Impostazioni della ricerca** — motore, traduzione, browser, e com'è andata l'ultima settimana.<br>![Impostazioni](docs/screenshots/it/06-settings.png) | **Aspetto del portale** — nome, logo e favicon del tuo portale.<br>![Aspetto](docs/screenshots/it/07-appearance.png) |
+| **Categorie** — crei, elimini e metti in ordine le categorie del negozio, trascinandole o con le frecce.<br>![Categorie](docs/screenshots/it/08-categories.png) | **Menu del sito** — col mu-plugin ogni categoria va sotto la voce di menu che scegli, nello stesso ordine.<br>![Menu del sito](docs/screenshots/it/09-site-menu.png) |
 
 I dati mostrati sono una prova con nomi inventati e siti `.example`. L'interfaccia è in italiano,
 inglese, francese e tedesco.
@@ -80,6 +81,18 @@ inglese, francese e tedesco.
   dalla cache.
 - Eliminando un carico vedi prima cosa sparisce; con una password per applicazioni se ne vanno
   anche le immagini.
+
+**Categorie e menu del sito**
+- Le **categorie del negozio si gestiscono dal portale**: le crei (anche dentro un'altra), le
+  elimini, le metti in ordine trascinandole o con le frecce. L'ordine è quello di WooCommerce
+  (*Prodotti → Categorie*); le nuove vanno in fondo al loro livello.
+- Eliminando una categoria i prodotti restano sul sito (quelli senza altre categorie finiscono in
+  «Senza categoria»), le sottocategorie salgono di un livello e nel portale si tolgono le
+  corrispondenze verso di lei.
+- **Mu-plugin** facoltativo (`wordpress/catasync-category-menu.php`): ogni categoria, creata dal
+  portale o dal sito, va sotto la **voce di menu che scegli** (per esempio «Prodotti»), con le
+  sottocategorie sotto la loro categoria, nello stesso ordine. I nomi seguono, le categorie
+  eliminate spariscono, le voci che aggiungi a mano sotto quella voce restano dopo le categorie.
 
 **Portale**
 - Multi-cliente: clienti, negozi, utenti (amministratore, cliente), stato dell'abbonamento,
@@ -178,6 +191,21 @@ Per avere insieme Postgres, SearXNG e LibreTranslate usa il `docker-compose.yml`
 
 La ricerca sul web si imposta una volta sola in **Impostazioni** e vale per tutti i clienti.
 
+## Categorie nel menu del sito
+
+1. Scarica il mu-plugin da **Categorie → Menu del sito** (oppure prendi
+   `wordpress/catasync-category-menu.php` da questo repository) e copialo in
+   `wp-content/mu-plugins/` del negozio. Parte da solo: non va attivato.
+2. Premi **Rileggi dal sito**, scegli il **menu** e la **voce** sotto cui mettere le categorie
+   (per esempio «Prodotti» nel menu principale), spunta **Tieni il menu allineato alle categorie**
+   e salva. Le stesse impostazioni stanno sul sito in *Aspetto → Menu categorie*.
+3. Da lì in poi ogni categoria creata, eliminata, rinominata o spostata — dal portale o dal sito —
+   si vede nel menu. **Allinea adesso** rimette in ordine la voce se ci hai messo le mani.
+
+Il plugin parla col portale con la chiave REST di WooCommerce del negozio
+(`/wp-json/wc-catasync/v1/menu`): la chiave dev'essere di un amministratore o di un gestore del
+negozio, perché cambia i menu.
+
 ## Perché un codice non si trova
 
 Ogni ricerca si chiude con una causa, quella che il cliente vede in tabella e in **Perché?**:
@@ -211,6 +239,8 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
 | Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
 | Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
+| Creare, eliminare e ordinare le categorie del negozio | *Categorie* |
+| Voce di menu sotto cui vanno le categorie | *Categorie → Menu del sito*, oppure sul sito *Aspetto → Menu categorie* |
 | Clienti, piano, quota, fonti dati | *Clienti* |
 | Chiavi REST, lingua del negozio, politiche di scrittura, campi obbligatori, aggiornamento notturno | *Siti → Modifica* |
 | Utenti e ruoli | *Utenti* |
@@ -271,6 +301,10 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
   l'intestazione `Authorization` (certe configurazioni Apache), CataSync riprova da solo con le
   chiavi nell'indirizzo.
 - **`FERNET_KEY` persa** — le chiavi REST dei negozi e quelle dei motori vanno reinserite.
+- **Menu del sito: «Sul sito manca il mu-plugin…»** — il file va direttamente in
+  `wp-content/mu-plugins/`, non in una sottocartella.
+- **Menu del sito: «La chiave REST di questo sito non può cambiare i menu»** — genera la chiave
+  REST del negozio con un utente amministratore (o gestore del negozio).
 
 ## Documentazione
 
@@ -280,6 +314,7 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
 - `docs/GUIDA.md` — la guida completa: ricerca, prezzi, aggiornamento notturno, eliminazione dei
   carichi, abbonamenti, chiamate a WooCommerce.
 - `docs/SICUREZZA.md` — note di sicurezza.
+- `wordpress/catasync-category-menu.php` — il mu-plugin di WordPress per il menu del sito.
 
 ## Licenza
 

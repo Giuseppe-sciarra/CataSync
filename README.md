@@ -20,6 +20,7 @@ multi-client, nothing to install on the shops.
 | **Why?** — every miss says why: the queries, the engines that answered or blocked, the sites opened and what happened on each.<br>![Why](docs/screenshots/en/02-why.png) | **Nothing online** — three searches and no page with that code: try the manufacturer code or fill the sheet in by hand.<br>![Not published online](docs/screenshots/en/03-why-unknown.png) |
 | **Edit** — name, brand, category, prices, description, photos and specifications before publishing.<br>![Edit](docs/screenshots/en/04-edit.png) | **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/en/05-products-dark.png) |
 | **Search settings** — engine, translation, headless browser, and how the last searches went.<br>![Settings](docs/screenshots/en/06-settings.png) | **Portal appearance** — name, logo and favicon of your portal.<br>![Appearance](docs/screenshots/en/07-appearance.png) |
+| **Categories** — create, delete and reorder the shop's categories, by dragging them or with the arrows.<br>![Categories](docs/screenshots/en/08-categories.png) | **Site menu** — with the mu-plugin, every category goes under the menu item you choose, in the same order.<br>![Site menu](docs/screenshots/en/09-site-menu.png) |
 
 The data shown is a demo with made-up names and `.example` sites. The interface is available
 in English, Italian, French and German.
@@ -77,6 +78,17 @@ in English, Italian, French and German.
 - **Nightly update** per site, with its own policies; sheets found recently come from the cache.
 - Deleting a batch shows first what will be removed; with an application password the images go
   too.
+
+**Categories and site menu**
+- The shop's **categories managed from the portal**: create them (also inside another one), delete
+  them, put them in order by dragging them or with the arrows. The order is WooCommerce's own
+  (*Products → Categories*); new categories go at the end of their level.
+- Deleting a category keeps its products on the site (those with no other category end up in
+  “Uncategorized”), moves its subcategories up one level and clears the portal's mappings to it.
+- Optional **mu-plugin** (`wordpress/catasync-category-menu.php`): every category, created in the
+  portal or on the site, goes under the **menu item you choose** (for example “Products”),
+  subcategories under their category, in the same order. Renames follow, deleted categories
+  disappear, items you add by hand under that item stay after the categories.
 
 **Portal**
 - Multi-client: clients, shops, users (administrator, client), subscription status, plan and
@@ -175,6 +187,21 @@ For Postgres, SearXNG and LibreTranslate together, use the full `docker-compose.
 
 The web search is set once in **Settings** and applies to every client.
 
+## Categories in the site menu
+
+1. Download the mu-plugin from **Categories → Site menu** (or take `wordpress/catasync-category-menu.php`
+   from this repository) and copy it into `wp-content/mu-plugins/` of the shop. It starts by itself:
+   nothing to activate.
+2. Press **Reload from site**, choose the **menu** and the **item** the categories go under (for
+   example “Products” in the main menu), tick **Keep the menu aligned with the categories** and save.
+   The same settings are on the site in *Appearance → Menu categorie*.
+3. From then on every category created, deleted, renamed or moved — in the portal or on the site —
+   is reflected in the menu. **Align now** puts the section back in order if you edited it by hand.
+
+The plugin talks to the portal with the shop's WooCommerce REST key
+(`/wp-json/wc-catasync/v1/menu`): the key must belong to an administrator or a shop manager,
+because it changes menus.
+
 ## Why a code is not found
 
 Every search ends with a cause, the one the client sees in the table and in **Why?**:
@@ -208,6 +235,8 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Engine status, causes of misses, sites refusing to be read | *Settings → How the search went* |
 | A list of codes searched one by one, with the outcome | *Settings → Batch test* |
 | Portal name, logo, favicon | *Settings → Portal appearance* |
+| Create, delete and order the shop's categories | *Categories* |
+| Menu item the categories go under | *Categories → Site menu*, or on the site *Appearance → Menu categorie* |
 | Clients, plan, quota, data sources | *Clients* |
 | REST keys, shop language, write policies, required fields, nightly update | *Sites → Edit* |
 | Users and roles | *Users* |
@@ -266,6 +295,10 @@ the volumes; `docker compose down -v` deletes them.
   shop's public one. If the server drops the `Authorization` header (some Apache setups),
   CataSync retries with the keys in the address by itself.
 - **`FERNET_KEY` lost** — the shops' REST keys and the engine keys have to be entered again.
+- **Site menu: “The mu-plugin … is missing on the site”** — the file must sit directly in
+  `wp-content/mu-plugins/`, not in a subfolder.
+- **Site menu: “This site's REST key cannot change menus”** — generate the shop's REST key with an
+  administrator (or shop manager) account.
 
 ## Documentation
 
@@ -275,6 +308,7 @@ the volumes; `docker compose down -v` deletes them.
 - `docs/GUIDA.md` — the complete guide (in Italian): search, prices, nightly update, deleting
   batches, subscriptions, WooCommerce calls.
 - `docs/SICUREZZA.md` — security notes (in Italian).
+- `wordpress/catasync-category-menu.php` — the WordPress mu-plugin for the site menu.
 
 ## Licence
 

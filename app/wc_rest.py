@@ -21,7 +21,11 @@ from .security import decrypt
 log = logging.getLogger("catasync.wc")
 
 BASE = "/wp-json/wc/v3"
+# Rotte del mu-plugin «CataSync – Menu delle categorie» (wordpress/catasync-category-menu.php):
+# il prefisso «wc-» fa accettare a WooCommerce le stesse chiavi REST.
+PLUGIN_MENU = "/wp-json/wc-catasync/v1"
 PER_PAGE = 100
+BATCH_MAX = 100   # tetto di WooCommerce per le chiamate /batch
 
 # Plugin TD Product Specs: chiave e tetto di righe scritte.
 TD_SPECS_META_KEY = "_td_product_specs"
@@ -30,6 +34,10 @@ TD_SPECS_MAX = 60
 
 class SiteError(Exception):
     pass
+
+
+class PluginMancante(SiteError):
+    """Il sito risponde, ma il mu-plugin del menu delle categorie non c'è."""
 
 
 def validate_base_url(url: str) -> str:
@@ -50,9 +58,11 @@ def _creds(site) -> tuple[str, str]:
     return key, secret
 
 
-async def _request(site, method: str, path: str, params: dict | None = None, json_body=None) -> tuple:
+async def _request(
+    site, method: str, path: str, params: dict | None = None, json_body=None, base: str = BASE
+) -> tuple:
     key, secret = _creds(site)
-    url = site.base_url.rstrip("/") + BASE + path
+    url = site.base_url.rstrip("/") + base + path
     params = dict(params or {})
     headers = {"Accept": "application/json", "User-Agent": "TDSyncCatalog/2.0"}
 
@@ -76,6 +86,8 @@ async def _request(site, method: str, path: str, params: dict | None = None, jso
     if resp.status_code == 401:
         raise SiteError("Chiavi REST rifiutate: controlla che abbiano permesso di lettura e scrittura.")
     if resp.status_code == 404:
+        if base != BASE:
+            raise PluginMancante("Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
         raise SiteError("Endpoint non trovato: WooCommerce non risponde o i permalink non sono attivi.")
     if resp.status_code >= 400:
         detail = ""
@@ -83,6 +95,12 @@ async def _request(site, method: str, path: str, params: dict | None = None, jso
             detail = resp.json().get("message", "")
         except ValueError:
             detail = resp.text[:200]
+        if base != BASE:
+            if resp.status_code == 403:
+                raise SiteError("La chiave REST di questo sito non può cambiare i menu: dev'essere di un "
+                                "amministratore o di un gestore del negozio.")
+            if resp.status_code == 400 and detail:
+                raise SiteError(detail)   # il plugin spiega già cosa non va, in italiano
         raise SiteError(f"HTTP {resp.status_code} dal sito. {detail}".strip())
 
     try:
@@ -155,18 +173,28 @@ def _term_path(term: dict, by_id: dict) -> str:
     return " › ".join(p for p in parts if p)
 
 
+def e_riserva(categoria: dict) -> bool:
+    """«Senza categoria» non è una scelta: è il cestino di WooCommerce."""
+    return (categoria.get("slug") or "").lower() in ("uncategorized", "senza-categoria")
+
+
+async def categorie(site) -> list[dict]:
+    """Le categorie del sito così come le dà WooCommerce, compresa «Senza categoria»."""
+    return await _paged(site, "/products/categories", {"orderby": "name", "order": "asc"}, max_pages=20)
+
+
 async def taxonomy(site) -> dict:
-    cats = await _paged(site, "/products/categories", {"orderby": "name", "order": "asc"}, max_pages=20)
-    # «Senza categoria» non è una scelta: è il cestino di WooCommerce. Fuori
-    # dall'elenco, così nessuno può metterci dentro i prodotti dal portale.
-    cats = [c for c in cats if (c.get("slug") or "").lower() not in ("uncategorized", "senza-categoria")]
+    # Senza la categoria di riserva, così nessuno può metterci dentro i prodotti dal portale.
+    cats = [c for c in await categorie(site) if not e_riserva(c)]
     by_id = {c["id"]: c for c in cats}
     categories = [
         {
             "id": c["id"],
-            "name": _term_path(c, by_id),
+            "name": _term_path(c, by_id),   # col percorso, per le tendine: «Caldaie › Condensazione»
+            "nome": c.get("name", ""),       # il nome da solo, per l'albero delle categorie
             "slug": c.get("slug", ""),
             "parent": c.get("parent", 0),
+            "menu_order": c.get("menu_order", 0) or 0,
             "count": c.get("count", 0),
             "image": (c.get("image") or {}).get("src", ""),
             "description": c.get("description", ""),
@@ -195,15 +223,18 @@ async def taxonomy(site) -> dict:
 
 # ------------------------------------------------------------------ categorie
 async def create_category(
-    site, name: str, parent: int = 0, description: str = "", image_url: str = ""
+    site, name: str, parent: int = 0, description: str = "", image_url: str = "", menu_order: int | None = None
 ) -> dict:
-    """Crea una categoria sul sito. `parent` la rende sottocategoria.
+    """Crea una categoria sul sito. `parent` la rende sottocategoria, `menu_order` la mette
+    al suo posto fra le sorelle (è l'ordine di Prodotti → Categorie).
 
     L'immagine si passa come indirizzo: la scarica WooCommerce nella libreria media
     del cliente, esattamente come fa con le immagini dei prodotti."""
     body: dict = {"name": name.strip()}
     if parent:
         body["parent"] = int(parent)
+    if menu_order is not None:
+        body["menu_order"] = int(menu_order)
     if description:
         body["description"] = description
     if image_url.startswith("http"):
@@ -245,6 +276,41 @@ async def delete_category(site, term_id: int) -> dict:
     ci sono dentro lo fa il portale prima di arrivare qui."""
     data, _ = await _request(site, "DELETE", f"/products/categories/{term_id}", params={"force": "true"})
     return data
+
+
+async def order_categories(site, ordini: list[tuple[int, int]]) -> int:
+    """Scrive l'ordine delle categorie (menu_order, quello di Prodotti → Categorie) a lotti
+    da cento. Ritorna quante ne ha cambiate; un errore anche su una sola si fa sentire."""
+    cambiate = 0
+    errori: list[str] = []
+    for inizio in range(0, len(ordini), BATCH_MAX):
+        lotto = [{"id": int(i), "menu_order": int(o)} for i, o in ordini[inizio:inizio + BATCH_MAX]]
+        data, _ = await _request(site, "POST", "/products/categories/batch", json_body={"update": lotto})
+        for voce in (data or {}).get("update", []) if isinstance(data, dict) else []:
+            errore = voce.get("error") if isinstance(voce, dict) else None
+            if errore:
+                errori.append(str(errore.get("message") or errore) if isinstance(errore, dict) else str(errore))
+            else:
+                cambiate += 1
+    if errori:
+        raise SiteError("Ordine non salvato per tutte le categorie: " + "; ".join(errori[:3]))
+    return cambiate
+
+
+# ------------------------------------------------- menu delle categorie (mu-plugin)
+async def menu_stato(site) -> dict:
+    data, _ = await _request(site, "GET", "/menu", base=PLUGIN_MENU)
+    return data if isinstance(data, dict) else {}
+
+
+async def menu_salva(site, scelta: dict) -> dict:
+    data, _ = await _request(site, "POST", "/menu", json_body=scelta, base=PLUGIN_MENU)
+    return data if isinstance(data, dict) else {}
+
+
+async def menu_allinea(site) -> dict:
+    data, _ = await _request(site, "POST", "/menu/allinea", base=PLUGIN_MENU)
+    return data if isinstance(data, dict) else {}
 
 
 # ------------------------------------------------------------------ ricerca

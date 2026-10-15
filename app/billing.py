@@ -71,12 +71,31 @@ def used_this_month(db: Session, client_id: int) -> int:
     )
 
 
-def check(db: Session, client: Client) -> Entitlement:
-    """Stato completo, pronto sia per il gate sia per la UI."""
-    used = used_this_month(db, client.id)
+def _scadenza(client: Client):
     expires = client.subscription_until
     if expires is not None and expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
+    return expires
+
+
+def scrittura_bloccata(client: Client) -> str:
+    """Perché non si può scrivere sul sito ('' = si può): account sospeso, abbonamento non
+    attivo o scaduto. La quota dei prodotti qui non conta: vale per categorie e menu."""
+    if not client.is_active:
+        return "Account sospeso. Contatta l'amministratore del portale."
+    if client.subscription_status not in ACTIVE_STATES:
+        label = LABELS.get(client.subscription_status, client.subscription_status)
+        return f"Abbonamento {label.lower()}: le schede si scaricano e si vedono, ma non si pubblicano sul sito."
+    expires = _scadenza(client)
+    if expires and expires < datetime.now(timezone.utc):
+        return "Abbonamento scaduto il " + expires.strftime("%d/%m/%Y") + ": pubblicazione sospesa."
+    return ""
+
+
+def check(db: Session, client: Client) -> Entitlement:
+    """Stato completo, pronto sia per il gate sia per la UI."""
+    used = used_this_month(db, client.id)
+    expires = _scadenza(client)
 
     base = dict(
         status=client.subscription_status,
@@ -86,23 +105,9 @@ def check(db: Session, client: Client) -> Entitlement:
         used=used,
     )
 
-    if not client.is_active:
-        return Entitlement(False, "Account sospeso. Contatta l'amministratore del portale.", **base)
-
-    if client.subscription_status not in ACTIVE_STATES:
-        label = LABELS.get(client.subscription_status, client.subscription_status)
-        return Entitlement(
-            False,
-            f"Abbonamento {label.lower()}: le schede si scaricano e si vedono, ma non si pubblicano sul sito.",
-            **base,
-        )
-
-    if expires and expires < datetime.now(timezone.utc):
-        return Entitlement(
-            False,
-            "Abbonamento scaduto il " + expires.strftime("%d/%m/%Y") + ": pubblicazione sospesa.",
-            **base,
-        )
+    bloccata = scrittura_bloccata(client)
+    if bloccata:
+        return Entitlement(False, bloccata, **base)
 
     if client.monthly_quota and used >= client.monthly_quota:
         return Entitlement(

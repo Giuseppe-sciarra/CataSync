@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY templates ./templates
 COPY static ./static
+COPY wordpress ./wordpress
 COPY VERSION.txt ./
 
 RUN mkdir -p /data
