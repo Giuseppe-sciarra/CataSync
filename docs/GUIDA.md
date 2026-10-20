@@ -41,6 +41,40 @@ dati dimostrativi: nomi inventati, siti `.example`.
 
 ## 2. La ricerca sul web
 
+### Prima Icecat
+
+Se in *Impostazioni → Icecat* c'è l'utenza ed è spuntato «Cerca prima su Icecat», ogni codice
+**EAN** di ogni cliente si chiede prima a Icecat, con quell'unica utenza (nome utente, API access
+token e Content access token del profilo su icecat.biz; i token si salvano cifrati). Icecat cerca
+per EAN: i codici produttore vanno direttamente alla ricerca sul web.
+
+- **Scheda completa** (nome, descrizione, foto): si usa quella e la ricerca sul web non parte.
+  Niente motori, niente blocchi.
+- **Scheda parziale**: si tiene quella di Icecat (nome, marca, codice, specifiche, testo) e la
+  ricerca sul web aggiunge quello che manca, di solito le foto. La fonte risulta «Icecat + Ricerca
+  sul web».
+- **Non c'è**, o c'è solo con Full Icecat o fuori dal settore dell'abbonamento: parte la ricerca
+  sul web. Nel diario «Perché?» Icecat è la prima riga, col motivo.
+- **EAN non collegato**: Icecat risponde «The GTIN can not be found» quando nel suo catalogo
+  nessun prodotto porta quell'EAN. A volte il prodotto c'è, ma senza quell'EAN: se la ricerca sul
+  web trova marca e codice produttore (dalle pagine che riportano l'EAN), si richiede a Icecat per
+  marca + codice («Samsung Electronics» si prova anche come «Samsung»). Se lo trova, la scheda
+  Icecat diventa la base e il web riempie i buchi; nel diario: «scheda Icecat trovata col codice
+  produttore …».
+- **Lingua**: si chiede la scheda nella lingua del cliente; se nome, descrizione o specifiche ci
+  sono solo in inglese si prendono in inglese e si traducono con LibreTranslate, con lo stesso
+  controllo d'andata e ritorno della ricerca sul web.
+- **Memoria**: le schede Icecat restano in archivio per sempre (`CACHE_DAYS=0`, di serie; un numero =
+  giorni), i «non c'è» 3 giorni (`ICECAT_MISSING_DAYS`). «Riprova dati» le butta insieme a quelle web.
+- **Prova un codice su Icecat** (EAN, oppure marca e codice produttore) nella stessa scheda delle Impostazioni: cosa arriva, quante foto e
+  specifiche, se c'è stato da tradurre, o perché non c'è. Utile per capire la copertura prima di
+  passare a Full Icecat. Anche la *prova a lotti* e il *confronto fonti* del cliente passano
+  prima da Icecat.
+
+Open Icecat (gratis) copre i marchi che pagano Icecat per essere pubblicati; Full Icecat tutti
+quelli dell'abbonamento. Se un'utenza sola possa servire tutti i clienti lo decidono le
+condizioni di Icecat: va chiesto a loro.
+
 ### Il giro di un codice
 
 1. **Domande ai motori**, distanziate di qualche secondo (`SEARCH_PAUSE`, di serie 4) anche
@@ -66,12 +100,74 @@ dati dimostrativi: nomi inventati, siti `.example`.
    specifiche) e si fondono: comanda la pagina più affidabile (EAN dichiarato, poi codice in
    pagina), le altre riempiono i buchi. Una sola pagina che somiglia per nome senza riportare
    il codice **non basta**: meglio una scheda da compilare che quella di un altro prodotto.
-7. **Foto**: si scaricano e si misurano; via segnaposto, loghi, icone e immagini troppo
+   Una marca scritta come sigla dal grossista («Produttore: SMG») vale come il nome intero
+   («Samsung») se ne è la sigla.
+7. **Seconda lettura col browser**: una pagina giusta ma povera (senza descrizione o con una
+   foto sola) si riapre con Chrome (il container `browser`, da indicare in *Browser per le
+   pagine fatte di JavaScript*: `http://browser:3000`) e si tiene la lettura più ricca: tante
+   schede caricano descrizione e galleria col JavaScript, dentro le linguette. Le pagine che ci
+   hanno respinti (403, verifiche anti-bot) non si riaprono.
+8. **Completamento col codice produttore**: se le pagine trovate con l'EAN danno una scheda
+   povera (niente descrizione vera o una foto sola), si fa una seconda ricerca col codice
+   produttore che quelle pagine riportano («Réf. fournisseur AE040RXEDEG/EU») e si aggiungono
+   le pagine nuove che lo confermano: è così che il distributore francese senza descrizione
+   viene completato da Rexel e Sonepar. Le pagine di un kit («AE040RXEDEG/EU + modulo
+   interno») si scartano: la loro descrizione parlerebbe d'altro. Nel diario queste ricerche
+   e pagine sono segnate «col codice produttore». Se in quel momento i motori bloccano, la
+   scheda povera resta in memoria solo 2 giorni invece di 30, così la ricerca successiva ci
+   riprova.
+9. **Foto**: si scaricano e si misurano; via segnaposto, loghi, icone e immagini troppo
    piccole.
-8. **Traduzione** nella lingua delle schede di quello che arriva in un'altra lingua.
+10. **Traduzione** nella lingua delle schede di quello che arriva in un'altra lingua. Le parole
+   che il traduttore storpia («bibloc» → «Bilancio») restano com'erano, quelle che lascia
+   nella lingua di partenza («extérieur») si traducono da sole.
 
-Le schede trovate restano in cache per `CACHE_DAYS` giorni (di serie 30), per codice e
-lingua. I prezzi **non arrivano mai** dalle pagine.
+I nomi scritti tutti in maiuscolo («ESTERNE EHS SPLIT R32 (MONOFASE) 4.») si riscrivono in
+forma da negozio («Esterne EHS split R32 (monofase) 4.»); codici, misure e sigle corte
+restano come sono.
+
+Le schede trovate restano in archivio (tabella `ean_cache`, per codice e lingua: solo testi,
+specifiche e indirizzi delle foto, mai i file) per sempre con `CACHE_DAYS=0`, di serie; un numero
+sono i giorni dopo i quali si ricercano. Un codice già cercato da un cliente qualunque è pronto per
+tutti gli altri. «Riprova» ricerca davvero; togliere un prodotto dal catalogo butta solo le schede
+parziali o «non trovato», quelle complete restano. I prezzi **non arrivano mai** dalle pagine.
+
+### Cataloghi diretti
+Quando i motori non danno pagine col codice, o sono tutti bloccati, in coda ai candidati vanno i
+**cataloghi** (`web_search.CATALOGHI`, `ARCHIVI_EAN`): indirizzi con l'EAN dentro, nessun motore in
+mezzo. Tre tipi:
+- **archivi EAN** (go-upc, barcodelookup, buycott, ean-search, eandata, upcitemdb…): l'indirizzo è
+  già la scheda, con l'EAN dichiarato; si provano per primi perché costano una pagina sola;
+- **comparatori, negozi e marketplace** per paese (idealo, geizhals, billiger, ledenicheur, eBay,
+  ManoMano, trovaprezzi, MediaWorld, Unieuro, Leroy Merlin, Cdiscount, Fnac, PcComponentes, Currys,
+  Newegg, grossisti di termoidraulica…): la pagina di ricerca è un elenco, si segue il primo link
+  fatto come una scheda e la scheda vale solo se dichiara l'EAN;
+- **vetrine** (Google Shopping, Bing Shopping): i link portano ai negozi e diventano candidati come
+  quelli di un motore.
+
+Chi risponde 403 o CAPTCHA va in pausa come un motore (15 minuti, poi il doppio, fino a 6 ore) e
+compare in *Impostazioni → motori* con via «catalogo». Le pagine di catalogo hanno un budget loro
+(14 per codice) e non rubano posti ai siti trovati dai motori. Coi motori bloccati e i cataloghi a
+vuoto il codice si rimanda come prima, non finisce fra i «non trovato».
+
+Alcuni cataloghi (eBay, ManoMano, trovaprezzi, kelkoo, ePrice, pricerunner, Walmart) **vietano la
+ricerca ai programmi nel robots.txt**: di serie il portale li rispetta e non li apre. In
+*Impostazioni → Cataloghi diretti* c'è l'interruttore **«Leggi i cataloghi anche se robots.txt lo
+vieta»** (spento di serie): acceso, si aprono anche quelli, sempre col ritmo di una persona e le
+pause automatiche. È una scelta di chi gestisce il portale, non del programma. Amazon resta fuori
+in ogni caso: non dichiara l'EAN in pagina (la scheda non si confermerebbe mai) e il suo anti-bot
+brucia l'indirizzo del server per tutti i clienti. Il controllo sugli indirizzi interni resta sempre.
+
+### Banche dati libere
+Prima della ricerca sul web, se Icecat non ha l'EAN o la scheda è incompleta, si chiede l'identità
+del prodotto a banche dati pubbliche gratuite e senza chiavi (`app/banche_dati.py`): **UPCitemdb**
+(piano trial: 100 richieste al giorno per IP, oltre risponde 429 e si va avanti senza segnare il
+buco) e **Open Food / Beauty / Pet Food / Products Facts**. Danno nome, marca, codice produttore e
+qualche foto; la descrizione si prende solo se è nella lingua della scheda. Con marca e codice
+produttore in mano la ricerca sul web va a segno anche quando i motori col solo EAN non trovano
+niente: in quel caso si cerca direttamente il codice produttore e le pagine si confermano su quello.
+Nel diario della ricerca compaiono dopo Icecat («upcitemdb», «openfoodfacts»… o «banche dati
+libere: non c'è nelle banche dati»).
 
 ### Lettura «amichevole», niente aggiramenti
 
@@ -91,10 +187,37 @@ il codice **non** viene dato per inesistente: si rimette in coda e si riprova da
 30, 90 e 240 minuti (`SEARCH_MAX_DEFERRALS`, di serie 4 rinvii). La riga mostra «Motori di
 ricerca bloccati: riprovo da solo alle …».
 
+**Pausa per motore.** Un motore che risponde con un blocco non si richiama subito: ogni domanda
+in più allungherebbe il blocco e terrebbe l'indirizzo del server nella sua lista nera. Resta in
+pausa 15 minuti, poi 30, 60, 120… fino a 6 ore, e intanto cercano gli altri (di solito Google CSE
+e Yandex reggono). A fine pausa rientra con una domanda sola: se risponde torna normale, se
+blocca ancora la pausa raddoppia. DuckDuckGo, Startpage, Brave, Google e Bing, anche quando
+rispondono, si interrogano al massimo una volta ogni 30–60 secondi. Se sono in pausa tutti i
+motori scelti il codice non si cerca a vuoto: riparte a fine pausa senza contare un rinvio. Le
+pause si azzerano quando il portale riparte.
+
+**Ricerca a giri.** I codici non partono tutti di fila: dopo 5 codici cercati davvero il portale
+si ferma 2 minuti e poi riprende da solo (si cambiano in *Impostazioni → Ricerca automatica sul
+web*, «Codici per giro» e «Pausa fra un giro e l'altro»). Un carico da 50 codici ci mette circa
+mezz'ora, ma ai motori arriva il ritmo di una persona invece di una raffica, che è quello che fa
+scattare i CAPTCHA. Contano solo i codici che arrivano ai motori: quelli già in memoria no.
+Durante la pausa la barra del carico dice a che ora riparte; le pubblicazioni sul negozio intanto
+vanno avanti. Vale anche per la prova a lotti. Quanti codici incolla il cliente non cambia nulla:
+conta il ritmo con cui partono le domande, non la lunghezza dell'elenco.
+
 ### Impostazioni → Ricerca automatica sul web
 
 - **Motore**: SearXNG (consigliato), DuckDuckGo senza chiave (solo per provare), Brave Search,
   Google Programmable Search o SerpAPI con le loro API a pagamento.
+- **Riserva: chiave Brave Search API** (solo SearXNG, facoltativa): quando i motori di SearXNG
+  bloccano o non danno almeno due risultati col codice, la stessa domanda va all'API di Brave,
+  che è un servizio a pagamento con accordo e non blocca mai (5 $ ogni mille ricerche, 5 $ di
+  credito gratis al mese; la chiave si crea su api-dashboard.search.brave.com). Un codice ne usa
+  da una a due, anche nella ricerca col codice produttore. Con più clienti è la differenza fra
+  «a volte i motori bloccano» e «funziona sempre». Senza chiave non cambia niente.
+- Con un motore a pagamento (Brave, SerpAPI, Google) **giri e pause non si applicano**: servono
+  solo ai motori letti senza accordo. L'API ufficiale di Google è chiusa ai nuovi clienti e si
+  spegne il 1° gennaio 2027.
 - **Motori da interrogare** (solo SearXNG): vuoto = quelli che sui codici funzionano —
   `google cse, yandex, google, startpage, duckduckgo, brave`. Valgono anche se nel
   `settings.yml` sono spenti. Bing, Qwant e Mojeek sui numeri lunghi rispondono a caso
@@ -104,6 +227,15 @@ ricerca bloccati: riprovo da solo alle …».
 - **Prova un codice**: la scheda trovata e il diario completo.
 - **Com'è andata la ricerca**: stato dei motori (chi risponde, chi ci blocca e perché), le
   cause dei mancati degli ultimi carichi, i siti che rifiutano la lettura.
+- **Registro delle ricerche**: ogni codice cercato dai clienti, dal più recente, con l'esito
+  (trovato, trovato a metà, non trovato, rimandato, errore) e il motivo: motori che bloccano,
+  siti che rifiutano la lettura, campi che mancano, sito da cui è arrivata la scheda. **Non**
+  dice chi l'ha cercato: niente cliente, negozio, utente, nome del carico, titolo o messaggi di
+  errore del negozio (possono contenere il suo indirizzo). Filtri (di serie «Solo i problemi»),
+  «Dettagli» per il diario completo, **CSV** per il foglio di calcolo (fino a 5000 righe). «Trovato
+  a metà» vuol dire che la ricerca non ha portato nome, descrizione, foto, specifiche, marca o
+  codice produttore: prezzo e categoria li mette il cliente e non contano. I riallineamenti
+  automatici non compaiono, solo le ricerche dei carichi.
 - **Prova a lotti**: incolli un elenco di codici e vedi, codice per codice, trovato o no e
   perché. Serve a capire se un problema è di un codice o di tutta la ricerca.
 
@@ -120,7 +252,8 @@ motori (`google cse`) e sospendono un motore per un giorno intero al primo CAPTC
 
 ### Una nota sui contenuti
 
-Foto e descrizioni sono opere protette di chi le ha fatte. I produttori le pubblicano perché
+Le schede di Icecat arrivano con la licenza di Icecat e dei marchi che le pubblicano: per i
+contenuti con diritti chiari è la fonte da preferire. Foto e descrizioni sono opere protette di chi le ha fatte. I produttori le pubblicano perché
 i rivenditori le usino per vendere i loro prodotti, i grossisti per lo stesso motivo; altri
 negozi no. Per questo la ricerca preferisce produttori e grossisti, salta comparatori e
 cataloghi con licenza, e non aggira chi chiede di non essere letto. L'uso dei contenuti sul
@@ -239,8 +372,8 @@ Si imposta **per singolo sito**, dalla scheda del sito.
   zero chiamate al sito per sceglierli) oppure *tutti quelli con un EAN sul sito*, sfogliando il
   catalogo via REST col tetto di `WC_MAX_SCAN_PAGES` (30 pagine = 3000 prodotti).
 - **Quanti per volta** e **salta quelli freschi**: tetto per giro e giorni minimi fra due
-  aggiornamenti dello stesso prodotto. Le schede trovate da meno di `CACHE_DAYS` giorni si
-  riprendono dalla cache, senza nuove ricerche.
+  aggiornamenti dello stesso prodotto. Le schede in archivio (`CACHE_DAYS`, di serie per sempre) si
+  riprendono da lì, senza nuove ricerche.
 
 **Le politiche notturne sono separate da quelle manuali.** Di serie: descrizioni e
 specifiche *sempre*, immagini e marca *solo se mancano*, **nome, categorie ed EAN mai**. Gli
@@ -260,6 +393,20 @@ attributo globale con quel nome si usa quello (filtrabile), altrimenti si scrive
 attributo locale del prodotto. A scelta, per sito, le specifiche finiscono anche nel meta
 `_td_product_specs` (shortcode `[td_specifiche]` e campi YOOtheme del plugin TD Product
 Specs); senza il plugin il meta resta lì senza fare niente.
+
+**Specifiche già sul prodotto.** Le righe di TD Product Specs che un prodotto ha già, anche
+scritte a mano, non si perdono: con *solo se vuoto* sulle specifiche si aggiungono in coda le
+voci che mancano (confrontate come fa il plugin: maiuscole, accenti, spazi doppi e due punti
+finali non contano); con *sempre* si aggiornano anche i valori delle stesse voci; le voci che il
+portale non conosce restano comunque. Se non c'è niente da aggiungere il prodotto non si riscrive.
+
+**Filtri dalle specifiche.** TD Product Specs 1.1 trasforma in filtri le etichette scelte in
+*Prodotti → Filtri specifiche* (termini di un attributo WooCommerce, oppure le Marche) e lo dice
+su `GET /wp-json/wc-td-specs/v1/filtri`, con le stesse chiavi REST. Il portale lo legge (ogni
+cinque minuti al massimo) e quelle voci le scrive sempre, prima delle altre e in più rispetto a
+*Quante specifiche scrivere*, così il prodotto compare sotto il filtro. Plugin assente o più
+vecchio: elenco vuoto, tutto come prima. I filtri li costruisce il plugin sul sito, anche dove il
+portale non c'è.
 
 **Immagini.** Si passano gli indirizzi e le scarica WooCommerce nella libreria del cliente.
 Ripubblicando lo stesso prodotto le immagini già presenti non si duplicano.
@@ -295,9 +442,14 @@ app/
   worker.py      coda: cerca, rimanda se i motori bloccano, pubblica
   scheduler.py   giro notturno
   billing.py     abbonamento e quota
-  routers/       auth, admin, client
-templates/       login e console
-static/          CSS, Alpine, logica UI, favicon, traduzioni dell'interfaccia (i18n/)
+  banche_dati.py banche dati pubbliche gratuite per EAN (UPCitemdb, Open*Facts)
+  posta.py       posta in uscita (SMTP del .env): codici di verifica
+  due_fattori.py verifica in due passaggi: TOTP, codice via email, passkey, codici di riserva
+  manutenzione.py avviso di manutenzione nella pagina di accesso
+  web.py         template Jinja condivisi
+  routers/       auth, admin, client, magazzino
+templates/       accesso, pannello (dashboard.html)
+static/          CSS, Alpine, logica UI, passkey.js, favicon, traduzioni dell'interfaccia (i18n/)
 searxng/         settings.yml del motore di ricerca
 wordpress/       mu-plugin facoltativo per il menu delle categorie (catasync-category-menu.php)
 tests/           test automatici (python -m unittest discover -s tests; node --test tests/i18n.test.cjs)
@@ -318,6 +470,7 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Magazzino: elenco e ricerca | `GET /products` con `status=any` (o `trash`), `category`, `search` + `search_fields[]=name,sku,global_unique_id`, `_fields` |
 | Magazzino: categoria e prezzi | `PUT /products/{id}` (`categories`, `regular_price`, `sale_price`) |
 | Magazzino: scheda completa | `GET /products/{id}`; `PUT /products/{id}` (`name`, `status`, `sku`, `global_unique_id`, prezzi, scorte, `categories`, `images` con `id` o `src`, `short_description`, `description`, `attributes`, `brands`, meta `_td_product_specs`) |
+| Filtri dalle specifiche (TD Product Specs 1.1, facoltativo) | `GET /wp-json/wc-td-specs/v1/filtri`: le etichette che il sito usa come filtri |
 | Magazzino: nel cestino, ripristino | `DELETE /products/{id}` senza `force`; `PUT /products/{id}` con `status` e `slug` di prima |
 | Magazzino: per sempre, svuota | `DELETE /products/{id}?force=true`; `POST /products/batch` (`delete`, a lotti da cento) |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
@@ -469,7 +622,10 @@ WooCommerce: niente copie nel portale che possano restare indietro.
     aprire la scheda e chiuderla senza scrivere non cambia niente.
   - **Specifiche**: gli attributi del prodotto (più valori separati da `|`), e se il sito ha la
     tabella delle specifiche anche il meta `_td_product_specs`. Gli attributi globali del sito e
-    quelli usati per le varianti si vedono ma restano come sono.
+    quelli usati per le varianti si vedono ma restano come sono. Se il prodotto ha già le righe di
+    TD Product Specs (anche scritte a mano) l'editor mostra quelle, cioè quello che il negozio
+    mostra e filtra; salvando, una riga non toccata tiene il suo valore com'era (link e grassetto
+    compresi) e a un prodotto con le specifiche solo nel plugin non si creano attributi WooCommerce.
   - Le righe di Prodotti collegate a quel prodotto si allineano (nome, marca, prezzi, categoria),
     così una nuova pubblicazione non rimette i dati vecchi.
 - **Categoria e prezzo al volo**: un clic sulla categoria o sul prezzo nella riga apre la modifica
@@ -493,4 +649,54 @@ WooCommerce: niente copie nel portale che possano restare indietro.
 
 Modificare ed eliminare scrive sul sito: servono l'account attivo e una chiave REST di un
 amministratore o gestore del negozio, come per le categorie.
+
+## 17. Account e verifica in due passaggi
+
+Ogni utente, cliente o amministratore, ha la sua pagina **Account**: si apre con un clic
+sull'email in alto a destra. Lì attiva la verifica in due passaggi e cambia la password.
+
+**I tre modi.** Si possono attivare tutti; all'accesso, dopo la password, il portale propone per
+prima la passkey, poi l'app, poi l'email, e si passa dall'uno all'altro con un clic.
+
+- **Passkey**: impronta, volto o PIN del dispositivo, oppure una chiave di sicurezza USB o NFC. Se
+  ne registra una per dispositivo, con un nome per riconoscerla. Vogliono HTTPS e sono legate al
+  dominio di `PUBLIC_URL`.
+- **App di autenticazione**: si inquadra il QR (o si ricopia la chiave) con Google o Microsoft
+  Authenticator, 1Password, Aegis…, e si conferma col primo codice. Un codice vale 30 secondi e
+  una volta sola.
+- **Codice via email**: sei cifre, dieci minuti, spedite col server SMTP del `.env` nella lingua
+  dell'interfaccia. Senza posta configurata non si attiva.
+
+**Codici di riserva.** Arrivano col primo modo attivato: dieci, si vedono una volta (*Copia* o
+*Scarica*), ognuno vale una volta. Dalla pagina di accesso: *Hai perso il telefono? Usa un codice
+di riserva*. Chi entra così viene avvisato di quanti gliene restano. *Genera nuovi codici*
+invalida i vecchi.
+
+**La password.** Attivare, cambiare o spegnere un modo chiede di nuovo la password: scritta una
+volta, per dieci minuti non la richiede. Nel secondo passaggio dell'accesso si possono sbagliare
+sei codici ogni dieci minuti, poi bisogna aspettare.
+
+**Il promemoria.** Finché un utente non ha attivato niente, in cima al pannello c'è una riga
+piccola che lo invita a farlo, e accanto all'email un pallino giallo. Attivato un modo,
+spariscono. Non blocca niente: è un invito.
+
+**Chi ha perso tutto.** L'amministratore, in *Utenti*, vede nella colonna *2FA* i modi attivi di
+ognuno e con *Togli 2FA* li spegne: l'utente rientra con la password e la riattiva. Se a restare
+fuori è l'amministratore:
+
+```bash
+docker exec -it catasync-hub python -m app.due_fattori togli admin@example.com
+```
+
+## 18. Avviso di manutenzione
+
+In *Impostazioni → Avviso di manutenzione*: la casella *Mostra l'avviso nella pagina di
+accesso*, il giorno, l'ora d'inizio e quella di fine (nel fuso `TZ` del portale; se la fine viene
+prima dell'inizio vale il giorno dopo) e una nota facoltativa, che si mostra così come la scrivi.
+L'anteprima si aggiorna mentre scrivi.
+
+Chi apre la pagina di accesso vede il riquadro sopra email e password: «Manutenzione
+programmata» con giorno e orari in grassetto, scritti nella sua lingua; durante i lavori diventa
+«Manutenzione in corso» e passata l'ora di fine sparisce da solo, anche se la casella resta
+accesa. Non si salva acceso un avviso già scaduto.
 

@@ -54,14 +54,21 @@ services:
       SCHEDULER_ENABLED: "1"
       # Lingua delle schede quando nessuno la sceglie (IT, EN, FR, DE, ES).
       DEFAULT_LANG: ${DEFAULT_LANG:-IT}
-      # Giorni di validità delle schede già trovate sul web (per codice e lingua).
-      CACHE_DAYS: ${CACHE_DAYS:-30}
+      # Giorni di validità delle schede già trovate (per codice e lingua). 0 = per sempre.
+      CACHE_DAYS: ${CACHE_DAYS:-0}
       # Secondi fra una ricerca e l'altra: è ciò che tiene lontani i CAPTCHA.
       SEARCH_PAUSE: ${SEARCH_PAUSE:-4}
       SEARCH_MAX_DEFERRALS: ${SEARCH_MAX_DEFERRALS:-4}
       SITE_TIMEOUT: ${SITE_TIMEOUT:-60}
       WC_MAX_SCAN_PAGES: ${WC_MAX_SCAN_PAGES:-30}
       SOURCE_URL: ${SOURCE_URL:-https://github.com/Giuseppe-sciarra/CataSync}
+      # Posta per i codici della verifica in due passaggi.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       TZ: ${TZ:-Europe/Rome}
     volumes:
       - hub_data:/data          # loghi, favicon, immagini categorie, cache: NON stanno nel DB

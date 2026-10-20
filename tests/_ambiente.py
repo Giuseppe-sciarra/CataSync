@@ -20,3 +20,15 @@ if not os.environ.get("FERNET_KEY"):
 
 if RADICE not in sys.path:
     sys.path.insert(0, RADICE)
+
+# Le banche dati libere (UPCitemdb, Open*Facts) non si interrogano davvero nei test:
+# di serie non conoscono niente. tests/test_banche_dati.py le prova con un trasporto finto.
+from app import banche_dati as _banche_dati  # noqa: E402
+
+
+async def _nessuna(_gtin: str, _lang: str):
+    return None
+
+
+_banche_dati.scheda_vera = _banche_dati.scheda
+_banche_dati.scheda = _nessuna

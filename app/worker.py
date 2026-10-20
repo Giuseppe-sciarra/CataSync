@@ -2,12 +2,13 @@
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
-from . import billing, config, providers, quality, scheduler, wc_rest
+from . import billing, config, providers, quality, scheduler, wc_rest, web_search
 from .db import SessionLocal
 from .models import CategoryMap, Job, JobItem, Site
 
@@ -177,6 +178,17 @@ async def _scarica(db: Session, item: JobItem, job: Job, site: Site) -> None:
         # I motori ci stanno bloccando: il codice non è stato cercato davvero.
         # Si rimette in coda più tardi, e solo dopo qualche rinvio si arrende.
         _salva_diagnosi(item, exc.diagnosi)
+        if exc.riprova_alle:
+            # Nessun motore è stato interrogato: erano tutti in pausa dopo un blocco. Non è un
+            # tentativo andato male, quindi non conta fra i rinvii: si riprende a fine pausa,
+            # con qualche secondo di scarto perché i codici in coda non ripartano tutti insieme.
+            ripresa = datetime.fromtimestamp(exc.riprova_alle, timezone.utc) + timedelta(seconds=random.uniform(5, 90))
+            item.retry_after = ripresa
+            item.status = "pending"
+            item.error = ("Motori di ricerca in pausa dopo un blocco: il codice riparte da solo alle "
+                          + ripresa.astimezone(scheduler.tz()).strftime("%H:%M") + ".")
+            db.commit()
+            return
         item.rinvii = (item.rinvii or 0) + 1
         if item.rinvii > config.RINVII_MASSIMI:
             item.status = "not_found"
@@ -247,6 +259,8 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
         "site_attributes": await _site_attributes(site),
         "specs_meta": site.specs_meta,
         "specs_limit": site.specs_limit,
+        # Le etichette che il sito usa come filtri (TD Product Specs): si scrivono sempre.
+        "filtri_specifiche": await wc_rest.etichette_filtro(site) if site.specs_meta else [],
         "now": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:
@@ -324,7 +338,9 @@ def _finalize(db: Session, job: Job) -> None:
 async def _tick() -> None:
     db = SessionLocal()
     try:
-        statuses = ["pending"]
+        # Pausa fra un gruppo di codici e l'altro: intanto niente ricerche nuove, ma le
+        # pubblicazioni e le eliminazioni vanno avanti.
+        statuses = [] if web_search.fine_riposo_giro() else ["pending"]
         jobs = db.scalars(
             select(Job).where(Job.status.in_(["queued", "running", "purging"])).order_by(Job.id)
         ).all()
@@ -346,10 +362,10 @@ async def _tick() -> None:
             ).all()
 
             if not items:
-                # Righe rimandate (motori bloccati): il carico non è finito, aspetta.
+                # Righe ancora da cercare (rimandate perché i motori bloccavano, o ferme per la
+                # pausa fra un giro e l'altro): il carico non è finito, aspetta.
                 in_attesa = db.scalar(
-                    select(func.count(JobItem.id)).where(
-                        JobItem.job_id == job.id, JobItem.status == "pending", JobItem.retry_after.is_not(None))
+                    select(func.count(JobItem.id)).where(JobItem.job_id == job.id, JobItem.status == "pending")
                 )
                 if not in_attesa:
                     _finalize(db, job)
@@ -360,6 +376,8 @@ async def _tick() -> None:
                 db.commit()
 
             for item in items:
+                if item.status == "pending" and web_search.fine_riposo_giro():
+                    continue       # il giro si è chiuso a metà lotto: questi aspettano la ripresa
                 try:
                     if item.status == "to_delete":
                         await _delete_item(db, item, site)

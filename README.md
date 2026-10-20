@@ -129,6 +129,15 @@ in English, Italian, French and German.
 - Category and price are set by the client right in the table; one category can go to many rows
   at once.
 - Portal name, logo and favicon uploadable from the panel; light and dark theme.
+- **Two-step verification** for everyone, clients and administrators, from the *Account* page
+  (click your email at the top): **authenticator app** (QR code), **email code** (through the SMTP
+  server in `.env`) or **passkey** (fingerprint, face, device PIN, security key). Any combination
+  can be on and you pick one when signing in; the first one also gives ten **backup codes**. Until
+  it is on, a small line at the top of the panel says so. Turning it on, changing it or turning it
+  off asks for the password; the password itself is changed from *Account* too.
+- **Maintenance notice**: switched on from *Settings* with day, start time, end time and an
+  optional note. It shows on the sign-in page, above email and password, in the reader's
+  language, and disappears by itself once the work is over.
 - REST keys encrypted at rest, descriptions sanitised before saving and publishing, requests
   only to public addresses, SVG files with active content refused.
 
@@ -183,6 +192,10 @@ password is changed from the panel.
 The first start of LibreTranslate downloads its language models: translation works a few minutes
 later.
 
+The email code of two-step verification needs the mail server in `.env` (`SMTP_HOST`, `SMTP_PORT`,
+`SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`): without it that method cannot be
+enabled (authenticator apps and passkeys work anyway).
+
 ### Behind a reverse proxy
 
 ```dotenv
@@ -235,6 +248,25 @@ Only if you want the categories in the site menu; without the mu-plugin the menu
 The plugin works on the site by itself: the portal does not call it, so it needs no extra
 permissions on the REST key.
 
+## Specifications and filters (optional)
+
+If the shop shows its specifications with the **TD Product Specs** plugin (`_td_product_specs`
+meta, `[td_specifiche]` shortcode and YOOtheme fields), CataSync writes there too
+(*Sites → Edit → Also write specifications for TD Product Specs*) and works together with what is on the site:
+
+- What a product already has stays, rows written by hand included. With *Only if empty* on
+  specifications CataSync adds the entries that are missing; with *Always* it also updates the
+  values of the same entries. Entries it does not know are never removed.
+- From version 1.1 the plugin turns the labels you choose into filters (*Products → Filtri
+  specifiche*), for products written by hand as much as for CataSync's. CataSync reads which labels
+  they are and always writes those entries, before the others and beyond the number of
+  specifications set for the site, so new products show up under the filters.
+- In *Warehouse → product sheet* the specifications of a product that has plugin rows are those
+  rows: the same ones the shop shows and filters. A product whose specifications live only in the
+  plugin does not get WooCommerce attributes it did not have.
+
+Without the plugin nothing changes: the meta stays on the product and does nothing.
+
 ## Why a code is not found
 
 Every search ends with a cause, the one the client sees in the table and in **Why?**:
@@ -268,6 +300,10 @@ review; without LibreTranslate the sheet keeps the language found, with a warnin
 | Engine status, causes of misses, sites refusing to be read | *Settings → How the search went* |
 | A list of codes searched one by one, with the outcome | *Settings → Batch test* |
 | Portal name, logo, favicon | *Settings → Portal appearance* |
+| Maintenance notice on the sign-in page | *Settings → Maintenance notice* |
+| Two-step verification and password, for each user | *Account* (your email, top right) |
+| Remove two-step verification for someone who lost phone and backup codes | *Users → Remove 2FA* |
+| Mail server for the two-step verification email code | `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` |
 | Products already on the site: search, full product sheet, category, price, trash | *Warehouse* |
 | Add, rename, delete and order the shop's categories | *Categories* |
 | Menu item the categories go under (optional mu-plugin) | on the site, *Appearance → Menu categorie* |
@@ -313,8 +349,10 @@ the volumes; `docker compose down -v` deletes them.
 ## Troubleshooting
 
 - **Every code is "not found" or postponed** — open *Settings → How the search went*. If the
-  engines are blocking, the codes are retried by themselves; raise `SEARCH_PAUSE` and update
-  SearXNG (`docker compose pull searxng`).
+  engines are blocking, the codes are retried by themselves and the blocking engines are paused
+  (15 minutes, then longer) while the others work; raise `SEARCH_PAUSE` and update SearXNG
+  (`docker compose pull searxng`). If nothing answers for hours, the only stable way is an
+  official API (Brave or Google) under *Automatic web search*.
 - **"SearXNG: JSON output not enabled"** — the `settings.yml` in use lacks
   `search: formats: [html, json]`: use the one in `searxng/`.
 - **The `searxng` container does not start** — `SEARXNG_SECRET` is missing in `.env`.
@@ -329,6 +367,17 @@ the volumes; `docker compose down -v` deletes them.
   shop's public one. If the server drops the `Authorization` header (some Apache setups),
   CataSync retries with the keys in the address by itself.
 - **`FERNET_KEY` lost** — the shops' REST keys and the engine keys have to be entered again.
+- **The authenticator app code is refused** — the phone's clock is wrong: set it to automatic.
+  Each code lasts 30 seconds (plus the one before and after) and works once.
+- **A passkey cannot be added or stops working** — passkeys need HTTPS (or `localhost`) and are
+  bound to the domain in `PUBLIC_URL`, or to the one open in the browser when it is empty: after a
+  domain change they must be registered again.
+- **Codes refused after changing `SECRET_KEY` or `FERNET_KEY`** — backup codes depend on
+  `SECRET_KEY`, authenticator secrets on `FERNET_KEY`: remove two-step verification for those users
+  (*Users → Remove 2FA*) and have them turn it on again.
+- **Administrator locked out by two-step verification** (phone and backup codes lost) —
+  `docker exec -it catasync-hub python -m app.due_fattori togli admin@example.com`, then sign in with
+  the password alone and turn it back on from *Account*. For clients, *Users → Remove 2FA* is enough.
 - **Categories: “HTTP 403 from the site”** when adding, renaming or deleting — the user who owns the shop's
   REST key cannot manage product categories: generate the key with an administrator or shop
   manager account.

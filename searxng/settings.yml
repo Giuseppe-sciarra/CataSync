@@ -58,3 +58,11 @@ engines:
     disabled: true
   - name: mojeek
     disabled: true
+  # Non servono ai codici e a ogni avvio riempiono il log di errori: ahmia e torch vogliono
+  # la rete Tor, wikidata risponde 403 ai server. Tolti del tutto.
+  - name: ahmia
+    inactive: true
+  - name: torch
+    inactive: true
+  - name: wikidata
+    inactive: true

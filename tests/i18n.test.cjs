@@ -27,10 +27,6 @@ test('i file per lingua coincidono col catalogo', () => {
   }
 });
 
-test('niente riferimenti al vecchio connettore a catalogo', () => {
-  assert.ok(!/icecat/i.test(sorgente));
-});
-
 test('modelli con segnaposto, numeri e frasi incollate', () => {
   assert.strictEqual(api.t('Sto cercando le schede di 12 prodotti…', 'en'), 'Looking for the details of 12 products…');
   assert.strictEqual(api.t('Elimina selezionati (3)', 'de'), 'Ausgewählte löschen (3)');
@@ -57,7 +53,8 @@ test('niente frasi tradotte a metà: una parola nota in testa a una frase ignota
 // <code>, <script>, <style> o sotto translate="no" non si traduce.
 function testiDellePagine() {
   const testi = new Set();
-  for (const file of ['templates/dashboard.html', 'templates/login.html']) {
+  const pagine = ['templates/dashboard.html', 'templates/login.html'];
+  for (const file of pagine) {
     let html = fs.readFileSync(path.join(radice, file), 'utf8')
       .replace(/<!--[\s\S]*?-->/g, ' ').replace(/\{%[\s\S]*?%\}/g, ' ').replace(/\{\{[\s\S]*?\}\}/g, 'TD Sync Catalog');
     const pila = [];

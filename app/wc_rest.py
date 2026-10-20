@@ -11,6 +11,9 @@ la modalità che WooCommerce prevede proprio per quel caso.
 import asyncio
 import html
 import logging
+import re
+import time
+import unicodedata
 from urllib.parse import urlparse
 
 import httpx
@@ -31,6 +34,10 @@ BATCH_MAX = 100   # tetto di WooCommerce per le chiamate /batch
 # Plugin TD Product Specs: chiave e tetto di righe scritte.
 TD_SPECS_META_KEY = "_td_product_specs"
 TD_SPECS_MAX = 60
+# Dalla 1.1 il plugin dice quali etichette il sito usa come filtri (Prodotti → Filtri specifiche).
+PLUGIN_SPECS = "/wp-json/wc-td-specs/v1"
+FILTRI_TTL = 300   # si rileggono ogni cinque minuti, non a ogni prodotto
+_cache_filtri: dict[int, tuple[float, list[str]]] = {}
 
 
 class SiteError(Exception):
@@ -388,11 +395,47 @@ def _may_write(policy: dict, field: str, is_new: bool, current) -> bool:
     return not str(current or "").strip()
 
 
-def taglia_specifiche(rows: list, limite: int) -> list:
+def chiave_etichetta(testo) -> str:
+    """Un'etichetta come la confronta TD Product Specs: senza HTML, accenti, maiuscole, spazi
+    doppi e due punti finali. «Marca:» e «marca» sono la stessa voce."""
+    t = html.unescape(re.sub(r"<[^>]+>", " ", str(testo or "")))
+    t = "".join(c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t.lower()).strip(" \t\n\r\x00\x0b:")
+
+
+def _tutte_le_etichette(filtri) -> list[str]:
+    """I filtri arrivano a gruppi (un filtro, più etichette): qui servono tutte in fila."""
+    out = []
+    for f in filtri or []:
+        out.extend(f if isinstance(f, (list, tuple)) else [f])
+    return [e for e in out if isinstance(e, str)]
+
+
+def etichetta_nei_filtri(etichetta, filtri) -> bool:
+    """L'etichetta è fra quelle dei filtri del sito? «*» vale qualsiasi testo, come nel plugin."""
+    k = chiave_etichetta(etichetta)
+    if not k:
+        return False
+    for alias in _tutte_le_etichette(filtri):
+        a = chiave_etichetta(alias)
+        if not a:
+            continue
+        if "*" in a:
+            if re.fullmatch(".*".join(re.escape(p) for p in a.split("*")), k):
+                return True
+        elif a == k:
+            return True
+    return False
+
+
+def taglia_specifiche(rows: list, limite: int, filtri: list | None = None) -> list:
     """Sceglie le caratteristiche che contano davvero, non le prime a caso.
 
-    Le fonti marcano «chiave» (`key`) quelle su cui si costruiscono i filtri di ricerca: per un
-    televisore sono diagonale, risoluzione, Smart TV, Wi-Fi. Sono le stesse su cui
+    Prima di tutto quelle che il sito usa come filtri (TD Product Specs le dice): senza, il
+    prodotto non comparirebbe sotto quel filtro. Sono in più rispetto al limite.
+
+    Poi le fonti marcano «chiave» (`key`) quelle su cui si costruiscono i filtri di ricerca:
+    per un televisore sono diagonale, risoluzione, Smart TV, Wi-Fi. Sono le stesse su cui
     ragiona chi compra. Prendendo invece le prime nell'ordine grezzo si finisce con
     voci come «Regolazioni formato schermo: 16:9, Auto, Zoom», che non dicono niente.
 
@@ -400,9 +443,116 @@ def taglia_specifiche(rows: list, limite: int) -> list:
     originale, che tiene comunque insieme le voci dello stesso gruppo."""
     if not limite or limite <= 0:
         return rows
-    principali = [r for r in rows if r.get("key")]
-    resto = [r for r in rows if not r.get("key")]
-    return (principali + resto)[:limite]
+    del_filtro = [r for r in rows if filtri and etichetta_nei_filtri(r.get("name"), filtri)]
+    altre = [r for r in rows if not any(r is f for f in del_filtro)]
+    principali = [r for r in altre if r.get("key")]
+    resto = [r for r in altre if not r.get("key")]
+    return del_filtro + (principali + resto)[:limite]
+
+
+def specifiche_plugin(prodotto: dict | None) -> list[dict]:
+    """Le righe di TD Product Specs già sul prodotto (scritte a mano, da un import o dal portale)."""
+    for m in (prodotto or {}).get("meta_data") or []:
+        if not isinstance(m, dict) or m.get("key") != TD_SPECS_META_KEY:
+            continue
+        valore = m.get("value")
+        if isinstance(valore, dict):   # array PHP con chiavi non in fila: arriva come oggetto
+            valore = list(valore.values())
+        if not isinstance(valore, list):
+            return []
+        return [{"label": str(r.get("label") or ""), "value": str(r.get("value") or "")}
+                for r in valore if isinstance(r, dict) and (r.get("label") or r.get("value"))]
+    return []
+
+
+def testo_specifica(valore) -> str:
+    """Una riga del plugin come testo: niente HTML (link, grassetto), «<br>» separa come «|»."""
+    t = re.sub(r"<br\s*/?>", " | ", str(valore or ""), flags=re.I)
+    t = re.sub(r"<[^>]+>", " ", t)
+    return re.sub(r"\s+", " ", html.unescape(t)).strip()
+
+
+def unisci_specifiche(esistenti: list[dict], nuove: list[dict], sovrascrivi: bool = False,
+                      gruppi: list | None = None) -> list[dict]:
+    """Le specifiche dopo il passaggio del portale. Quelle già sul prodotto restano, nel loro
+    ordine; il portale aggiunge in coda le voci che mancano. Con «sovrascrivi» i suoi valori
+    vincono sulle stesse voci, ma le voci che il portale non conosce restano comunque.
+
+    `gruppi` sono i filtri del sito, ognuno con le sue etichette: se a mano c'è «Finitura/Colore»
+    e il filtro «Colore» le prende tutte e due, il «Colore» del portale è la stessa voce e non
+    si aggiunge (con «sovrascrivi» ne aggiorna il valore)."""
+    def gruppo(etichetta):
+        for i, g in enumerate(gruppi or []):
+            if etichetta_nei_filtri(etichetta, g if isinstance(g, (list, tuple)) else [g]):
+                return i
+        return None
+
+    out = [dict(r) for r in esistenti]
+    dove, dove_gruppo = {}, {}
+    for i, r in enumerate(out):
+        k = chiave_etichetta(r.get("label"))
+        if k and k not in dove:
+            dove[k] = i
+        g = gruppo(r.get("label"))
+        if g is not None and g not in dove_gruppo:
+            dove_gruppo[g] = i
+    gia_aggiornati = set()
+    for r in nuove:
+        k = chiave_etichetta(r.get("label"))
+        if not k or not str(r.get("value") or "").strip():
+            continue
+        if k in dove:
+            if sovrascrivi:
+                out[dove[k]]["value"] = r["value"]
+            continue
+        g = gruppo(r.get("label"))
+        if g is not None and g in dove_gruppo:
+            # Il prodotto ha già quella voce del filtro, scritta con un'altra etichetta.
+            if sovrascrivi and g not in gia_aggiornati:
+                out[dove_gruppo[g]]["value"] = r["value"]
+                gia_aggiornati.add(g)
+            continue
+        if len(out) >= TD_SPECS_MAX:
+            continue
+        dove[k] = len(out)
+        out.append({"label": r["label"], "value": r["value"]})
+    return out
+
+
+async def filtri_specifiche(site) -> list[list[str]]:
+    """I filtri del sito (TD Product Specs 1.1 o successivo), ognuno con le sue etichette.
+    Senza il plugin, o con un plugin più vecchio, l'elenco è vuoto e tutto va come prima."""
+    try:
+        data, _ = await _request(site, "GET", "/filtri", base=PLUGIN_SPECS)
+    except Exception as exc:   # facoltativo: qualunque guaio vale «nessun filtro»
+        log.debug("Filtri delle specifiche non letti da %s: %s", getattr(site, "base_url", "?"), exc)
+        return []
+    out: list[list[str]] = []
+    for f in (data.get("filtri") if isinstance(data, dict) else None) or []:
+        etichette = []
+        for e in (f.get("etichette") if isinstance(f, dict) else None) or []:
+            if isinstance(e, str) and e.strip() and e.strip() not in etichette:
+                etichette.append(e.strip())
+        if etichette:
+            out.append(etichette)
+    return out
+
+
+async def etichette_filtro(site) -> list[list[str]]:
+    """Come filtri_specifiche(), ma riletto al massimo ogni cinque minuti."""
+    adesso = time.monotonic()
+    nota = _cache_filtri.get(site.id)
+    if nota and adesso - nota[0] < FILTRI_TTL:
+        return nota[1]
+    etichette = await filtri_specifiche(site)
+    _cache_filtri[site.id] = (adesso, etichette)
+    return etichette
+
+
+def etichette_filtro_note(site_id: int) -> list[list[str]]:
+    """Le etichette dei filtri già lette dal sito, senza chiamarlo (per le anteprime)."""
+    nota = _cache_filtri.get(site_id)
+    return nota[1] if nota else []
 
 
 def _build_attributes(rows: list, site_attributes: list) -> list:
@@ -509,10 +659,36 @@ async def push_product(site, product: dict, options: dict) -> dict:
     scrivi_specifiche = product.get("attributes") and _may_write(
         policy, "attributes", is_new, current("attributes", [])
     )
-    specifiche = taglia_specifiche(product.get("attributes") or [], options.get("specs_limit", 6))
+    specifiche = taglia_specifiche(product.get("attributes") or [], options.get("specs_limit", 6),
+                                   options.get("filtri_specifiche") or [])
+
+    # TD Product Specs: stesso elenco di caratteristiche, nel formato che il plugin
+    # legge per lo shortcode [td_specifiche], per i campi YOOtheme e per i filtri. Se il
+    # plugin non c'è, resta un meta inutilizzato e non fa danno.
+    # Le righe che ci sono già (scritte a mano, per esempio) non si perdono: «Solo se vuoto»
+    # aggiunge le voci che mancano, «Sempre» aggiorna anche i valori delle stesse voci.
+    modo_specifiche = policy.get("attributes", "fill")
+    prima_plugin: list[dict] = []
+    dopo_plugin: list[dict] = []
+    if product.get("attributes") and options.get("specs_meta", True) and modo_specifiche != "skip":
+        righe = [
+            {"label": str(a.get("name", "")), "value": str(a.get("value", ""))}
+            for a in specifiche[:TD_SPECS_MAX]
+            if a.get("name") and a.get("value")
+        ]
+        prima_plugin = [] if is_new else specifiche_plugin(existing)
+        dopo_plugin = (unisci_specifiche(prima_plugin, righe, sovrascrivi=modo_specifiche == "overwrite",
+                                         gruppi=options.get("filtri_specifiche") or [])
+                       if prima_plugin else righe)
+
     if scrivi_specifiche:
         site_attributes = options.get("site_attributes") or []
-        payload["attributes"] = _build_attributes(specifiche, site_attributes)
+        # Il prodotto aveva già le sue specifiche nel plugin: gli attributi WooCommerce le seguono,
+        # così la scheda non dice «Bianco» da una parte e «Grigio» dall'altra.
+        da_scrivere = specifiche
+        if prima_plugin and dopo_plugin:
+            da_scrivere = [{"name": testo_specifica(r["label"]), "value": testo_specifica(r["value"])} for r in dopo_plugin]
+        payload["attributes"] = _build_attributes(da_scrivere, site_attributes)
 
     if product.get("brand") and _may_write(policy, "brand", is_new, current("brands", [])):
         brand_id = await ensure_brand(site, product["brand"])
@@ -526,17 +702,9 @@ async def push_product(site, product: dict, options: dict) -> dict:
         {"key": "_tdic_synced", "value": options.get("now", "")},
     ]
 
-    # TD Product Specs: stesso elenco di caratteristiche, nel formato che il plugin
-    # legge per lo shortcode [td_specifiche] e per i campi YOOtheme. Se il plugin non
-    # c'è, resta un meta inutilizzato e non fa danno.
-    if scrivi_specifiche and options.get("specs_meta", True):
-        righe = [
-            {"label": a.get("name", ""), "value": a.get("value", "")}
-            for a in specifiche[:TD_SPECS_MAX]
-            if a.get("name") and a.get("value")
-        ]
-        if righe:
-            meta.append({"key": TD_SPECS_META_KEY, "value": righe})
+    specifiche_cambiate = bool(dopo_plugin) and dopo_plugin != prima_plugin
+    if specifiche_cambiate:
+        meta.append({"key": TD_SPECS_META_KEY, "value": dopo_plugin})
     if product.get("mpn"):
         meta.append({"key": "_tdic_mpn", "value": product["mpn"]})
     if product.get("source_ref"):
@@ -559,7 +727,7 @@ async def push_product(site, product: dict, options: dict) -> dict:
             "warnings": warnings,
         }
 
-    if not payload or list(payload.keys()) == ["meta_data"]:
+    if not payload or (list(payload.keys()) == ["meta_data"] and not specifiche_cambiate):
         return {
             "product_id": existing["id"],
             "action": "updated",

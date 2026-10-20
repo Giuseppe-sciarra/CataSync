@@ -48,7 +48,7 @@ MOTORI_SEARXNG_PREDEFINITI = "google cse, yandex, google, startpage, duckduckgo,
 # Motori la cui risposta conta per dire «il codice non esiste»: se rispondono
 # solo gli altri (Bing, che sui numeri inventa) e questi sono bloccati, il
 # codice non è stato davvero cercato.
-MOTORI_BUONI = {"google", "google cse", "yandex", "startpage", "duckduckgo", "brave", "serpapi"}
+MOTORI_BUONI = {"google", "google cse", "yandex", "startpage", "duckduckgo", "brave", "serpapi", "brave api"}
 
 # Siti che non sono mai la scheda di un prodotto in vendita.
 ESCLUSI = {
@@ -115,11 +115,15 @@ class RicercaError(Exception):
 
 class MotoriBloccati(RicercaError):
     """I motori hanno risposto con CAPTCHA, accesso negato o «troppe richieste»:
-    il codice non è stato davvero cercato. Si rimanda, non si dà per non trovato."""
+    il codice non è stato davvero cercato. Si rimanda, non si dà per non trovato.
 
-    def __init__(self, messaggio: str, ko: list | None = None):
+    ``riprova_alle`` (epoch) c'è quando nessun motore è stato nemmeno interrogato perché
+    erano tutti in pausa: il codice si riprende a fine pausa, senza contare un rinvio."""
+
+    def __init__(self, messaggio: str, ko: list | None = None, riprova_alle: float | None = None):
         super().__init__(messaggio)
         self.ko = ko or []
+        self.riprova_alle = riprova_alle
 
 
 class NessunProdotto(RicercaError):
@@ -132,6 +136,124 @@ class Risposta:
     ok: list[str] = field(default_factory=list)          # motori che hanno dato risultati
     ko: list[tuple[str, str]] = field(default_factory=list)  # (motore, motivo)
     ms: int = 0
+    # Motori scelti ma lasciati fuori da questa domanda perché in pausa: (motore, fino a epoch).
+    pausa: list[tuple[str, float]] = field(default_factory=list)
+
+
+# ============================================================== pause dei motori
+# Un motore che ha appena risposto CAPTCHA o «troppe richieste» NON si richiama: ogni
+# domanda in più allunga il blocco e tiene l'indirizzo del server nella sua lista nera.
+# Prima ogni ricerca andava comunque anche ai motori già bloccati (DuckDuckGo, Brave,
+# Startpage: rossi in ogni riga del diario) e il blocco non scadeva mai.
+#
+# Ora chi blocca resta fuori per un po' e intanto cercano gli altri: 15 minuti la prima
+# volta, poi 30, 60, 120… fino a 6 ore. Finita la pausa rientra con una domanda sola: se
+# risponde torna normale, se blocca ancora la pausa raddoppia. Niente CAPTCHA aggirati,
+# niente indirizzi cambiati: si aspetta, come farebbe una persona.
+PAUSA_PRIMA = 15 * 60
+PAUSA_MASSIMA = 6 * 3600
+MOTIVI_DI_BLOCCO = {"CAPTCHA", "accesso negato", "troppe richieste", "sospeso", "quota finita", "crediti finiti"}
+# I motori più permalosi, anche quando rispondono, si interrogano al massimo una volta
+# ogni tanti secondi: gli altri (Google CSE, Yandex) reggono la cadenza normale.
+INTERVALLO_MINIMO = {"duckduckgo": 60, "startpage": 60, "qwant": 60, "brave": 45,
+                     "google": 30, "bing": 30, "mojeek": 30}
+# Oltre questa attesa non si aspetta un motore «a riposo»: si va avanti con gli altri.
+ATTESA_MASSIMA_RIPOSO = 90
+
+PAUSE: dict[str, dict] = {}        # motore -> {"livello", "fino", "motivo"}
+_ULTIMO_USO: dict[str, float] = {}
+
+
+def metti_in_pausa(nome: str, motivo: str, adesso: float | None = None) -> None:
+    adesso = time.time() if adesso is None else adesso
+    voce = PAUSE.get(nome) or {"livello": 0, "fino": 0.0}
+    if voce["fino"] > adesso:
+        # Risposta di una domanda partita prima della pausa: la pausa c'è già, non si raddoppia.
+        return
+    livello = voce["livello"] + 1
+    durata = min(PAUSA_PRIMA * 2 ** (livello - 1), PAUSA_MASSIMA) * random.uniform(0.9, 1.15)
+    PAUSE[nome] = {"livello": livello, "fino": adesso + durata, "motivo": motivo}
+    log.info("Motore %s in pausa per %d minuti (%s)", nome, durata // 60, motivo)
+
+
+def fine_pausa(nome: str, adesso: float | None = None) -> float:
+    """L'ora (epoch) in cui il motore torna disponibile, o 0 se non è in pausa."""
+    adesso = time.time() if adesso is None else adesso
+    fino = (PAUSE.get(nome) or {}).get("fino", 0.0)
+    return fino if fino > adesso else 0.0
+
+
+def scegli_motori(scelti: list[str], adesso: float | None = None) -> tuple[list[str], list[tuple[str, float]], float]:
+    """Dai motori scelti in Impostazioni, quelli da interrogare adesso.
+
+    Restituisce (da usare, in pausa con la loro fine, secondi al primo «a riposo» che si
+    libera: 0 se nessuno)."""
+    adesso = time.time() if adesso is None else adesso
+    usare: list[str] = []
+    in_pausa: list[tuple[str, float]] = []
+    riposo_minimo = 0.0
+    for nome in scelti:
+        fino = fine_pausa(nome, adesso)
+        if fino:
+            in_pausa.append((nome, fino))
+            continue
+        resta = INTERVALLO_MINIMO.get(nome, 0) - (adesso - _ULTIMO_USO.get(nome, 0.0))
+        if resta > 0:
+            riposo_minimo = resta if not riposo_minimo else min(riposo_minimo, resta)
+            continue
+        usare.append(nome)
+    return usare, in_pausa, riposo_minimo
+
+
+def _usati(nomi: list[str]) -> None:
+    adesso = time.time()
+    for nome in nomi:
+        _ULTIMO_USO[nome] = adesso
+
+
+# ============================================================= giri di ricerca
+# I codici si cercano a gruppi: dopo CODICI_PER_GIRO codici cercati davvero (quelli già in
+# memoria non contano, non toccano i motori) ci si ferma PAUSA_FRA_GIRI minuti prima del
+# gruppo successivo. Un carico da cinquanta codici ci mette di più, ma ai motori arriva un
+# ritmo da persona e non una raffica. Entrambi si cambiano da Impostazioni.
+CODICI_PER_GIRO = 5
+PAUSA_FRA_GIRI = 2.0      # minuti
+GIRO = {"codici": 0, "riposo_fino": 0.0}
+
+
+def _numero(valore, predefinito: float) -> float:
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return predefinito
+
+
+def conta_codice(extra: dict | None = None) -> None:
+    """Un codice in più nel giro; arrivati al limite parte la pausa."""
+    extra = extra or {}
+    per_giro = max(1, int(_numero(extra.get("giro_codici"), CODICI_PER_GIRO)))
+    pausa = max(0.0, _numero(extra.get("giro_pausa"), PAUSA_FRA_GIRI))
+    GIRO["codici"] += 1
+    if GIRO["codici"] >= per_giro:
+        GIRO["codici"] = 0
+        if pausa:
+            GIRO["riposo_fino"] = time.time() + pausa * 60
+            log.info("Fatti %s codici: pausa di %s minuti prima dei prossimi", per_giro, f"{pausa:g}")
+
+
+def fine_riposo_giro(adesso: float | None = None) -> float:
+    """Quando finisce la pausa fra un giro e l'altro (epoch), o 0 se si può cercare."""
+    adesso = time.time() if adesso is None else adesso
+    return GIRO["riposo_fino"] if GIRO["riposo_fino"] > adesso else 0.0
+
+
+async def aspetta_giro() -> None:
+    """Per i lavori in sottofondo (prova a lotti): aspetta la fine della pausa fra i giri."""
+    while True:
+        fine = fine_riposo_giro()
+        if not fine:
+            return
+        await asyncio.sleep(min(30.0, fine - time.time() + 0.5))
 
 
 # ============================================================ salute dei motori
@@ -146,26 +268,31 @@ def _registra(risposta: Risposta, via: str) -> None:
         voce["ok"] += 1
         voce["ultimo_ok"] = adesso
         voce["via"] = via
+        PAUSE.pop(nome, None)          # ha risposto: si riparte da zero
     for nome, motivo in risposta.ko:
         voce = SALUTE.setdefault(nome, {"motore": nome, "ok": 0, "ko": 0})
         voce["ko"] += 1
         voce["ultimo_ko"] = adesso
         voce["motivo"] = motivo
         voce["via"] = via
+        if motivo in MOTIVI_DI_BLOCCO:
+            metti_in_pausa(nome, motivo, adesso)
 
 
 def stato_motori() -> list[dict]:
-    """Per il pannello: chi risponde, chi è bloccato e perché."""
+    """Per il pannello: chi risponde, chi è bloccato e perché, chi è in pausa e fino a quando."""
     fuori = []
     for voce in SALUTE.values():
         ok, ko = voce.get("ultimo_ok", 0), voce.get("ultimo_ko", 0)
+        fino = fine_pausa(voce["motore"])
         fuori.append({
             **voce,
-            "stato": "ok" if ok >= ko else "bloccato",
+            "stato": "pausa" if fino else ("ok" if ok >= ko else "bloccato"),
+            "pausa_fino": fino or None,
             "ultimo_ok": ok or None,
             "ultimo_ko": ko or None,
         })
-    fuori.sort(key=lambda v: (v["stato"] != "bloccato", v["motore"]))
+    fuori.sort(key=lambda v: (v["stato"] == "ok", v["motore"]))
     return fuori
 
 
@@ -222,9 +349,19 @@ async def _searxng(query: str, chiave: str, extra: dict, lingua: str) -> Rispost
     params = {"q": query, "format": "json", "safesearch": 0}
     if lingua:
         params["language"] = LOCALE_SEARXNG.get(lingue.normalizza(lingua), "all")
-    motori = _motori_searxng(extra)
-    if motori:
-        params["engines"] = motori
+    scelti = [m for m in _motori_searxng(extra).split(",") if m]
+    usare, in_pausa, riposo = scegli_motori(scelti)
+    if not usare and riposo and riposo <= ATTESA_MASSIMA_RIPOSO:
+        # Restano solo motori «a riposo» (interrogati da poco): si aspetta il primo libero.
+        await asyncio.sleep(riposo + random.uniform(0.5, 2.0))
+        usare, in_pausa, riposo = scegli_motori(scelti)
+    if scelti and not usare:
+        riprende = min((fino for _, fino in in_pausa), default=time.time() + (riposo or 60))
+        raise MotoriBloccati("tutti i motori scelti sono in pausa dopo un blocco: si riprende da soli",
+                             [(m, "in pausa") for m, _ in in_pausa], riprova_alle=riprende)
+    if usare:
+        params["engines"] = ",".join(usare)
+        _usati(usare)
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
         resp = await client.get(f"{base}/search", params=params,
@@ -249,7 +386,7 @@ async def _searxng(query: str, chiave: str, extra: dict, lingua: str) -> Rispost
     ok = sorted({m for r in risultati for m in r["motori"]})
     ko = [(str(x[0]), _motivo_leggibile(str(x[1]) if len(x) > 1 else "")) for x in dati.get("unresponsive_engines") or []
           if isinstance(x, (list, tuple)) and x]
-    return Risposta(risultati=risultati, ok=ok, ko=ko, ms=ms)
+    return Risposta(risultati=risultati, ok=ok, ko=ko, ms=ms, pausa=in_pausa)
 
 
 async def _duckduckgo(query: str, chiave: str, extra: dict, lingua: str) -> Risposta:
@@ -262,6 +399,10 @@ async def _duckduckgo(query: str, chiave: str, extra: dict, lingua: str) -> Risp
     from urllib.parse import parse_qs, unquote
 
     kl = {"IT": "it-it", "EN": "uk-en", "FR": "fr-fr", "DE": "de-de", "ES": "es-es"}.get(lingue.normalizza(lingua), "")
+    fino = fine_pausa("duckduckgo")
+    if fino:
+        raise MotoriBloccati("DuckDuckGo è in pausa dopo un blocco", [("duckduckgo", "in pausa")], riprova_alle=fino)
+    _usati(["duckduckgo"])
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
         resp = await client.post(
@@ -378,7 +519,8 @@ MOTORI = {
         "nome": "Google Programmable Search (API ufficiale)",
         "funzione": _google_cse,
         "campi": ["chiave", "cx"],
-        "note": "100 ricerche al giorno gratis, poi 5 $ ogni mille. Serve anche l'ID del motore (cx).",
+        "note": "Google l'ha chiusa ai nuovi clienti e la spegne il 1° gennaio 2027: solo per chi ce l'ha già. "
+                "Serve anche l'ID del motore (cx).",
     },
     "serpapi": {
         "nome": "SerpAPI",
@@ -628,6 +770,230 @@ def _corpus_valido(gtin: str, grezzi: list[dict]) -> bool:
     return any(any(c.isdigit() for c in p) for p in pezzi_modello(grezzi))
 
 
+# =========================================================== cataloghi diretti
+# Comparatori, marketplace e vetrine con la ricerca interna per EAN nell'indirizzo: nessun
+# motore in mezzo, quindi funzionano anche quando Google & c. ci bloccano. Si aprono SOLO se i
+# motori non hanno dato pagine col codice, uno alla volta, e chi risponde CAPTCHA o 403 va in
+# pausa come un motore (metti_in_pausa: 15 min, poi 30, 60…) e compare in Impostazioni fra i
+# motori. La pagina di ricerca è un elenco: web_source segue il primo link fatto come una scheda
+# («scheda») e la scheda vale solo se dichiara l'EAN (sono marketplace). Con «esterni» i link
+# portano ad altri siti (Google Shopping): diventano candidati come quelli di un motore.
+#
+# «vietato»: il robots.txt del sito vieta la ricerca ai programmi. Questi si usano SOLO con
+# l'interruttore «Leggi i cataloghi anche se robots.txt lo vieta» acceso in Impostazioni
+# (spento di serie): la scelta e la responsabilità sono di chi gestisce il portale.
+# Amazon resta fuori apposta: non dichiara l'EAN in pagina (la scheda non si confermerebbe
+# mai) e il suo anti-bot brucia l'indirizzo del server per tutti i clienti.
+def _c(dominio, url, scheda="", vietato=False, esterni=False, diretto=False):
+    return {"dominio": dominio, "url": url, "scheda": scheda, "vietato": vietato, "esterni": esterni,
+            "diretto": diretto}
+
+
+# Com'è fatto il link di una scheda quando non si conosce il sito: percorsi tipici delle schede
+# prodotto. Non importa sbagliare: la pagina seguita deve comunque dichiarare l'EAN.
+_GENERICO = (r"/(?:p|pd|dp|d|a|art|item|itm|produkt|produkte|product|products|prodotto|prodotti|produit|"
+             r"produits|producto|productos|artikel|offer|offerta|offres?)[/-]|-p-\d|/\d{5,}[/-]|\.html?$")
+
+
+def _ebay(tld):
+    return _c(f"ebay.{tld}", f"https://www.ebay.{tld}/sch/i.html?_nkw={{gtin}}", r"/itm/", vietato=True)
+
+
+
+def _shopping(hl, gl):
+    return _c("google.com", f"https://www.google.com/search?tbm=shop&q={{gtin}}&hl={hl}&gl={gl}", esterni=True)
+
+
+def _bing(mkt):
+    return _c("bing.com", f"https://www.bing.com/shop?q={{gtin}}&setmkt={mkt}", esterni=True)
+
+
+def _idealo(dominio, percorso, scheda):
+    return _c(dominio, f"https://www.{dominio}{percorso}", scheda)
+
+
+def _manomano(dominio, percorso):
+    return _c(dominio, f"https://www.{dominio}/{percorso}/{{gtin}}", r"/p/", vietato=True)
+
+
+def _negozio(dominio, percorso, scheda=_GENERICO, vietato=False):
+    """Un negozio o comparatore con la ricerca interna nell'indirizzo («?q={gtin}»)."""
+    return _c(dominio, f"https://www.{dominio}{percorso}", scheda, vietato=vietato)
+
+
+# Archivi di codici a barre: l'indirizzo È la scheda (titolo, marca, spesso descrizione e foto, EAN
+# dichiarato). Senza motore, senza elenco da seguire. Valgono per tutte le lingue.
+ARCHIVI_EAN = [
+    _c("go-upc.com", "https://go-upc.com/search?q={gtin}", diretto=True),
+    _c("barcodelookup.com", "https://www.barcodelookup.com/{gtin}", diretto=True),
+    _c("buycott.com", "https://www.buycott.com/upc/{gtin}", diretto=True),
+    _c("ean-search.org", "https://www.ean-search.org/?q={gtin}", diretto=True),
+    _c("eandata.com", "https://eandata.com/lookup/{gtin}/", diretto=True),
+    _c("upcindex.com", "https://www.upcindex.com/{gtin}", diretto=True),
+    _c("barcodespider.com", "https://www.barcodespider.com/{gtin}", diretto=True),
+    _c("gtin.info", "https://gtin.info/{gtin}", diretto=True),
+    _c("upcitemdb.com", "https://www.upcitemdb.com/upc/{gtin}", diretto=True),
+    _c("codecheck.info", "https://www.codecheck.info/product.search?q={gtin}", _GENERICO),
+    _c("barcode-list.com", "https://barcode-list.com/barcode/EN/Search.htm?barcode={gtin}", _GENERICO),
+]
+
+CATALOGHI = {
+    "IT": [
+        _idealo("idealo.it", "/cerca?q={gtin}", r"/confronta-prezzi/\d+"),
+        _shopping("it", "it"), _bing("it-IT"),
+        _ebay("it"),
+        _negozio("trovaprezzi.it", "/categoria.aspx?libera={gtin}", r"/prezz", vietato=True),
+        _negozio("kelkoo.it", "/ss-{gtin}.html", r"/(?:cp|p)-", vietato=True),
+        _negozio("eprice.it", "/search?q={gtin}", r"/d-\d+", vietato=True),
+        _manomano("manomano.it", "ricerca"),
+        _negozio("shopalike.it", "/cerca?q={gtin}"),
+        _negozio("pagomeno.it", "/cerca?q={gtin}"),
+        _negozio("prezzoforte.it", "/cerca?q={gtin}"),
+        _negozio("shoppydoo.it", "/prezzi?q={gtin}"),
+        _negozio("mediaworld.it", "/it/search.html?query={gtin}", r"/product/"),
+        _negozio("unieuro.it", "/online/search?q={gtin}", r"/online/.+/p\d+|/p\d+"),
+        _negozio("euronics.it", "/search?q={gtin}"),
+        _negozio("expert.it", "/search?text={gtin}"),
+        _negozio("comet.it", "/search?q={gtin}"),
+        _negozio("monclick.it", "/search?q={gtin}"),
+        _negozio("yeppon.it", "/catalogsearch/result/?q={gtin}"),
+        _negozio("bpm-power.com", "/catalogsearch/result/?q={gtin}"),
+        _negozio("leroymerlin.it", "/search?q={gtin}", r"/prodotti/|/p/"),
+        _negozio("bricoman.it", "/search?q={gtin}"),
+        _negozio("obi-italia.it", "/search/{gtin}/", r"/p/"),
+        _negozio("brico.io", "/catalogsearch/result/?q={gtin}"),
+        _negozio("ferramenta.online", "/catalogsearch/result/?q={gtin}"),   # termoidraulica
+        _negozio("desivero.com", "/catalogsearch/result/?q={gtin}"),
+        _negozio("climamarket.it", "/catalogsearch/result/?q={gtin}"),
+        _negozio("rexel.it", "/search?q={gtin}"),
+        _negozio("sonepar.it", "/search?q={gtin}"),
+        _negozio("emmebistore.com", "/catalogsearch/result/?q={gtin}"),
+    ],
+    "DE": [
+        _c("geizhals.de", "https://geizhals.de/?fs={gtin}", r"/a\d+\.html"),
+        _idealo("idealo.de", "/preisvergleich/MainSearchProductCategory.html?q={gtin}", r"/preisvergleich/OffersOfProduct/\d+"),
+        _shopping("de", "de"), _bing("de-DE"),
+        _negozio("billiger.de", "/search?searchstring={gtin}", r"/produkt/|/p\d+"),
+        _negozio("guenstiger.de", "/Suche/{gtin}.html"),
+        _negozio("preis.de", "/suche/?q={gtin}"),
+        _ebay("de"),
+        _manomano("manomano.de", "suche"),
+        _negozio("otto.de", "/suche/{gtin}/", r"/p/"),
+        _negozio("mediamarkt.de", "/de/search.html?query={gtin}", r"/product/"),
+        _negozio("saturn.de", "/de/search.html?query={gtin}", r"/product/"),
+        _negozio("conrad.de", "/de/search.html?search={gtin}", r"/p/"),
+        _negozio("reichelt.de", "/index.html?ACTION=446&q={gtin}"),
+        _negozio("alternate.de", "/listing.xhtml?q={gtin}", r"/html/product/"),
+        _negozio("notebooksbilliger.de", "/produkte/{gtin}"),
+        _negozio("galaxus.de", "/de/search?q={gtin}", r"/product/"),
+        _negozio("kaufland.de", "/s/?search_value={gtin}", r"/product/"),
+        _negozio("hornbach.de", "/s/{gtin}", r"/p/"),
+        _negozio("obi.de", "/search/{gtin}/", r"/p/"),
+        _negozio("bauhaus.info", "/suche/produkte?text={gtin}", r"/p/"),
+        _negozio("voelkner.de", "/search/?q={gtin}"),
+        _negozio("elv.com", "/search?q={gtin}"),
+    ],
+    "FR": [
+        _idealo("idealo.fr", "/prechcat.html?q={gtin}", r"/prix/\d+"),
+        _shopping("fr", "fr"), _bing("fr-FR"),
+        _negozio("ledenicheur.fr", "/search?search={gtin}", r"/product\.php"),
+        _negozio("kelkoo.fr", "/ss-{gtin}.html", r"/(?:cp|p)-", vietato=True),
+        _ebay("fr"),
+        _manomano("manomano.fr", "recherche"),
+        _negozio("cdiscount.com", "/search/10/{gtin}.html", r"/f-|/dp/"),
+        _negozio("fnac.com", "/SearchResult/ResultList.aspx?Search={gtin}", r"/a\d+"),
+        _negozio("darty.com", "/nav/recherche?text={gtin}", r"/nav/achat/"),
+        _negozio("boulanger.com", "/resultats?tr={gtin}", r"/ref/"),
+        _negozio("rueducommerce.fr", "/recherche/{gtin}", r"/p-"),
+        _negozio("ldlc.com", "/recherche/{gtin}/", r"/fiche/"),
+        _negozio("leroymerlin.fr", "/recherche?q={gtin}", r"/produits/|/p/"),
+        _negozio("castorama.fr", "/search?term={gtin}", r"/p/"),
+        _negozio("materiel.net", "/recherche/{gtin}/", r"/produit/"),
+    ],
+    "ES": [
+        _idealo("idealo.es", "/resultados.html?q={gtin}", r"/precios/\d+"),
+        _shopping("es", "es"), _bing("es-ES"),
+        _negozio("kelkoo.es", "/ss-{gtin}.html", r"/(?:cp|p)-", vietato=True),
+        _ebay("es"),
+        _manomano("manomano.es", "busqueda"),
+        _negozio("pccomponentes.com", "/buscar/?query={gtin}"),
+        _negozio("mediamarkt.es", "/es/search.html?query={gtin}", r"/product/"),
+        _negozio("carrefour.es", "/?q={gtin}", r"/p/|/R-"),
+        _negozio("leroymerlin.es", "/buscador?q={gtin}", r"/productos/|/p/"),
+        _negozio("fnac.es", "/SearchResult/ResultList.aspx?Search={gtin}", r"/a\d+"),
+        _negozio("elcorteingles.es", "/search/?s={gtin}", r"/[A-Z0-9]{10,}/"),
+        _negozio("worten.es", "/search?query={gtin}", r"/productos/"),
+    ],
+    "EN": [
+        _idealo("idealo.co.uk", "/compare/MainSearchProductCategory.html?q={gtin}", r"/compare/\d+"),
+        _shopping("en", "uk"), _shopping("en", "us"), _bing("en-GB"),
+        _negozio("pricerunner.com", "/search?q={gtin}", r"/pl/\d+", vietato=True),
+        _negozio("pricespy.co.uk", "/search?search={gtin}", r"/product\.php"),
+        _negozio("kelkoo.co.uk", "/ss-{gtin}.html", r"/(?:cp|p)-", vietato=True),
+        _ebay("co.uk"), _ebay("com"),
+        _negozio("currys.co.uk", "/search?q={gtin}", r"/products/"),
+        _negozio("argos.co.uk", "/search/{gtin}/", r"/product/"),
+        _negozio("screwfix.com", "/search?search={gtin}", r"/p/"),
+        _negozio("toolstation.com", "/search?q={gtin}", r"/p\d+"),
+        _negozio("newegg.com", "/p/pl?d={gtin}", r"/p/"),
+        _negozio("bhphotovideo.com", "/c/search?q={gtin}", r"/c/product/"),
+        _negozio("walmart.com", "/search?q={gtin}", r"/ip/", vietato=True),
+        _negozio("bestbuy.com", "/site/searchpage.jsp?st={gtin}", r"/site/.+/\d+\.p"),
+        _negozio("homedepot.com", "/s/{gtin}", r"/p/"),
+        _negozio("lowes.com", "/search?searchTerm={gtin}", r"/pd/"),
+        _negozio("target.com", "/s?searchTerm={gtin}", r"/p/"),
+    ],
+}
+# Per tutte le lingue, in coda: la copia internazionale di geizhals ed eBay.com.
+CATALOGHI_COMUNI = [_c("geizhals.eu", "https://geizhals.eu/?fs={gtin}", r"/a\d+\.html"), _ebay("com")]
+# shortcut: elenco fisso nel codice; quando serve cambiarlo senza rilascio, portarlo in Impostazioni.
+
+
+def _cataloghi_per(lingua: str) -> list[dict]:
+    """Prima gli archivi EAN (una pagina = la scheda, costano poco), poi i cataloghi del paese
+    (comparatori, vetrine, marketplace, negozi), in coda quelli internazionali."""
+    propri = CATALOGHI.get(lingue.normalizza(lingua), [])
+    domini = {c["dominio"] for c in propri}
+    return ARCHIVI_EAN + propri + [c for c in CATALOGHI_COMUNI if c["dominio"] not in domini and c not in ARCHIVI_EAN]
+
+
+def elenco_cataloghi() -> list[dict]:
+    """Per Impostazioni: dominio e se il suo robots.txt vieta la ricerca, senza doppioni."""
+    visti: dict[str, bool] = {}
+    for voci in [ARCHIVI_EAN] + list(CATALOGHI.values()) + [CATALOGHI_COMUNI]:
+        for c in voci:
+            visti.setdefault(c["dominio"], c["vietato"])
+    return [{"dominio": d, "vietato": v} for d, v in sorted(visti.items())]
+
+
+def candidati_cataloghi(gtin: str, lingua: str = "IT", forza: bool = False) -> list[dict]:
+    """Le pagine di ricerca dei cataloghi, nella forma dei candidati di ordina(); fuori chi è in
+    pausa e, senza ``forza``, chi vieta la ricerca nel robots.txt."""
+    from . import codici as _cod
+
+    if not _cod.checksum_gtin(gtin):        # i cataloghi cercano per EAN, non per codice produttore
+        return []
+    fuori = []
+    for c in _cataloghi_per(lingua):
+        if fine_pausa(c["dominio"]) or (c["vietato"] and not forza):
+            continue
+        fuori.append({"url": c["url"].format(gtin=gtin), "dominio": c["dominio"],
+                      "titolo": f"ricerca {gtin} su {c['dominio']}", "punti": -1000, "ancorato": False,
+                      "lingua_url": "", "estero": False, "marketplace": not c["esterni"],
+                      "da_catalogo": c["scheda"] or ("esterni" if c["esterni"] else "diretto"),
+                      "catalogo_esterni": c["esterni"],
+                      "forza_robots": forza and c["vietato"], "modello": [], "marche": [], "motori": []})
+    return fuori
+
+
+def segna_catalogo(dominio: str, ok: bool, motivo: str = "") -> None:
+    """Esito di una pagina di catalogo, nella stessa tabella dei motori (salute e pause)."""
+    if ok:
+        _registra(Risposta(ok=[dominio]), "catalogo")
+    else:
+        _registra(Risposta(ko=[(dominio, motivo or "accesso negato")]), "catalogo")
+
+
 # ===================================================================== ricerca
 # Lingua e paese da chiedere a SearXNG per la prima domanda: i negozi del paese
 # delle schede vengono fuori per primi (testo già nella lingua giusta, niente
@@ -694,8 +1060,13 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
     errori: list[str] = []
     ko_visti: list[tuple[str, str]] = []
     ok_visti: set[str] = set()
+    interrogati = 0      # domande arrivate davvero ai motori (non fermate da una pausa)
+    # Giri e pause servono solo ai motori letti senza accordo (SearXNG, DuckDuckGo): un'API a
+    # pagamento non blocca, e farla aspettare rallenterebbe e basta.
+    a_giri = motore in ("searxng", "duckduckgo")
 
     async def chiedi(domanda: str, cerca_con=funzione, via=motore, lingua_domanda: str | None = None) -> list[dict]:
+        nonlocal interrogati
         await _aspetta_turno(pausa)
         lingua_domanda = lingua if lingua_domanda is None else lingua_domanda
         voce = {"q": domanda, "via": via, "lingua": lingua_domanda or "*"}
@@ -703,8 +1074,15 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
             risposta = await cerca_con(domanda, chiave, extra, lingua_domanda)
         except MotoriBloccati as exc:
             voce.update(errore=str(exc), ko=[list(k) for k in exc.ko])
+            if exc.riprova_alle:
+                voce["riprova_alle"] = exc.riprova_alle
+            else:
+                interrogati += 1
+                if interrogati == 1 and a_giri:
+                    conta_codice(extra)
             ko_visti.extend(exc.ko)
-            _registra(Risposta(ko=list(exc.ko)), via)
+            if not exc.riprova_alle:       # «in pausa» non è un nuovo blocco: non si conta
+                _registra(Risposta(ko=list(exc.ko)), via)
             if diario is not None:
                 diario.ricerca(voce)
             raise
@@ -717,12 +1095,17 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
             if diario is not None:
                 diario.ricerca(voce)
             return []
+        interrogati += 1
+        if interrogati == 1 and a_giri:
+            conta_codice(extra)        # il codice è arrivato ai motori: conta nel giro
         _registra(risposta, via)
         ko_visti.extend(risposta.ko)
         ok_visti.update(risposta.ok)
         ancorati = sum(1 for r in risposta.risultati if _ancorato(gtin, r))
         voce.update(risultati=len(risposta.risultati), ancorati=ancorati, ok=risposta.ok,
                     ko=[list(k) for k in risposta.ko], ms=risposta.ms)
+        if risposta.pausa:
+            voce["pausa"] = [[m, fino] for m, fino in risposta.pausa]
         if diario is not None:
             diario.ricerca(voce)
         log.info("Codice %s, ricerca «%s» (%s): %s risultati, %s col codice%s", gtin, domanda, via,
@@ -750,14 +1133,44 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
             break
 
     # Il motore principale non ha portato niente col codice: un giro su
-    # DuckDuckGo diretto, che è un'altra strada verso l'indice.
-    if motore == "searxng" and not any(_ancorato(gtin, r) for r in grezzi) and extra.get("ripiego_ddg", True):
+    # DuckDuckGo diretto, che è un'altra strada verso l'indice. Solo se DuckDuckGo non è
+    # in pausa e non è stato interrogato da poco: altrimenti si allunga il suo blocco.
+    ddg_libero = (not fine_pausa("duckduckgo")
+                  and time.time() - _ULTIMO_USO.get("duckduckgo", 0.0) >= INTERVALLO_MINIMO["duckduckgo"])
+    if (motore == "searxng" and ddg_libero and not any(_ancorato(gtin, r) for r in grezzi)
+            and extra.get("ripiego_ddg", True)):
         try:
             aggiungi(await chiedi(formulazioni(gtin)[0][0], _duckduckgo, "duckduckgo"))
         except MotoriBloccati as exc:
             bloccato = bloccato or exc
 
+    # Riserva a pagamento: SearXNG bloccato o senza due risultati col codice, e c'è una chiave
+    # Brave Search API. La stessa domanda va all'API, che non blocca mai.
+    chiave_riserva = (extra.get("riserva_chiave") or "").strip()
+    if (motore == "searxng" and chiave_riserva and not fine_pausa("brave api")
+            and sum(1 for r in grezzi if _ancorato(gtin, r)) < 2):
+        async def _riserva(domanda: str, _chiave: str, ex: dict, lingua_domanda: str) -> Risposta:
+            try:
+                risposta = await _brave(domanda, chiave_riserva, ex, lingua_domanda or lingua)
+            except MotoriBloccati as exc:
+                # Credito finito o troppe richieste: non è il «brave» di SearXNG, non va messo in pausa quello.
+                raise MotoriBloccati(str(exc), [("brave api", w) for _, w in exc.ko]) from exc
+            for r in risposta.risultati:
+                r["motori"] = ["brave api"]
+            risposta.ok = ["brave api"] if risposta.ok else []
+            return risposta
+        try:
+            aggiungi(await chiedi(formulazioni(gtin, lingua, "brave")[0][0], _riserva, "brave api", lingua))
+        except MotoriBloccati as exc:
+            bloccato = bloccato or exc
+
     ancorati = [r for r in grezzi if _ancorato(gtin, r)]
+
+    # Niente col codice: i cataloghi (idealo, eBay, geizhals…) si cercano da soli, senza
+    # motore in mezzo. Vanno in coda ai candidati; se i motori sono bloccati sono l'unica
+    # strada, e il blocco resta scritto sui candidati (se non cavano niente si rimanda).
+    cataloghi = candidati_cataloghi(gtin, lingua, bool(extra.get("cataloghi_forza"))) \
+        if not ancorati and not extra.get("solo_codice") else []
 
     # Niente col codice, e i motori buoni sui codici hanno risposto con un
     # blocco: il codice non è stato cercato davvero (i risultati di Bing sui
@@ -766,9 +1179,21 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
         buoni_ok = ok_visti & MOTORI_BUONI
         if (bloccato is not None or ko_visti) and not buoni_ok:
             nomi = sorted({f"{m} ({w})" for m, w in ko_visti})
+            # Nessuna domanda è arrivata ai motori (erano tutti in pausa): si riprende a fine
+            # pausa, e il codice non si conta come rinviato.
+            riprova = bloccato.riprova_alle if bloccato is not None and not interrogati else None
+            if cataloghi:
+                if diario is not None:
+                    diario.nota("Motori bloccati: provo i cataloghi (" + ", ".join(c["dominio"] for c in cataloghi) + ")")
+                for c in cataloghi:
+                    c["motori_bloccati"] = {"nomi": nomi, "ko": [list(k) for k in ko_visti], "riprova_alle": riprova}
+                if diario is not None:
+                    diario.candidati(len(grezzi), 0, cataloghi)
+                return cataloghi
             raise MotoriBloccati(
-                "motori di ricerca bloccati: " + (", ".join(nomi[:5]) or str(bloccato)), ko_visti)
-        if not grezzi and errori:
+                "motori di ricerca bloccati: " + (", ".join(nomi[:5]) or str(bloccato)), ko_visti,
+                riprova_alle=riprova)
+        if not grezzi and errori and not cataloghi:
             raise RicercaError(errori[-1])
 
     # Il tema lo decidono i risultati ANCORATI: le pagine a caso che un motore
@@ -788,7 +1213,8 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
 
     # Seconda domanda, sul NOME: porta i produttori, che l'EAN spesso non lo
     # scrivono. Solo se il codice da solo non basta.
-    if len([c for c in ordinati if c["ancorato"]]) < 2 and _corpus_valido(gtin, grezzi):
+    if (len([c for c in ordinati if c["ancorato"]]) < 2 and _corpus_valido(gtin, grezzi)
+            and not extra.get("solo_codice")):
         nome = nome_prodotto(ancorati or grezzi) or " ".join(pezzi_modello(ancorati or grezzi))
         if nome.strip():
             try:
@@ -824,6 +1250,12 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
     for c in ordinati:
         c["modello"] = pezzi
         c["marche"] = marche
+    if cataloghi:
+        if diario is not None:
+            diario.nota("Nessuna pagina col codice dai motori: in coda i cataloghi (" + ", ".join(c["dominio"] for c in cataloghi) + ")")
+        for c in cataloghi:
+            c["modello"], c["marche"] = pezzi, marche
+        ordinati = ordinati + cataloghi
 
     if diario is not None:
         diario.candidati(len(grezzi), len(ancorati), ordinati)
@@ -843,4 +1275,4 @@ async def candidati(gtin: str, motore: str, chiave: str, extra: dict | None = No
         per_dominio[c["dominio"]] = per_dominio.get(c["dominio"], 0) + 1
         if per_dominio[c["dominio"]] <= 2:
             contingentati.append(c)
-    return contingentati[:14]
+    return contingentati[:14] + [c for c in contingentati[14:] if c.get("da_catalogo")]

@@ -28,8 +28,15 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 # --- Ricerca e fonti -----------------------------------------------------
-# Giorni di validità della cache delle schede trovate sul web, per (codice, lingua).
-CACHE_GIORNI = int(os.getenv("CACHE_DAYS", "30"))
+# Giorni di validità delle schede trovate (archivio per codice e lingua, tabella ean_cache:
+# solo testi e indirizzi delle foto). 0 = per sempre: un codice già cercato non si ricerca
+# più, finché qualcuno non preme «Riprova».
+CACHE_GIORNI = int(os.getenv("CACHE_DAYS", "0"))
+# Icecat (Open o Full): chiamate all'API Live in JSON, una ogni ICECAT_THROTTLE secondi.
+ICECAT_ENDPOINT = os.getenv("ICECAT_ENDPOINT", "https://live.icecat.biz/api")
+ICECAT_TIMEOUT = float(os.getenv("ICECAT_TIMEOUT", "20"))
+ICECAT_THROTTLE = float(os.getenv("ICECAT_THROTTLE", "0.5"))
+ICECAT_GIORNI_ASSENTE = float(os.getenv("ICECAT_MISSING_DAYS", "3"))
 # Lingua delle schede quando nessuno la sceglie. IT, EN, FR, DE, ES.
 DEFAULT_LANG = os.getenv("DEFAULT_LANG", "IT")
 # Secondi fra una ricerca e la successiva sui motori gratuiti (SearXNG,
@@ -78,6 +85,18 @@ SOURCE_URL = os.getenv("SOURCE_URL", "https://github.com/Giuseppe-sciarra/CataSy
 # Indirizzo pubblico del portale, es. https://catalogo.example.com
 # Serve al controllo di provenienza sulle richieste che scrivono.
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
+
+# --- Posta in uscita ----------------------------------------------------------
+# Il server SMTP con cui il portale spedisce i codici della verifica in due passaggi.
+# SMTP_SECURITY: starttls (porta 587, di serie), ssl (porta 465) oppure none.
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "0") or 0)
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_SECURITY = (os.getenv("SMTP_SECURITY", "starttls").strip().lower() or "starttls")
+# Mittente delle email, es. «Portale <noreply@example.com>». Vuoto = SMTP_USER.
+SMTP_FROM = os.getenv("SMTP_FROM", "").strip()
+SMTP_TIMEOUT = float(os.getenv("SMTP_TIMEOUT", "20"))
 
 # --- File caricati (loghi) ------------------------------------------------
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/data/uploads"))

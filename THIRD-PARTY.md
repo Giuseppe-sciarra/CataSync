@@ -18,6 +18,8 @@ each under its own licence.
 | [python-multipart](https://github.com/Kludex/python-multipart) | Apache-2.0 |
 | [itsdangerous](https://itsdangerous.palletsprojects.com) | BSD-3-Clause |
 | [cryptography](https://cryptography.io) | Apache-2.0 OR BSD-3-Clause |
+| [py_webauthn](https://github.com/duo-labs/py_webauthn) (passkeys) / [cbor2](https://github.com/agronholm/cbor2) / [asn1crypto](https://github.com/wbond/asn1crypto) / [pyOpenSSL](https://www.pyopenssl.org) | BSD-3-Clause / MIT / MIT / Apache-2.0 |
+| [segno](https://github.com/heuer/segno) (QR codes for authenticator apps) | BSD-3-Clause |
 
 ## Bundled assets
 

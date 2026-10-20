@@ -4,10 +4,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import billing, config, lingue, providers as providers_mod, quality, scheduler, wc_rest
+from .. import billing, config, due_fattori, lingue, manutenzione, providers as providers_mod, quality, scheduler, wc_rest
 from ..html_sicuro import scheda_sicura, svg_attivo, tipo_immagine
 from ..db import get_db
 from ..models import AuditLog, Client, Job, JobItem, Provider, Site, User
@@ -18,8 +18,10 @@ from ..store import (
     BRAND_LOGO_KEY,
     BRAND_NAME_KEY,
     audit,
+    icecat_config,
     portal_brand,
     ricerca_config,
+    salva_icecat,
     salva_ricerca,
     set_setting,
 )
@@ -202,9 +204,22 @@ def list_users(db: Session = Depends(get_db)):
             "client_id": u.client_id,
             "client_name": u.client.name if u.client else "",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            "due_fattori": due_fattori.metodi(u),
         }
         for u in rows
     ]
+
+
+@router.post("/users/{user_id}/2fa/reset")
+def reset_due_fattori(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Per chi ha perso telefono e codici di riserva: rientra con la sola password e la riattiva."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Utente non trovato.")
+    due_fattori.togli_tutto(user)
+    db.commit()
+    audit(db, admin.email, "user_2fa_reset", user.email)
+    return {"ok": True, "email": user.email}
 
 
 @router.post("/users", status_code=201)
@@ -624,6 +639,45 @@ async def test_provider(provider_id: int, gtin: str, lang: str = "", db: Session
     }
 
 
+# ------------------------------------------------- avviso di manutenzione
+class ManutenzioneIn(BaseModel):
+    attiva: bool = False
+    giorno: str = Field(default="", max_length=10)
+    dalle: str = Field(default="", max_length=5)
+    alle: str = Field(default="", max_length=5)
+    nota: str = Field(default="", max_length=manutenzione.LIMITE_NOTA)
+
+
+@router.get("/manutenzione")
+def leggi_manutenzione(db: Session = Depends(get_db)):
+    return manutenzione.per_admin(manutenzione.leggi(db))
+
+
+@router.put("/manutenzione")
+def salva_manutenzione(data: ManutenzioneIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """L'avviso si può salvare spento anche a metà; acceso deve avere giorno e orari giusti."""
+    nuovi = {k: (v.strip() if isinstance(v, str) else v) for k, v in data.model_dump().items()}
+    nuovi["nota"] = " ".join(nuovi["nota"].split())
+    if nuovi["giorno"] and not manutenzione.giorno_valido(nuovi["giorno"]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Giorno della manutenzione non valido.")
+    for campo in ("dalle", "alle"):
+        if nuovi[campo] and not manutenzione.ora_valida(nuovi[campo]):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Orario non valido: scrivilo come 22:00.")
+    if nuovi["attiva"]:
+        if not (nuovi["giorno"] and nuovi["dalle"] and nuovi["alle"]):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Per mostrare l'avviso servono il giorno, l'ora d'inizio e l'ora di fine.")
+        if nuovi["dalle"] == nuovi["alle"]:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "L'ora di fine è uguale a quella d'inizio.")
+        if manutenzione.stato(nuovi) == "finita":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Questa manutenzione è già finita: controlla il giorno e gli orari.")
+    dati = manutenzione.salva(db, nuovi)
+    descrizione = f"{dati['giorno']} {dati['dalle']}-{dati['alle']}" if dati["attiva"] else "spenta"
+    audit(db, admin.email, "manutenzione", descrizione)
+    return manutenzione.per_admin(dati)
+
+
 # ------------------------------------------------------ marca del portale
 class BrandIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
@@ -735,6 +789,73 @@ def delete_brand_favicon(db: Session = Depends(get_db), admin: User = Depends(re
     return portal_brand(db)
 
 
+# --------------------------------------------------------------- Icecat
+# Una sola utenza per tutto il portale: la prima ricerca di ogni cliente va lì.
+class IcecatIn(BaseModel):
+    attivo: bool = False
+    utente: str = Field(default="", max_length=120)
+    api_token: str | None = Field(default=None, max_length=200)
+    content_token: str | None = Field(default=None, max_length=200)
+    togli_token: bool = False
+
+
+def _icecat_json(db: Session) -> dict:
+    cfg = icecat_config(db)
+    return {
+        "attivo": cfg["acceso"],
+        "pronto": cfg["attivo"],
+        "utente": cfg["utente"],
+        "api_token_masked": mask(cfg["api_token"]),
+        "content_token_masked": mask(cfg["content_token"]),
+        "livello": "full" if cfg["api_token"] else "open",
+    }
+
+
+@router.get("/icecat")
+def get_icecat(db: Session = Depends(get_db)):
+    return _icecat_json(db)
+
+
+@router.put("/icecat")
+def save_icecat(data: IcecatIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    if data.attivo and not data.utente.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Per accendere Icecat serve il nome utente.")
+    salva_icecat(db, data.attivo, data.utente, data.api_token, data.content_token, togli_token=data.togli_token)
+    audit(db, admin.email, "icecat_config", ("acceso" if data.attivo else "spento") + f" · {data.utente.strip()}")
+    return _icecat_json(db)
+
+
+@router.post("/icecat/prova")
+async def prova_icecat(gtin: str = "", lang: str = "IT", marca: str = "", codice: str = "",
+                       db: Session = Depends(get_db)):
+    """Chiede a Icecat un EAN (oppure marca + codice produttore) con l'utenza salvata, senza
+    cache: cosa arriva e in che lingua, o perché non c'è."""
+    from .. import codici, icecat
+
+    clean = "".join(c for c in gtin if c.isdigit())
+    marca, codice = marca.strip()[:80], codice.strip()[:60]
+    per_codice = bool(marca and codice)
+    if not per_codice and not codici.e_ean(clean):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Scrivi un EAN valido, oppure marca e codice produttore.")
+    cfg = icecat_config(db)
+    if not cfg["utente"]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prima salva il nome utente Icecat.")
+    rc = ricerca_config(db)
+    lingua = lingue.normalizza(lang)
+    try:
+        scheda = await icecat.scheda(clean, lingua, cfg, {"url": rc["lt_url"], "chiave": rc["lt_chiave"]},
+                                     marca=marca if per_codice else "", codice=codice if per_codice else "")
+    except icecat.IcecatAssente as exc:
+        return {"ok": False, "assente": True, "messaggio": str(exc), "per_codice": per_codice}
+    except icecat.IcecatErrore as exc:
+        return {"ok": False, "assente": False, "messaggio": str(exc), "per_codice": per_codice}
+    if not per_codice:
+        providers_mod.salva_cache_web(db, clean, lingua, json.dumps(scheda, ensure_ascii=False), True,
+                                      providers_mod.chiave_icecat(lingua))
+    return {"ok": True, "per_codice": per_codice, **icecat.riassunto(scheda)}
+
+
 # --------------------------------------------------- motore di ricerca web
 class RicercaIn(BaseModel):
     motore: str = ""
@@ -745,6 +866,14 @@ class RicercaIn(BaseModel):
     lt_url: str = ""
     lt_chiave: str | None = None
     render_url: str = ""
+    # Ricerca a gruppi: tanti codici di fila, poi una pausa (vedi web_search.conta_codice).
+    giro_codici: int | None = Field(default=None, ge=1, le=50)
+    giro_pausa: float | None = Field(default=None, ge=0, le=60)
+    # Brave Search API di riserva: quando i motori di SearXNG bloccano o non trovano il codice.
+    riserva_chiave: str | None = None
+    togli_riserva: bool = False
+    # Cataloghi (eBay, idealo, Google Shopping…) letti anche dove robots.txt vieta i programmi.
+    cataloghi_forza: bool | None = None
 
 
 @router.get("/ricerca")
@@ -765,7 +894,12 @@ def get_ricerca(db: Session = Depends(get_db)):
         "lt_url": cfg["lt_url"],
         "lt_chiave_masked": mask(cfg["lt_chiave"]),
         "render_url": cfg["render_url"],
+        "giro_codici": cfg["giro_codici"],
+        "giro_pausa": cfg["giro_pausa"],
         "chiave_masked": mask(cfg["chiave"]),
+        "riserva_masked": mask(cfg["riserva_chiave"]),
+        "cataloghi_forza": cfg["cataloghi_forza"],
+        "cataloghi": web_search.elenco_cataloghi(),
         "attiva": pronto,
         "pausa": config.RICERCA_PAUSA,
         "lingue": [{"codice": c, "nome": lingue.NOMI[c]} for c in lingue.LINGUE],
@@ -784,8 +918,11 @@ def save_ricerca(data: RicercaIn, db: Session = Depends(get_db), admin: User = D
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Motore non riconosciuto.")
     salva_ricerca(db, data.motore, data.chiave, data.cx.strip(), data.url.strip(),
                   lt_url=data.lt_url.strip(), lt_chiave=data.lt_chiave,
-                  render_url=data.render_url.strip(), motori=data.motori)
-    audit(db, admin.email, "ricerca_config", data.motore or "spenta")
+                  render_url=data.render_url.strip(), motori=data.motori,
+                  giro_codici=data.giro_codici, giro_pausa=data.giro_pausa,
+                  riserva_chiave=data.riserva_chiave, togli_riserva=data.togli_riserva,
+                  cataloghi_forza=data.cataloghi_forza)
+    audit(db, admin.email, "ricerca_config", (data.motore or "spenta") + (" · cataloghi forzati" if data.cataloghi_forza else ""))
     return get_ricerca(db)
 
 
@@ -897,7 +1034,7 @@ def salute_ricerca(giorni: int = 7, db: Session = Depends(get_db)):
                 voce["volte"] += 1
         for q in d.get("ricerche") or []:
             for ko in q.get("ko") or []:
-                if isinstance(ko, (list, tuple)) and ko:
+                if isinstance(ko, (list, tuple)) and ko and (len(ko) < 2 or ko[1] != "in pausa"):
                     voce = motori_ko.setdefault(str(ko[0]), {"motore": str(ko[0]), "volte": 0, "motivo": ""})
                     voce["volte"] += 1
                     voce["motivo"] = str(ko[1]) if len(ko) > 1 else voce["motivo"]
@@ -917,6 +1054,185 @@ def _testo_causa(causa: str) -> str:
     from .. import diagnosi
 
     return diagnosi.CAUSE.get(causa, causa)
+
+
+# ------------------------------------------------------ registro delle ricerche
+# Cosa cercano i clienti e perché non va, SENZA dire chi: niente cliente, sito, utente,
+# carico, nome del prodotto o fonte del cliente. Solo il codice, quando, la lingua, com'è
+# andata e il motivo (motori e siti che hanno bloccato). Un EAN è il codice di un prodotto,
+# non un dato personale: così il registro si può guardare e condividere senza problemi.
+ESITI_REGISTRO = {
+    "tutti": None,
+    "problemi": ("non_trovato", "rimandato", "errore", "incompleto"),
+    "non_trovati": ("non_trovato",),
+    "incompleti": ("incompleto",),
+    "rimandati": ("rimandato",),
+    "trovati": ("trovato",),
+}
+STATI_TROVATO = ("ready", "pushing", "pushed", "blocked")
+# Campi che porta la ricerca: se manca uno di questi la ricerca è andata a metà. Prezzo e
+# categoria li mette il cliente, quindi una scheda senza solo quelli conta come trovata.
+CAMPI_DELLA_RICERCA = ("title", "description", "images", "attributes", "brand", "mpn")
+
+
+def _manca_dalla_ricerca():
+    return or_(*[JobItem.issues.contains(f'"{c}"') for c in CAMPI_DELLA_RICERCA])
+
+
+def _mancano(item: JobItem) -> list[str]:
+    try:
+        campi = json.loads(item.issues or "[]")
+    except ValueError:
+        return []
+    return [c for c in campi if c in CAMPI_DELLA_RICERCA] if isinstance(campi, list) else []
+
+
+def _esito_riga(item: JobItem) -> str:
+    if item.status in STATI_TROVATO:
+        return "trovato"
+    if item.status == "incomplete":
+        return "incompleto" if _mancano(item) else "trovato"
+    if item.status == "not_found":
+        return "non_trovato"
+    if item.status == "error":
+        return "errore"
+    if item.status == "pending" and item.retry_after:
+        return "rimandato"
+    return "in_ricerca"
+
+
+def _riga_registro(item: JobItem, lingua: str) -> dict:
+    try:
+        d = json.loads(item.diagnosi or "{}")
+    except ValueError:
+        d = {}
+    d = d if isinstance(d, dict) else {}
+    motori: dict[str, str] = {}
+    for q in d.get("ricerche") or []:
+        for ko in q.get("ko") or []:
+            if isinstance(ko, (list, tuple)) and ko and str(ko[0]) not in motori and \
+                    (len(ko) < 2 or ko[1] != "in pausa"):
+                motori[str(ko[0])] = str(ko[1]) if len(ko) > 1 else ""
+    siti = []
+    origine = ""
+    for p in d.get("pagine") or []:
+        if p.get("esito") in ("bloccata", "robots", "http", "rete") and p.get("dominio") not in siti:
+            siti.append(p.get("dominio") or "?")
+        if p.get("esito") == "confermata" and not origine:
+            origine = p.get("dominio") or ""
+    esito = _esito_riga(item)
+    causa = d.get("causa") or ""
+    mancano: list[str] = []
+    if esito == "trovato":
+        causa = "trovato"
+    elif esito == "incompleto":
+        causa, mancano = "incompleto", _mancano(item)
+    elif esito == "errore":
+        # Trovato ma non arrivato sul sito: il guaio è nella pubblicazione, non nella ricerca.
+        # Il messaggio vero non si mostra: può contenere l'indirizzo del sito del cliente.
+        causa = "pubblicazione" if causa in ("", "trovato") else causa
+    elif esito == "rimandato" and not causa:
+        causa = "motori_bloccati"
+    quando = item.updated_at or item.created_at
+    return {
+        "id": item.id,
+        "quando": quando.isoformat() if quando else None,
+        "gtin": item.gtin,
+        "lingua": lingua,
+        "esito": esito,
+        "causa": causa,
+        "mancano": [quality.FIELDS.get(c, c) for c in mancano],
+        "motori_bloccati": [{"motore": m, "motivo": w} for m, w in list(motori.items())[:6]],
+        "siti_bloccati": siti[:6],
+        "origine": origine,
+        "riprova_alle": item.retry_after.isoformat() if item.retry_after else None,
+        "diario": bool(d),
+    }
+
+
+def _righe_registro(db: Session, esito: str, prima_di: int | None, limite: int):
+    if esito not in ESITI_REGISTRO:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Filtro non valido.")
+    query = (select(JobItem, Job.lang).join(Job, Job.id == JobItem.job_id)
+             .where(Job.kind == "manual", JobItem.status != "to_delete",
+                    or_(JobItem.diagnosi != "",
+                        JobItem.status.in_(("not_found", "error", "incomplete") + STATI_TROVATO))))
+    voluti = ESITI_REGISTRO[esito]
+    if voluti:
+        condizioni = []
+        if "trovato" in voluti:
+            condizioni.append(or_(JobItem.status.in_(STATI_TROVATO),
+                                  and_(JobItem.status == "incomplete", ~_manca_dalla_ricerca())))
+        if "incompleto" in voluti:
+            condizioni.append(and_(JobItem.status == "incomplete", _manca_dalla_ricerca()))
+        if "non_trovato" in voluti:
+            condizioni.append(JobItem.status == "not_found")
+        if "errore" in voluti:
+            condizioni.append(JobItem.status == "error")
+        if "rimandato" in voluti:
+            condizioni.append(and_(JobItem.status == "pending", JobItem.retry_after.is_not(None)))
+        query = query.where(or_(*condizioni))
+    if prima_di:
+        query = query.where(JobItem.id < prima_di)
+    return db.execute(query.order_by(JobItem.id.desc()).limit(limite + 1)).all()
+
+
+@router.get("/ricerca/registro")
+def registro_ricerche(esito: str = "tutti", prima_di: int | None = None, limit: int = 100,
+                      db: Session = Depends(get_db)):
+    """Le ricerche fatte dai clienti, dalla più recente: solo codice, esito e motivo.
+
+    ``prima_di`` (id dell'ultima riga vista) per caricare le successive."""
+    limite = max(1, min(500, limit))
+    righe = _righe_registro(db, esito, prima_di, limite)
+    altre = len(righe) > limite
+    righe = righe[:limite]
+    return {
+        "righe": [_riga_registro(item, lingua) for item, lingua in righe],
+        "altre": altre,
+        "prossimo": righe[-1][0].id if righe and altre else None,
+    }
+
+
+@router.get("/ricerca/registro.csv")
+def registro_csv(esito: str = "tutti", db: Session = Depends(get_db)):
+    """Lo stesso registro in CSV (fino a 5000 righe), da aprire col foglio di calcolo."""
+    import csv
+    import io
+
+    from fastapi.responses import Response
+
+    from .. import diagnosi
+
+    righe = [_riga_registro(item, lingua) for item, lingua in _righe_registro(db, esito, None, 5000)[:5000]]
+    testi = {"incompleto": "Trovato ma incompleto", "pubblicazione": "Trovato, non pubblicato sul sito",
+             **diagnosi.CAUSE}
+    buf = io.StringIO()
+    out = csv.writer(buf, delimiter=";")
+    out.writerow(["quando", "codice", "lingua", "esito", "motivo", "mancano", "motori che bloccano",
+                  "siti che rifiutano", "trovato su", "riprova alle"])
+    for r in righe:
+        out.writerow([r["quando"] or "", r["gtin"], r["lingua"], r["esito"], testi.get(r["causa"], r["causa"]),
+                      ", ".join(r["mancano"]),
+                      ", ".join(f"{m['motore']} ({m['motivo']})" if m["motivo"] else m["motore"]
+                                for m in r["motori_bloccati"]),
+                      ", ".join(r["siti_bloccati"]), r["origine"], r["riprova_alle"] or ""])
+    nome = f"registro-ricerche-{datetime.now():%Y%m%d-%H%M}.csv"
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+@router.get("/ricerca/registro/{item_id}")
+def diario_registro(item_id: int, db: Session = Depends(get_db)):
+    """Il diario della ricerca di una riga del registro (motori, siti aperti): niente del cliente."""
+    item = db.get(JobItem, item_id)
+    if not item or not item.diagnosi:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Per questa ricerca non c'è il diario.")
+    try:
+        d = json.loads(item.diagnosi)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Per questa ricerca non c'è il diario.")
+    return {"gtin": item.gtin, "diagnosi": d}
 
 
 # ------------------------------------------------------------ prove a lotti
@@ -947,19 +1263,62 @@ async def avvia_lotto(data: LottoIn, db: Session = Depends(get_db), admin: User 
              "scartati": scarti, "finito": False, "avviato": datetime.now().isoformat(timespec="seconds")}
     diagnosi.LOTTI[lotto_id] = stato
 
+    con_icecat = icecat_config(db)["attivo"]
+
+    async def da_icecat(codice: str) -> tuple[dict | None, dict | None]:
+        """Come in un carico vero: Icecat per primo (solo per gli EAN)."""
+        from ..db import SessionLocal
+
+        if not con_icecat or not codici.e_ean(codice):
+            return None, None
+        dbl = SessionLocal()
+        try:
+            scheda = await providers_mod._icecat_con_cache(dbl, codice, lingua)
+            completa = providers_mod._ha_contenuto_base(scheda)
+            return scheda, providers_mod._pagina_icecat(
+                "confermata", "scheda Icecat" + ("" if completa else ", completata dal web"))
+        except providers_mod.FonteNonTrovata as exc:
+            return None, providers_mod._pagina_icecat("icecat_assente", str(exc) or "non c'è su Icecat")
+        except providers_mod.FonteErrore as exc:
+            return None, providers_mod._pagina_icecat("http", str(exc))
+        finally:
+            dbl.close()
+
     async def gira():
         for codice in buoni:
             riga = {"codice": codice}
+            ice, voce_ice = await da_icecat(codice)
             try:
-                scheda = await web_source.cerca_automatica(codice, cfg["motore"], cfg["chiave"],
-                                                           providers_mod.extra_ricerca(cfg), lingua=lingua)
-                diag = scheda.pop("_diagnosi", None) or {}
+                if ice is not None and providers_mod._ha_contenuto_base(ice):
+                    scheda = dict(ice)
+                    diag = providers_mod._diario_icecat(codice, lingua, voce_ice, "Scheda trovata su Icecat.")
+                else:
+                    await web_search.aspetta_giro()     # come un carico vero: a gruppi, con la pausa
+                    try:
+                        scheda = await web_source.cerca_automatica(codice, cfg["motore"], cfg["chiave"],
+                                                                   providers_mod.extra_ricerca(cfg), lingua=lingua)
+                    except Exception:
+                        if ice is None:
+                            raise
+                        scheda = {}
+                    diag = scheda.pop("_diagnosi", None) or {}
+                    if ice is not None:
+                        scheda = providers_mod._fondi_fonti(dict(ice), scheda) if scheda else dict(ice)
+                        scheda["origine_dominio"] = "icecat.biz"
+                    if voce_ice is not None:
+                        diag = dict(diag) if diag else providers_mod._diario_icecat(codice, lingua, voce_ice,
+                                                                                    "Scheda trovata su Icecat.")
+                        diag["pagine"] = [voce_ice] + [p for p in diag.get("pagine") or [] if p.get("fonte") != "icecat"]
+                        if ice is not None:
+                            diag["causa"] = "trovato"
                 riga.update(trovato=True, titolo=scheda.get("title", "")[:120],
                             origine=scheda.get("origine_dominio", ""), conferma=scheda.get("conferma", ""),
                             foto=len(scheda.get("images") or []), descrizione=len(scheda.get("description") or ""),
                             specifiche=len(scheda.get("attributes") or []), diagnosi=diag)
             except Exception as exc:  # noqa: BLE001 - ogni esito va nel resoconto
-                diag = getattr(exc, "diagnosi", None) or {}
+                diag = dict(getattr(exc, "diagnosi", None) or {})
+                if voce_ice is not None:
+                    diag["pagine"] = [voce_ice] + list(diag.get("pagine") or [])
                 riga.update(trovato=False, errore=diag.get("spiegazione") or str(exc)[:300], diagnosi=diag)
             stato["righe"].append(riga)
             stato["fatti"] += 1
@@ -991,6 +1350,24 @@ async def confronta_fonti(client_id: int, gtin: str, db: Session = Depends(get_d
     clean = _codice_valido(gtin)
     lingua = lingue.normalizza(client.content_lang)
     esiti = []
+
+    from .. import codici, icecat
+
+    if icecat_config(db)["attivo"] and codici.e_ean(clean):
+        voce = {"fonte": "Icecat", "kind": "icecat", "priorita": 0, "ok": False, "errore": ""}
+        rc = ricerca_config(db)
+        try:
+            prodotto = await icecat.scheda(clean, lingua, icecat_config(db), {"url": rc["lt_url"],
+                                                                              "chiave": rc["lt_chiave"]})
+            voce.update({"ok": True, "titolo": prodotto.get("title", ""), "marca": prodotto.get("brand", ""),
+                         "mpn": prodotto.get("mpn", ""),
+                         "categoria": (prodotto.get("category") or {}).get("name", ""),
+                         "descrizione": len(prodotto.get("description") or ""),
+                         "immagini": len(prodotto.get("images") or []),
+                         "caratteristiche": len(prodotto.get("attributes") or []), "origine": "icecat.biz"})
+        except (icecat.IcecatAssente, icecat.IcecatErrore) as exc:
+            voce["errore"] = str(exc)
+        esiti.append(voce)
 
     for provider in providers_mod.chain(db, client):
         if provider.kind == "manual":

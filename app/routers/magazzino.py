@@ -231,15 +231,31 @@ FOTO_MAX_BYTES = 8 * 1024 * 1024
 FOTO_DURATA = 2 * 24 * 3600
 
 
-def _scheda(p: dict) -> dict:
-    """La scheda come la mostra l'editor del Magazzino."""
+def _testo_specifica(valore) -> str:
+    """Il valore di una riga di TD Product Specs come testo: «<br>» separa i valori come «|»."""
+    return testo_puro(re.sub(r"<br\s*/?>", " | ", str(valore or ""), flags=re.I))
+
+
+def _scheda(p: dict, specs_meta: bool = False) -> dict:
+    """La scheda come la mostra l'editor del Magazzino.
+
+    Se il sito usa TD Product Specs e il prodotto ha le sue righe, le specifiche sono quelle: sono
+    le stesse che il sito mostra e filtra, anche quando sono state scritte a mano. Gli attributi
+    globali e quelli delle varianti restano in vista, ma si cambiano dal sito."""
+    righe_plugin = wc_rest.specifiche_plugin(p) if specs_meta else []
     attributi = []
     for a in p.get("attributes") or []:
+        globale, variante = bool(a.get("id")), bool(a.get("variation"))
+        if righe_plugin and not globale and not variante:
+            continue   # le specifiche personalizzate arrivano dalle righe del plugin, qui sotto
         attributi.append({
             "id": a.get("id") or 0, "nome": wc_rest.html.unescape(a.get("name") or ""),
             "valore": " | ".join(wc_rest.html.unescape(str(o)) for o in (a.get("options") or [])),
-            "globale": bool(a.get("id")), "variante": bool(a.get("variation")), "visibile": a.get("visible", True),
+            "globale": globale, "variante": variante, "visibile": a.get("visible", True),
         })
+    for r in righe_plugin:
+        attributi.append({"id": 0, "nome": testo_puro(r["label"]), "valore": _testo_specifica(r["value"]),
+                          "globale": False, "variante": False, "visibile": True})
     marche = p.get("brands")
     return {
         "id": p.get("id"),
@@ -261,6 +277,7 @@ def _scheda(p: dict) -> dict:
         "immagini": [{"id": i.get("id"), "src": i.get("src") or "", "thumb": i.get("thumbnail") or i.get("src") or ""}
                      for i in (p.get("images") or [])],
         "specifiche": attributi,
+        "specifiche_plugin": bool(righe_plugin),
         "link": p.get("permalink") or "",
         "carica_foto": bool(config.PUBLIC_URL),
     }
@@ -272,7 +289,7 @@ async def leggi_scheda(site_id: int, product_id: int, db: Session = Depends(get_
     prodotto = wc_rest._nome_in_chiaro(await _prodotto(site, product_id))
     if prodotto.get("status") == "trash":
         raise HTTPException(status.HTTP_409_CONFLICT, "Il prodotto è nel cestino: prima ripristinalo.")
-    return _scheda(prodotto)
+    return _scheda(prodotto, site.specs_meta)
 
 
 class ImmagineIn(BaseModel):
@@ -396,18 +413,26 @@ async def salva_scheda(
     specifiche_scritte: list[dict] = []
     if data.specifiche is not None:
         # Quelle globali e quelle delle varianti non passano dall'editor: restano com'erano.
-        fisse = [a for a in (prodotto.get("attributes") or []) if a.get("id") or a.get("variation")]
-        nuove = []
+        attributi = prodotto.get("attributes") or []
+        fisse = [a for a in attributi if a.get("id") or a.get("variation")]
+        locali = [a for a in attributi if not a.get("id") and not a.get("variation")]
+        righe_plugin = wc_rest.specifiche_plugin(prodotto) if site.specs_meta else []
+        # Una riga non toccata tiene il suo valore com'era, link e grassetto compresi.
+        com_era = {(wc_rest.chiave_etichetta(r["label"]), _testo_specifica(r["value"])): r["value"] for r in righe_plugin}
+        nuove, righe_meta = [], []
         for s in data.specifiche:
             nome, valore = testo_puro(s.nome), testo_puro(s.valore)
             if nome and valore:
                 opzioni = [v.strip() for v in valore.split("|") if v.strip()] or [valore]
                 nuove.append({"id": 0, "name": nome, "visible": True, "variation": False, "options": opzioni})
                 specifiche_scritte.append({"name": nome, "value": valore})
-        corpo["attributes"] = [dict(a, position=n) for n, a in enumerate(fisse + nuove)]
+                righe_meta.append({"label": nome, "value": com_era.get((wc_rest.chiave_etichetta(nome), valore), valore)})
+        # Prodotto con le specifiche solo nel plugin (scritte a mano): non gli si creano
+        # attributi WooCommerce che non aveva. Se li aveva, restano allineati.
+        if not righe_plugin or locali:
+            corpo["attributes"] = [dict(a, position=n) for n, a in enumerate(fisse + nuove)]
         if site.specs_meta:
-            corpo["meta_data"] = [{"key": wc_rest.TD_SPECS_META_KEY, "value": [
-                {"label": s["name"], "value": s["value"]} for s in specifiche_scritte[:wc_rest.TD_SPECS_MAX]]}]
+            corpo["meta_data"] = [{"key": wc_rest.TD_SPECS_META_KEY, "value": righe_meta[:wc_rest.TD_SPECS_MAX]}]
 
     if data.marca is not None:
         marca = testo_puro(data.marca)
@@ -420,7 +445,8 @@ async def salva_scheda(
             corpo["brands"] = []
 
     if not corpo:
-        return {"ok": True, "cambiato": False, "scheda": _scheda(prodotto), "prodotto": _riga(prodotto, site.giorni_cestino or 30)}
+        return {"ok": True, "cambiato": False, "scheda": _scheda(prodotto, site.specs_meta),
+                "prodotto": _riga(prodotto, site.giorni_cestino or 30)}
     try:
         aggiornato, _ = await wc_rest._request(site, "PUT", f"/products/{product_id}", json_body=corpo)
     except wc_rest.SiteError as exc:
@@ -458,7 +484,7 @@ async def salva_scheda(
     db.commit()
     nome = aggiornato.get("name") or prodotto.get("name") or ""
     audit(db, user.email, "magazzino_scheda", f"{site.name} · {nome} (#{product_id}) · {', '.join(sorted(corpo))}")
-    return {"ok": True, "cambiato": True, "scheda": _scheda(aggiornato),
+    return {"ok": True, "cambiato": True, "scheda": _scheda(aggiornato, site.specs_meta),
             "prodotto": _riga(aggiornato, site.giorni_cestino or 30)}
 
 

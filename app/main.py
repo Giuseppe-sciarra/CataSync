@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -20,26 +19,7 @@ from .security import current_user, hash_password, require_user
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("catasync")
 
-templates = Jinja2Templates(directory=str(config.BASE_DIR / "templates"))
-
-# Versione dei file statici: cambia da sola a ogni build, perché è l'ora di
-# modifica più recente di ciò che sta in /static. Appesa come ?v=... agli
-# indirizzi di css e js, costringe i browser a riscaricare i file dopo un
-# aggiornamento: senza, restava in giro lo hub.js vecchio e i pulsanti nuovi
-# «non esistevano» finché qualcuno non faceva Ctrl+F5.
-def _versione_statici() -> int:
-    cartella = config.BASE_DIR / "static"
-    try:
-        # Anche le sottocartelle (i18n): un catalogo di traduzioni vecchio in
-        # cache lasciava in italiano le scritte nuove.
-        return int(max(f.stat().st_mtime for f in cartella.rglob("*") if f.is_file()))
-    except (OSError, ValueError):
-        return 0
-
-
-templates.env.globals["static_v"] = _versione_statici()
-templates.env.globals["app_version"] = config.APP_VERSION
-templates.env.globals["source_url"] = config.SOURCE_URL
+from .web import contesto_favicon as _contesto_favicon, templates
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -265,26 +245,34 @@ def portal_logo(db=Depends(get_db)):
     return _risposta_immagine(path, "", "public, max-age=300")
 
 
-def _contesto_favicon(marca: dict) -> dict:
-    return {
-        "portal_favicon": marca.get("favicon", ""),
-        "portal_favicon_type": marca.get("favicon_type", ""),
-        "portal_favicon_raster": marca.get("favicon_raster", False),
-    }
-
-
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(request: Request, db=Depends(get_db)):
+    from . import manutenzione
     from .store import portal_brand
 
     marca = portal_brand(db)
     return templates.TemplateResponse(
-        request, "login.html", {"app_name": marca["name"], "portal_logo": marca["logo"], **_contesto_favicon(marca)}
+        request, "login.html", {
+            "app_name": marca["name"], "portal_logo": marca["logo"], **_contesto_favicon(marca),
+            # L'avviso di manutenzione programmata, se acceso e non ancora finito.
+            "manutenzione": manutenzione.per_la_pagina(db),
+            "frasi_manutenzione": {
+                "stesso_giorno": manutenzione.FRASE_STESSO_GIORNO,
+                "a_cavallo": manutenzione.FRASE_A_CAVALLO,
+                "in_corso": manutenzione.FRASE_IN_CORSO,
+            },
+        }
     )
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/", include_in_schema=False)
+def radice(user: User | None = Depends(current_user)):
+    return RedirectResponse("/app" if user else "/login", status_code=302)
+
+
+@app.get("/app", response_class=HTMLResponse, include_in_schema=False)
 def home(request: Request, db=Depends(get_db), user: User | None = Depends(current_user)):
+    """Il pannello."""
     if not user:
         return RedirectResponse("/login", status_code=302)
     from .store import portal_brand

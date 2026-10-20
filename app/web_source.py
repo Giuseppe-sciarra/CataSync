@@ -24,6 +24,7 @@ import logging
 import re
 import zlib
 from html import unescape
+from html.parser import HTMLParser
 from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
@@ -124,13 +125,151 @@ def _prodotti_jsonld(html: str) -> list[dict]:
     return trovati
 
 
-def _microdata(html: str) -> dict:
-    campi: dict[str, str] = {}
-    for prop, valore in re.findall(
-        r'itemprop=["\'](\w+)["\'][^>]*content=["\']([^"\']{2,400})["\']', html, re.I
-    ):
-        campi.setdefault(prop.lower(), unescape(valore).strip())
-    return campi
+_TAG_VUOTI = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+              "source", "track", "wbr"}
+_PROP_CODICE = ("gtin13", "gtin14", "gtin12", "gtin8", "gtin", "productid", "sku", "mpn")
+
+
+class _LettoreMicrodati(HTMLParser):
+    """Microdata letti con i loro contenitori (itemscope), come fa un browser.
+
+    Prima si prendeva il PRIMO ``itemprop="name"`` della pagina, ovunque fosse. Su un
+    negozio PrestaShop (chironpro.com) era il marchio di un prodotto correlato in fondo
+    alla pagina: la scheda dell'unità esterna Samsung usciva col nome «INTUIS». Ora ogni
+    proprietà appartiene al suo contenitore e si sceglie il Product giusto."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.pila: list[str] = []                 # tag aperti
+        self.contenitori: list[tuple[int, dict]] = []   # (livello, contenitore) aperti
+        self.catture: list[list] = []             # [livello, contenitore, proprietà, pezzi di testo]
+        self.tutti: list[dict] = []
+        self.senza_contenitore: dict[str, str] = {}
+
+    def handle_starttag(self, tag, attrs):
+        a = {k.lower(): (v if v is not None else "") for k, v in attrs}
+        vuoto = tag in _TAG_VUOTI
+        if not vuoto:
+            self.pila.append(tag)
+        livello = len(self.pila)
+        prop = (a.get("itemprop") or "").strip().lower()
+        padre = self.contenitori[-1][1] if self.contenitori else None
+        if "itemscope" in a:
+            nuovo = {"tipo": (a.get("itemtype") or "").lower(), "props": {}, "cifre": [], "padre": padre}
+            self.tutti.append(nuovo)
+            if padre is not None and prop:
+                for p in prop.split():
+                    padre["props"].setdefault(p, nuovo)
+            if not vuoto:
+                self.contenitori.append((livello, nuovo))
+            return
+        if not prop:
+            return
+        valore = a.get("content")
+        # Un <a itemprop="name" href=…> porta il nome nel testo, non nell'indirizzo:
+        # l'href vale solo per le proprietà che SONO indirizzi.
+        if valore is None and tag in ("a", "link") and prop.split()[0] in ("url", "sameas", "image", "logo",
+                                                                           "availability", "itemcondition"):
+            valore = a.get("href")
+        if valore is None and tag in ("img", "source"):
+            valore = a.get("src")
+        if valore is None and tag == "meta":
+            valore = ""
+        if valore is not None:
+            valore = unescape(valore).strip()
+            destinazione = padre["props"] if padre is not None else self.senza_contenitore
+            for p in prop.split():
+                if valore:
+                    destinazione.setdefault(p, valore[:400])
+        elif not vuoto and padre is not None:
+            self.catture.append([livello, padre, prop, []])
+
+    def handle_endtag(self, tag):
+        if tag in _TAG_VUOTI or tag not in self.pila:
+            return
+        while self.pila:
+            chiuso = self.pila.pop()
+            livello = len(self.pila)
+            while self.catture and self.catture[-1][0] > livello:
+                _, contenitore, prop, pezzi = self.catture.pop()
+                testo = " ".join("".join(pezzi).split())[:400]
+                if testo:
+                    for p in prop.split():
+                        contenitore["props"].setdefault(p, testo)
+            while self.contenitori and self.contenitori[-1][0] > livello:
+                self.contenitori.pop()
+            if chiuso == tag:
+                break
+
+    def handle_data(self, data):
+        for cattura in self.catture:
+            cattura[3].append(data)
+        cifre = re.sub(r"\D", "", data)
+        if cifre:
+            for _, contenitore in self.contenitori:
+                if "product" in contenitore["tipo"]:
+                    contenitore["cifre"].append(cifre)
+
+
+def _microdata(html: str, codice: str = "") -> dict:
+    """Le proprietà del Product principale della pagina, in un dizionario piatto.
+
+    Fra più Product (la scheda, i correlati, «chi ha visto questo»…) vince quello che
+    dichiara il codice cercato, poi quello che lo contiene nel testo, poi il primo che
+    non sta dentro un altro. La marca annidata («brand» → Brand → name) diventa testo.
+    Senza alcun contenitore (microdata «piatti», vecchio stile) si tengono le proprietà
+    come prima."""
+    lettore = _LettoreMicrodati()
+    try:
+        lettore.feed(html[:600_000])
+        lettore.close()
+    except Exception:  # noqa: BLE001 - HTML impossibile: meglio niente che dati sbagliati
+        return {}
+    if not lettore.tutti:
+        return dict(lettore.senza_contenitore)
+
+    prodotti = [c for c in lettore.tutti if "product" in c["tipo"] and "productgroup" not in c["tipo"]]
+    if not prodotti:
+        # Ci sono contenitori ma nessun Product (solo Organization, Breadcrumb…): le loro
+        # proprietà non parlano del prodotto. Restano i codici fuori da ogni contenitore.
+        return {k: v for k, v in lettore.senza_contenitore.items() if k in _PROP_CODICE}
+
+    cifre_codice = re.sub(r"\D", "", codice or "")
+
+    def codici(c: dict) -> set[str]:
+        return {re.sub(r"\D", "", v) for k, v in c["props"].items() if k in _PROP_CODICE and isinstance(v, str)}
+
+    def annidato(c: dict) -> bool:
+        p = c["padre"]
+        while p is not None:
+            if "product" in p["tipo"]:
+                return True
+            p = p["padre"]
+        return False
+
+    scelto = None
+    if cifre_codice:
+        scelto = next((c for c in prodotti if cifre_codice in codici(c)), None)
+        if scelto is None:
+            scelto = next((c for c in prodotti if not annidato(c) and cifre_codice in "".join(c["cifre"])), None)
+    if scelto is None:
+        principali = [c for c in prodotti if not annidato(c)] or prodotti
+        scelto = principali[0]
+
+    piatto: dict[str, str] = {}
+    for chiave, valore in scelto["props"].items():
+        if isinstance(valore, dict):
+            # Contenitore annidato: della marca e del produttore serve il nome.
+            if chiave in ("brand", "manufacturer"):
+                nome = valore["props"].get("name")
+                if isinstance(nome, str) and nome:
+                    piatto[chiave] = nome
+            continue
+        piatto[chiave] = valore
+    for chiave, valore in lettore.senza_contenitore.items():
+        if chiave in _PROP_CODICE:
+            piatto.setdefault(chiave, valore)
+    return piatto
 
 
 def _opengraph(html: str) -> dict:
@@ -243,6 +382,16 @@ PAROLE_GENERICHE = {
 }
 
 
+def _sigla_di(corta: str, lunga: str) -> bool:
+    """«SMG» è la sigla di «Samsung»: due-quattro lettere, stessa iniziale, nell'ordine dentro
+    l'altro nome. I grossisti scrivono spesso così il produttore («Produttore: SMG»)."""
+    corta, lunga = _norm(corta), _norm(lunga)
+    if not (2 <= len(corta) <= 4 and corta.isalpha() and len(lunga) > len(corta) and corta[0] == lunga[:1]):
+        return False
+    resto = iter(lunga)
+    return all(c in resto for c in corta)
+
+
 def schede_coerenti(a: dict, b: dict) -> bool:
     """Due pagine parlano dello stesso prodotto? Senza IA: si incrociano i token.
 
@@ -256,7 +405,8 @@ def schede_coerenti(a: dict, b: dict) -> bool:
     comuni = ta & tb
 
     marca_a, marca_b = _norm(a.get("brand")), _norm(b.get("brand"))
-    if marca_a and marca_b and marca_a not in marca_b and marca_b not in marca_a:
+    if (marca_a and marca_b and marca_a not in marca_b and marca_b not in marca_a
+            and not _sigla_di(marca_a, marca_b) and not _sigla_di(marca_b, marca_a)):
         return False
 
     # Un token con cifre in comune è il modello: prova forte. Ma solo se è un
@@ -267,6 +417,11 @@ def schede_coerenti(a: dict, b: dict) -> bool:
         or (t.isdigit() and len(t) >= 5)
         for t in comuni
     )
+    # Lo stesso codice produttore dichiarato da entrambe vale quanto il modello nel titolo:
+    # «Unité extérieur bibloc Samsung» e «Samsung EHS Split R32 … AE040RXEDEG/EU».
+    if not modello_condiviso and _stesso_codice(a.get("mpn") or "", b.get("mpn") or ""):
+        intero, _ = _forma_codice(a.get("mpn") or "")
+        modello_condiviso = bool(re.search(r"\d", intero) and re.search(r"[a-z]", intero))
     token_marca = _token_titolo((a.get("brand") or "") + " " + (b.get("brand") or ""))
     distintive = {
         t for t in comuni
@@ -539,6 +694,39 @@ def _pulisci_titolo(titolo: str, url: str) -> str:
     return " - ".join(p.strip() for p in pezzi).strip()
 
 
+_PAROLINE = {
+    "per", "con", "del", "dei", "della", "delle", "dello", "di", "da", "dal", "in", "e", "ed", "il", "la", "le",
+    "lo", "gli", "un", "una", "al", "alla", "su", "tra", "fra", "senza", "the", "and", "for", "with", "of",
+    "de", "du", "des", "et", "pour", "avec", "sans", "und", "für", "mit", "der", "die", "das", "ohne",
+    "a", "i", "o", "y", "à", "au", "aux", "en", "zu", "im", "am", "or", "to",
+}
+
+
+def _titolo_leggibile(titolo: str, marca: str = "") -> str:
+    """Nome tutto maiuscolo («ESTERNE EHS SPLIT R32 (MONOFASE) 4.») in forma da negozio:
+    «Esterne EHS split R32 (monofase) 4.». Restano maiuscoli i codici (con cifre) e le sigle
+    corte (EHS, LED, PVC); la marca prende l'iniziale maiuscola."""
+    lettere = [c for c in titolo if c.isalpha()]
+    if len(lettere) < 8 or sum(c.isupper() for c in lettere) < 0.85 * len(lettere):
+        return titolo
+    marca_parole = {_norm(w) for w in re.findall(r"[^\W\d_]+", marca or "")}
+    primo = True
+
+    def parola(m: re.Match) -> str:
+        nonlocal primo
+        w = m.group(0)
+        era_primo, primo = primo, False
+        if any(c.isdigit() for c in w):
+            return w                                # codice o misura: com'è
+        minuscola = w.lower()
+        if len(w) <= 3 and minuscola not in _PAROLINE:
+            return w                                # sigla (anche marche come DAB)
+        if _norm(w) in marca_parole:
+            return w[:1] + minuscola[1:]
+        return minuscola[:1].upper() + minuscola[1:] if era_primo else minuscola
+    return re.sub(r"[^\s()\[\],;:\-–/+]+", parola, titolo)
+
+
 def _marca_credibile(marca: str, url: str) -> str:
     """La marca presa da og:site_name spesso è l'insegna del negozio: si butta.
 
@@ -551,9 +739,65 @@ def _marca_credibile(marca: str, url: str) -> str:
     token_dominio = set(re.findall(r"[a-z0-9]{3,}", _dominio(url).replace("-", " ")))
     if token_marca & token_dominio:
         return ""
-    if any(p in minuscola for p in ("shop", "store", "srl", "s.r.l", "spa", "online")):
+    # «CHIRON Distribution» su chironpro.com: il nome sta DENTRO il dominio.
+    radice = _dominio(url).split(".")[0].replace("-", "")
+    if any(len(t) >= 4 and t in radice for t in token_marca):
+        return ""
+    if any(p in minuscola for p in ("shop", "store", "srl", "s.r.l", "spa", "online", "distribution",
+                                    "distribuzione", "ingrosso", "grossista", "group", "gruppo")):
         return ""
     return marca
+
+
+_ETICHETTE_MARCA = r"marque|marca|brand|marke|hersteller|fabricant|fabbricante|produttore|manufacturer"
+
+
+def _marca_da_etichetta(html: str) -> str:
+    """La marca che la pagina scrive accanto all'etichetta («Marque  SAMSUNG», «Marca: Grundfos»),
+    cercata dopo il titolo: è lì che sta la scheda, non nel menu."""
+    m_h1 = re.search(r"<h1\b", html, re.I)
+    corpo = html[m_h1.start() if m_h1 else 0:][:300_000]
+    corpo = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", corpo, flags=re.I | re.S)
+    testo = unescape(re.sub(r"<[^>]+>", "|", corpo))
+    testo = re.sub(r"(\s*\|\s*)+", " | ", re.sub(r"\s+", " ", testo))
+    for m in re.finditer(r"\|\s*(?:" + _ETICHETTE_MARCA + r")\b\s*:?\s*(?:\|\s*)?([^|]{2,40}?)\s*\|", testo, re.I):
+        valore = m.group(1).strip(" :-")
+        # Se accanto all'etichetta non c'è niente, il «valore» è l'etichetta dopo: non è una marca.
+        sembra_etichetta = re.match(r"(?:r[ée]f|cod|ean|gtin|sku|mpn|mod[eè]l|art|codice|numero|n°)\b", valore, re.I)
+        if (len(valore) >= 2 and len(valore.split()) <= 4 and not re.search(r"\d{5,}", valore)
+                and not sembra_etichetta and not re.fullmatch(_ETICHETTE_MARCA, valore, re.I)):
+            return valore
+    return ""
+
+
+_ETICHETTE_CODICE = (r"r[ée]f\.?\s*fournisseur|r[ée]f[ée]rence\s*fabricant|r[ée]f\.?\s*fabricant|codice\s*produttore|"
+                     r"cod\.?\s*produttore|codice\s*fornitore|part\s*number|manufacturer\s*part\s*number|mpn|"
+                     r"herstellernummer|hersteller-?artikelnummer|ref\.?\s*fabricante")
+
+
+def _codice_da_etichetta(html: str) -> str:
+    """Il codice produttore scritto accanto alla sua etichetta («Réf. fournisseur AE040RXEDEG/EU»)."""
+    m_h1 = re.search(r"<h1\b", html, re.I)
+    corpo = html[m_h1.start() if m_h1 else 0:][:300_000]
+    corpo = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", corpo, flags=re.I | re.S)
+    testo = unescape(re.sub(r"<[^>]+>", "|", corpo))
+    testo = re.sub(r"(\s*\|\s*)+", " | ", re.sub(r"\s+", " ", testo))
+    m = re.search(r"\|\s*(?:" + _ETICHETTE_CODICE + r")\s*:?\s*(?:\|\s*)?([A-Za-z0-9][A-Za-z0-9./_\- ]{2,38}?)\s*\|",
+                  testo, re.I)
+    if not m:
+        return ""
+    valore = m.group(1).strip()
+    # Un codice ha almeno una cifra e non è una frase.
+    return valore if re.search(r"\d", valore) and len(valore.split()) <= 2 else ""
+
+
+def _h1(html: str) -> str:
+    m = re.search(r"<h1\b[^>]*>(.*?)</h1>", html, re.I | re.S)
+    return unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1)))).strip() if m else ""
+
+
+def _parole(testo: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]{3,}", (testo or "").lower()))
 
 
 # Nomi di file che tradiscono un segnaposto, non una foto del prodotto:
@@ -585,7 +829,14 @@ def _img_utile(u: str) -> bool:
     minuscolo = (u or "").lower()
     if not minuscolo or minuscolo.startswith("data:") or minuscolo.endswith(".svg"):
         return False
-    if any(sp in minuscolo for sp in IMG_SEGNAPOSTO):
+    # PrestaShop chiama i formati delle foto «large_default», «home_default»…: quel
+    # «default» è il nome del formato, non un segnaposto. Prima ogni foto di un negozio
+    # PrestaShop veniva scartata (chironpro.com: scheda senza immagini).
+    controllato = re.sub(r"/\d+-[a-z]+_default/", "/", minuscolo)
+    # Lo stesso per gli script che servono le foto («…/PictureServer/default.aspx/foto.jpg»
+    # di Sonepar): «default.aspx» è il programma, la foto è dopo.
+    controllato = re.sub(r"/[\w-]+\.(?:aspx|ashx|php|jsp|cgi)/", "/", controllato)
+    if any(sp in controllato for sp in IMG_SEGNAPOSTO):
         return False
     nome = minuscolo.rsplit("/", 1)[-1]
     if any(ar in nome for ar in IMG_ARREDO):
@@ -716,7 +967,13 @@ _SPEC_ANAGRAFICA = re.compile(
     r"|^(ean|gtin|barcode|codice\s*ean|cod\.?\s*ean|codice\s*a\s*barre)\b"
     r"|^(telefono|tel|telefax|fax|cellulare|numero\s*verde|whatsapp)\b"
     r"|^(email|e-mail|mail|pec|indirizzo|sede|citt|cap|provincia|p\.?\s*iva|partita\s*iva)\b"
-    r"|^(orari|apertura|contatt|assistenza\s*clienti)\b",
+    r"|^(orari|apertura|contatt|assistenza\s*clienti)\b"
+    # Codici e marca hanno già i loro campi nella scheda: in tabella sarebbero doppioni
+    # («Cod. produttore», «Produttore: SMG», «Réf. BCD 333100»).
+    r"|^(cod\.?|codice)\s*(produttore|prodotto|articolo|fornitore|interno|catalogo|commerciale)$"
+    r"|^(sku|mpn|part\s*number|manufacturer\s*part\s*number|herstellernummer|artikelnummer)$"
+    r"|^r[ée]f(\.|[ée]rence\b|\b)"
+    r"|^(marca|marchio|brand|produttore|manufacturer|marque|fabricant|hersteller|marke)$",
     re.I,
 )
 
@@ -1035,6 +1292,93 @@ def link_dal_elenco(html: str, url: str, gtin: str) -> str:
     return ""
 
 
+def link_scheda_catalogo(html: str, url: str, forma: str) -> str:
+    """Nella pagina di ricerca di un catalogo, il primo link dello stesso sito fatto come una
+    scheda (``forma`` è l'espressione del percorso, es. «/itm/»)."""
+    base = rete.dominio(url)
+    forma_re = re.compile(forma)
+    for href in re.findall(r'<a\b[^>]*\bhref=["\']([^"\']+)["\']', html, re.I):
+        assoluto = urljoin(url, unescape(href).strip()).split("#")[0]
+        if (assoluto.startswith(("http://", "https://")) and rete.dominio(assoluto) == base
+                and forma_re.search(urlparse(assoluto).path) and not _LINK_INUTILE.search(assoluto)):
+            return assoluto
+    return ""
+
+
+_GOOGLE = re.compile(r"(?:^|\.)(?:google\.[a-z.]+|gstatic\.com|googleusercontent\.com|youtube\.com)$")
+
+
+def link_esterni_catalogo(html: str, url: str) -> list[str]:
+    """Nella pagina di una vetrina (Google Shopping) i link ai negozi, uno per sito, in ordine.
+    I rimandi «/url?q=…» e «adurl=…» si risolvono; i link di Google stesso non contano."""
+    from urllib.parse import parse_qs
+
+    from . import web_search as _ws
+
+    fuori: list[str] = []
+    domini: set[str] = set()
+    for href in re.findall(r'<a\b[^>]*\bhref=["\']([^"\']+)["\']', html, re.I):
+        assoluto = urljoin(url, unescape(href).strip()).split("#")[0]
+        parti = urlparse(assoluto)
+        if _GOOGLE.search(parti.netloc.lower()):
+            q = parse_qs(parti.query)
+            dest = (q.get("adurl") or q.get("url") or q.get("q") or [""])[0]
+            if not dest.startswith("http"):
+                continue
+            assoluto, parti = dest.split("#")[0], urlparse(dest)
+        if parti.scheme not in ("http", "https") or _GOOGLE.search(parti.netloc.lower()):
+            continue
+        dom = rete.dominio(assoluto)
+        if not dom or dom in domini or _ws._escluso(dom) or _LINK_INUTILE.search(assoluto):
+            continue
+        domini.add(dom)
+        fuori.append(assoluto)
+    return fuori
+
+
+def _forma_codice(codice: str) -> tuple[str, str]:
+    """(codice intero, radice senza la coda «/EU», «-EU»…) in sole lettere e cifre."""
+    intero = re.sub(r"[^a-z0-9]", "", (codice or "").lower())
+    radice = re.sub(r"[^a-z0-9]", "", re.split(r"[/\s]", (codice or "").lower().strip())[0])
+    return intero, radice
+
+
+def _stesso_codice(a: str, b: str) -> bool:
+    ia, ra = _forma_codice(a)
+    ib, rb = _forma_codice(b)
+    if len(ia) < 5 or len(ib) < 5:
+        return False
+    return ia == ib or (len(ra) >= 6 and ra == rb)
+
+
+def _codice_nel_nome(codice: str, nome: str) -> bool:
+    intero, radice = _forma_codice(codice)
+    chiave = radice if len(radice) >= 6 else intero
+    if len(chiave) < 6 or not re.search(r"\d", chiave):
+        return False
+    return chiave in re.sub(r"[^a-z0-9]", "", (nome or "").lower())
+
+
+# Codici «da modello» nel nome: lettere e cifre insieme, almeno sette caratteri.
+_CODICE_NEL_TITOLO = re.compile(r"(?<![A-Za-z0-9])(?=[A-Za-z0-9/.-]*\d)(?=[A-Za-z0-9/.-]*[A-Za-z])"
+                                r"[A-Za-z0-9][A-Za-z0-9/.-]{6,}")
+
+
+def _altro_modello_nel_nome(nome: str, codice: str) -> str:
+    """Il nome porta un altro codice modello oltre al nostro? È un kit («unità esterna +
+    unità interna»), non il prodotto da solo: la sua descrizione parlerebbe d'altro."""
+    _, radice = _forma_codice(codice)
+    intero, _ = _forma_codice(codice)
+    for pezzo in _CODICE_NEL_TITOLO.findall(nome or ""):
+        i, r = _forma_codice(pezzo)
+        if len(r) < 7 or not re.search(r"\d", r) or not re.search(r"[a-z]", r):
+            continue
+        if radice in i or r in intero or (radice and i.startswith(radice)):
+            continue
+        return pezzo
+    return ""
+
+
 def estrai(
     html: str,
     url: str,
@@ -1055,7 +1399,7 @@ def estrai(
     capita. Se la pagina dichiara un EAN diverso, si scarta senza discutere.
     """
     candidati = _prodotti_jsonld(html)
-    micro = _microdata(html)
+    micro = _microdata(html, gtin)
     og = _opengraph(html)
 
     # Serve a dire perché una pagina è stata rifiutata: «non ha dati strutturati»
@@ -1104,6 +1448,7 @@ def estrai(
     # il codice produttore valgono mpn/sku dichiarati e il codice nel testo.
     # Il checksum decide: «97924465» ha 8 cifre ma è un codice Grundfos, non un EAN-8.
     scheda: dict | None = None
+    scheda_per_codice = False      # il Product scelto dichiara proprio il codice cercato
     for prodotto in candidati:
         codici = set()
         for chiave in ("gtin13", "gtin14", "gtin12", "gtin8", "gtin", "ean", "productID", "sku", "mpn"):
@@ -1114,9 +1459,11 @@ def estrai(
 
         if cerca_ean and (gtin in codici or gtin.lstrip("0") in {c.lstrip("0") for c in codici}):
             scheda = prodotto
+            scheda_per_codice = True
             break
         if not cerca_ean and codice_norm and codice_norm in alfanumerici:
             scheda = prodotto
+            scheda_per_codice = True
             break
         if not scheda and not codici:
             scheda = prodotto  # unico Product della pagina, senza codici: si valuta dopo
@@ -1161,8 +1508,11 @@ def estrai(
         # ricavato dai titoli torna. Vale per qualunque sito: la scheda serve al
         # cliente, non importa da dove arriva — l'importante è che sia QUESTO
         # prodotto, e i controlli qui sotto servono esattamente a quello.
-        mpn_pagina = _testo((scheda or {}).get("mpn"))
-        mpn_ok = bool(mpn) and bool(mpn_pagina) and mpn.lower() == str(mpn_pagina).lower()
+        mpn_pagina = _testo((scheda or {}).get("mpn")) or micro.get("mpn", "") or _codice_da_etichetta(html)
+        # Il codice produttore conferma se la pagina lo dichiara (anche senza il «/EU» in coda)
+        # o se lo porta nel nome: un accessorio «compatibile con …» lo nomina solo nel testo.
+        mpn_ok = bool(mpn) and (_stesso_codice(mpn, mpn_pagina) or any(
+            _codice_nel_nome(mpn, t) for t in (_testo((scheda or {}).get("name")), _h1(html), og.get("title", ""))))
         modello_ok = modello_combacia(pezzi_modello or [], scheda or {}, html)
         if richiedi_ean:
             # Marketplace: fra mille annunci simili il modello non garantisce
@@ -1193,11 +1543,19 @@ def estrai(
     # Una pagina può avere solo microdata, senza JSON-LD né Open Graph: si prosegue
     # comunque, purché da qualche parte esca un nome prodotto.
     scheda = scheda or {}
-    marca = _testo(scheda.get("brand")) or _testo(micro.get("brand")) \
-        or _marca_credibile(og.get("site_name", ""), url)
+    marca_insegna = _marca_credibile(og.get("site_name", ""), url)
+    marca = _testo(scheda.get("brand")) or _testo(micro.get("brand")) or _marca_da_etichetta(html) or marca_insegna
     titolo = _pulisci_titolo(
         _testo(scheda.get("name")) or micro.get("name", "") or og.get("title", ""), url
     )
+    # Il nome deve essere quello che la pagina MOSTRA. Se arriva dai microdata o da un
+    # Product dei dati strutturati che non porta il codice, e non ha niente in comune col
+    # titolo visibile (<h1>, og:title), vince il titolo visibile: era così che una scheda
+    # Samsung usciva col nome del marchio di un prodotto correlato («INTUIS»).
+    if titolo and not scheda_per_codice:
+        visibili = [t for t in (_pulisci_titolo(_h1(html), url), _pulisci_titolo(og.get("title", ""), url)) if t]
+        if visibili and not any(_parole(titolo) & _parole(v) for v in visibili):
+            titolo = visibili[0]
     # Nome povero nei dati strutturati: certi negozi ci mettono solo la marca
     # («Cordivari») mentre il titolo vero sta nell'<h1>. Se il titolo della
     # pagina contiene quel nome ed è decisamente più ricco, vince lui.
@@ -1224,6 +1582,18 @@ def estrai(
         nel_titolo = bool(token_marca & set(re.findall(r"[a-z0-9]{3,}", titolo.lower())))
         fra_le_marche = any(m.lower() in marca.lower() for m in (marche or []))
         if token_marca & token_dominio and not nel_titolo and not fra_le_marche:
+            marca = ""
+    # Marca scritta come sigla («SMG») mentre il titolo porta il nome intero di una delle
+    # marche viste nei risultati («SAMSUNG - …»): si usa il nome intero.
+    if marca and not (_parole(marca) & _parole(titolo)):
+        for intera in marche or []:
+            if _sigla_di(marca, intera) and _norm(intera) in {_norm(w) for w in re.findall(r"[^\W_]+", titolo)}:
+                marca = next(w for w in re.findall(r"[^\W_]+", titolo) if _norm(w) == _norm(intera))
+                break
+    # L'insegna del sito (og:site_name) fa da marca solo se la si ritrova nel titolo o fra
+    # le marche dei risultati: altrimenti è il nome del negozio, non del produttore.
+    if marca and marca == marca_insegna:
+        if not (_parole(marca) & _parole(titolo)) and not any(m.lower() in marca.lower() for m in (marche or [])):
             marca = ""
     descrizione = _testo(scheda.get("description")) or micro.get("description", "") or og.get("description", "")
 
@@ -1277,7 +1647,8 @@ def estrai(
         if _norm(titolo) in _norm(descrizione) and len(descrizione) < len(titolo) * 1.6:
             descrizione = ""
 
-    codice_articolo = _testo(scheda.get("mpn")) or _testo(scheda.get("sku"))
+    codice_articolo = _testo(scheda.get("mpn")) or _testo(scheda.get("sku")) or micro.get("mpn", "") \
+        or _codice_da_etichetta(html)
     if not codice_credibile(codice_articolo, pezzi_modello or []):
         codice_articolo = ""
 
@@ -1326,7 +1697,7 @@ def estrai(
         # conferma più forte, e nel confronto fra più siti questa scheda comanda.
         "ean_dichiarato": bool(dichiarati),
         "conferma": livello_conferma,
-        "title": titolo[:255],
+        "title": _titolo_leggibile(titolo, marca)[:255],
         "brand": marca[:120],
         "mpn": codice_articolo,
         "category": {"id": "", "name": _testo(scheda.get("category"))},
@@ -1625,16 +1996,19 @@ async def cerca_automatica(gtin: str, motore: str, chiave: str, extra: dict, mpn
 
     lingua = lingue.normalizza(lingua)
     diario = diagnosi.Diario(gtin, lingua, motore)
+    nessuno: Exception | None = None
     try:
         trovati = await web_search.candidati(gtin, motore, chiave, extra, lingua=lingua, diario=diario)
     except web_search.MotoriBloccati as exc:
         exc.diagnosi = diario.chiudi("motori_bloccati")
         raise
     except web_search.NessunProdotto as exc:
-        err = NonTrovato(str(exc))
-        err.diagnosi = diario.chiudi(diario.classifica())
-        err.esiti = []
-        raise err from exc
+        if not mpn:
+            err = NonTrovato(str(exc))
+            err.diagnosi = diario.chiudi(diario.classifica())
+            err.esiti = []
+            raise err from exc
+        trovati, nessuno = [], exc     # col codice produttore noto si ritenta qui sotto
     except web_search.RicercaSpenta as exc:
         exc.diagnosi = diario.chiudi("ricerca_spenta")
         raise
@@ -1643,17 +2017,84 @@ async def cerca_automatica(gtin: str, motore: str, chiave: str, extra: dict, mpn
         raise
 
     trad = {"url": extra.get("lt_url", ""), "chiave": extra.get("lt_chiave", "")}
-    scheda = await apri_candidati(gtin, trovati, mpn, trad, render_url=extra.get("render_url", ""),
-                                  lingua=lingua, diario=diario)
+
+    async def per_codice_produttore(codice: str) -> list[dict]:
+        # Domande col codice produttore: finiscono nel diario come seconda fase. Un blocco
+        # dei motori qui non fa perdere la scheda già trovata: si tiene quella.
+        secondo = diagnosi.Diario(codice, lingua, motore)
+        try:
+            return await web_search.candidati(codice, motore, chiave, {**extra, "solo_codice": True,
+                                                                       "ripiego_ddg": False},
+                                              lingua=lingua, diario=secondo)
+        except (web_search.MotoriBloccati, web_search.NessunProdotto, web_search.RicercaError,
+                web_search.RicercaSpenta) as exc:
+            diario.nota(f"Codice produttore {codice}: {exc}"[:200])
+            return []
+        finally:
+            for voce in secondo.dati["ricerche"]:
+                diario.ricerca({**voce, "fase": "codice produttore"})
+
+    if nessuno is not None:
+        # L'EAN sui motori non dà niente, ma una banca dati ci ha detto marca e codice
+        # produttore: si cerca quello, e le pagine si confermano sul codice.
+        diario.nota(f"Nessuna pagina per l'EAN: cerco il codice produttore {mpn}"[:200])
+        trovati = await per_codice_produttore(mpn)
+        if not trovati:
+            err = NonTrovato(str(nessuno))
+            err.diagnosi = diario.chiudi(diario.classifica())
+            err.esiti = []
+            raise err from nessuno
+
+    try:
+        scheda = await apri_candidati(gtin, trovati, mpn, trad, render_url=extra.get("render_url", ""),
+                                      lingua=lingua, diario=diario, altri_candidati=per_codice_produttore)
+    except NonTrovato as exc:
+        blocco = trovati[0].get("motori_bloccati") if trovati and all(c.get("motori_bloccati") for c in trovati) else None
+        if blocco:
+            # I motori erano bloccati e i cataloghi non hanno dato niente: il codice non è stato
+            # cercato davvero, si rimanda come prima.
+            err = web_search.MotoriBloccati("motori di ricerca bloccati: " + ", ".join(blocco["nomi"][:5]),
+                                            [tuple(k) for k in blocco["ko"]], riprova_alle=blocco.get("riprova_alle"))
+            err.diagnosi = exc.diagnosi if getattr(exc, "diagnosi", None) else diario.chiudi("motori_bloccati")
+            raise err from exc
+        raise
     esiti = scheda.pop("_esiti", None)
     if esiti:
         log.info("Codice %s, esiti pagine: %s", gtin, " · ".join(esiti[:8]))
     return scheda
 
 
+def _scarne(schede: list[dict]) -> bool:
+    """Le pagine trovate non bastano: nessuna descrizione vera, o meno di due foto in tutto."""
+    descrizione = max((_qualita_descrizione(c.get("description") or "", c.get("title") or "") for c in schede),
+                      default=0)
+    foto = _unione_immagini([], schede, massimo=10)
+    return not descrizione or len(foto) < 2
+
+
+def _codice_per_arricchire(schede: list[dict], mpn: str, gtin: str) -> str:
+    """Il codice produttore da cercare per completare la scheda: quello del cliente, se c'è,
+    altrimenti quello dichiarato dalle pagine che riportano l'EAN. Deve avere lettere e
+    cifre (un numero solo è spesso il codice interno del negozio, «Réf. 333100»)."""
+    from . import codici as _cod
+
+    def buono(c: str) -> bool:
+        intero, _ = _forma_codice(c)
+        return (6 <= len(intero) <= 30 and bool(re.search(r"\d", intero)) and bool(re.search(r"[a-z]", intero))
+                and intero != gtin and not _cod.checksum_gtin(intero))
+
+    if mpn and buono(mpn):
+        return mpn.strip()
+    voti: dict[str, int] = {}
+    for c in schede:
+        if c.get("conferma") in ("dichiarato", "codice") and buono(c.get("mpn") or ""):
+            voti[c["mpn"].strip()] = voti.get(c["mpn"].strip(), 0) + 1
+    return max(voti, key=voti.get) if voti else ""
+
+
 async def apri_candidati(
     gtin: str, trovati: list[dict], mpn: str = "", trad: dict | None = None, render_url: str = "",
-    lingua: str = "IT", diario: "diagnosi.Diario | None" = None,
+    lingua: str = "IT", diario: "diagnosi.Diario | None" = None, altri_candidati=None,
 ) -> dict:
     """Apre i siti in ordine, incrocia le pagine che confermano e fonde la scheda.
 
@@ -1682,17 +2123,27 @@ async def apri_candidati(
     tentativi = 0     # richieste fatte, comprese quelle respinte
     MAX_APERTURE = 8
     MAX_TENTATIVI = 16
+    MAX_CATALOGHI = 14    # pagine di ricerca dei cataloghi: contano a parte, non rubano posti ai siti
     BASTANO = 3
-    coda = list(trovati)
     provati: set[str] = set()
+    cataloghi_provati = 0
 
     def _ricca(sch: dict) -> bool:
         return bool(sch.get("description") and sch.get("images"))
 
-    async with rete.Sessione(lingua, render_url, max_browser=3) as sessione:
+    async def leggi(sessione, coda: list[dict], mpn_qui: str, fase: str = "",
+                    max_aperture: int = MAX_APERTURE, max_tentativi: int = MAX_TENTATIVI) -> None:
+        nonlocal aperture, tentativi, cataloghi_provati
+        fatte = provate = 0
+        extra_voce = {"fase": fase} if fase else {}
         while coda:
             candidato = coda.pop(0)
-            if tentativi >= MAX_TENTATIVI or aperture >= MAX_APERTURE:
+            ricerca_catalogo = bool(candidato.get("da_catalogo")) and not candidato.get("da_elenco")
+            if ricerca_catalogo:
+                if cataloghi_provati >= MAX_CATALOGHI:
+                    continue
+                cataloghi_provati += 1
+            elif provate >= max_tentativi or fatte >= max_aperture:
                 break
             if len(confermate) >= BASTANO and any(_ricca(c) for c in confermate):
                 break
@@ -1711,11 +2162,18 @@ async def apri_candidati(
             provati.add(url)
             dominio = candidato.get("dominio") or rete.dominio(url)
             if url.lower().split("?")[0].endswith(".pdf"):
-                diario.pagina(dominio, url, "documento", "documento PDF, non una scheda")
+                diario.pagina(dominio, url, "documento", "documento PDF, non una scheda", **extra_voce)
                 continue
 
             tentativi += 1
-            pagina = await sessione.apri(url)
+            provate += 0 if ricerca_catalogo else 1
+            pagina = await sessione.apri(url, ignora_robots=bool(candidato.get("forza_robots")))
+            if candidato.get("da_catalogo"):
+                # Il catalogo ci ha risposto o ci ha respinti: salute e pause come per i motori.
+                from . import web_search as _ws
+                respinti = bool(pagina.robots or pagina.blocco or pagina.stato in (403, 429))
+                _ws.segna_catalogo(dominio, pagina.leggibile,
+                                   "accesso negato" if respinti else (pagina.motivo() or "non risponde"))
             if not pagina.leggibile:
                 motivo = pagina.motivo() or "pagina non leggibile"
                 if pagina.robots:
@@ -1729,15 +2187,32 @@ async def apri_candidati(
                 else:
                     esito = "http"
                 diario.pagina(dominio, url, esito, motivo, http=pagina.stato or None,
-                              blocco=pagina.blocco, browser=pagina.via_browser)
+                              blocco=pagina.blocco, browser=pagina.via_browser, **extra_voce)
                 motivi.append(f"{dominio}: {motivo}")
                 continue
             aperture += 1
+            fatte += 0 if ricerca_catalogo else 1
             url_letta = pagina.url_finale or url
             provati.add(url_letta)
 
+            if candidato.get("catalogo_esterni"):
+                # Vetrina (Google Shopping): i link portano ai negozi. Diventano candidati come
+                # quelli di un motore, davanti a tutto, e si confermano come sempre.
+                nuovi = [u for u in link_esterni_catalogo(pagina.html, url_letta) if u not in provati]
+                from . import web_search as _ws
+                for u in reversed(nuovi[:6]):
+                    dom = rete.dominio(u)
+                    lingua_u = lingue.da_url(u, dom)
+                    coda.insert(0, {"url": u, "dominio": dom, "titolo": f"da {dominio}", "punti": -500,
+                                    "ancorato": False, "lingua_url": lingua_u, "estero": bool(lingua_u) and lingua_u != lingua,
+                                    "marketplace": _ws.e_marketplace(dom), "modello": pezzi, "marche": marche,
+                                    "da_elenco": True})
+                diario.pagina(dominio, url_letta, "elenco", f"vetrina: {len(nuovi[:6])} negozi da aprire",
+                              browser=pagina.via_browser, **extra_voce)
+                continue
+
             perche: list[str] = []
-            scheda = estrai(pagina.html, url_letta, gtin, mpn, pezzi, perche, consenti_estero=True,
+            scheda = estrai(pagina.html, url_letta, gtin, mpn_qui, pezzi, perche, consenti_estero=True,
                             richiedi_ean=bool(candidato.get("marketplace")), marche=marche, lingua=lingua)
             usato_browser = pagina.via_browser
             html_letto = pagina.html
@@ -1749,9 +2224,29 @@ async def apri_candidati(
                     perche = []
                     usato_browser = True
                     html_letto = resa.html
-                    scheda = estrai(resa.html, url_letta, gtin, mpn, pezzi, perche, consenti_estero=True,
+                    scheda = estrai(resa.html, url_letta, gtin, mpn_qui, pezzi, perche, consenti_estero=True,
                                     richiedi_ean=bool(candidato.get("marketplace")), marche=marche,
                                     lingua=lingua)
+            if (scheda and not usato_browser and sessione.browser_disponibile
+                    and (not scheda.get("description") or len(scheda.get("images") or []) < 2)):
+                # Pagina giusta ma povera: descrizione e galleria spesso arrivano col JavaScript
+                # (schede a linguette, «descrizione del produttore» caricata dopo). Si riapre con
+                # Chrome e si tiene la lettura più ricca. Solo pagine che ci hanno già risposto:
+                # chi ci ha respinti non si riapre.
+                resa = await sessione.browser(url_letta)
+                if resa.leggibile:
+                    perche_resa: list[str] = []
+                    seconda = estrai(resa.html, url_letta, gtin, mpn_qui, pezzi, perche_resa, consenti_estero=True,
+                                     richiedi_ean=bool(candidato.get("marketplace")), marche=marche, lingua=lingua)
+                    if seconda and _completezza(seconda) > _completezza(scheda):
+                        scheda, usato_browser, html_letto = seconda, True, resa.html
+            if scheda and fase and scheda.get("conferma") not in ("dichiarato", "codice"):
+                # Trovata per codice produttore: se il nome porta anche un altro modello è un
+                # kit (unità esterna + interna), e la sua descrizione parlerebbe d'altro.
+                altro = _altro_modello_nel_nome(scheda.get("title") or "", mpn_qui)
+                if altro:
+                    perche = [f"parla di un altro prodotto (insieme con {altro})"]
+                    scheda = None
             if not scheda:
                 motivo = perche[0] if perche else "non conferma il prodotto"
                 esito = _esito_rifiuto(motivo)
@@ -1760,23 +2255,47 @@ async def apri_candidati(
                 # Categoria o ricerca interna che riporta il codice: la scheda vera è
                 # dietro il link della tessera. Si prova subito, prima degli altri siti.
                 segui = ""
-                if esito == "elenco" and not candidato.get("da_elenco"):
+                if candidato.get("da_catalogo") not in (None, "", "diretto") and not candidato.get("da_elenco"):
+                    # Pagina di ricerca di un catalogo: il primo link fatto come una scheda.
+                    segui = link_dal_elenco(html_letto, url_letta, gtin) or \
+                        link_scheda_catalogo(html_letto, url_letta, candidato["da_catalogo"])
+                    esito, motivo = "elenco", "pagina di ricerca del catalogo"
+                elif esito == "elenco" and not candidato.get("da_elenco"):
                     segui = link_dal_elenco(html_letto, url_letta, gtin)
-                    if segui in provati:
-                        segui = ""
-                    if segui:
-                        coda.insert(0, {**candidato, "url": segui, "dominio": dominio, "da_elenco": True})
-                diario.pagina(dominio, url_letta, esito, motivo, browser=usato_browser, segue=segui)
+                if segui in provati:
+                    segui = ""
+                if segui:
+                    coda.insert(0, {**candidato, "url": segui, "dominio": dominio, "da_elenco": True})
+                diario.pagina(dominio, url_letta, esito, motivo, browser=usato_browser, segue=segui, **extra_voce)
                 motivi.append(f"{dominio}: {motivo}")
                 continue
 
             scheda["origine_dominio"] = dominio
+            if fase:
+                scheda["_fase"] = fase
             livello = _LIVELLI.get(scheda.get("conferma", ""), "ok")
             diario.pagina(dominio, url_letta, "confermata", livello, conferma=scheda.get("conferma"),
-                          lingua=scheda.get("lingua_pagina"), browser=usato_browser)
+                          lingua=scheda.get("lingua_pagina"), browser=usato_browser, **extra_voce)
             voci_confermate.append(diario.dati["pagine"][-1])
             motivi.append(f"{dominio}: confermata ({livello})")
             confermate.append(scheda)
+
+    async with rete.Sessione(lingua, render_url, max_browser=3) as sessione:
+        await leggi(sessione, list(trovati), mpn)
+
+        # Scheda povera (niente descrizione vera o una foto sola): si cerca una seconda volta
+        # col codice produttore che le pagine hanno dato, per trovare chi lo descrive meglio.
+        # Contano solo le pagine nuove; quelle col codice di un altro prodotto si scartano.
+        codice = _codice_per_arricchire(confermate, mpn, gtin) if altri_candidati and confermate else ""
+        if codice and _scarne(confermate):
+            nuovi = await altri_candidati(codice)
+            domini_buoni = {c.get("origine_dominio") for c in confermate}
+            nuovi = [c for c in nuovi if c.get("url") not in provati and c.get("dominio") not in domini_buoni
+                     and c.get("lingua_url") != "XX"          # lingue che non sappiamo tradurre
+                     and not _altro_modello_nel_nome(c.get("titolo") or "", codice)]
+            if nuovi:
+                diario.nota(f"Scheda povera: cercato anche il codice produttore {codice}")
+                await leggi(sessione, nuovi, codice, fase="codice produttore", max_aperture=5, max_tentativi=8)
 
     # Coerenza fra i siti, a giochi fatti: comanda la pagina più forte (EAN
     # dichiarato nei dati strutturati, poi codice in pagina, poi completezza),
@@ -1851,8 +2370,9 @@ async def apri_candidati(
                 "Alcune informazioni sono in un'altra lingua e la traduzione automatica non è riuscita: "
                 "controllale.")
 
-    for k in ("estera", "_desc_estera", "_spec_estera", "lingua_pagina", "_foto_html"):
+    for k in ("estera", "_desc_estera", "_spec_estera", "lingua_pagina", "_foto_html", "_fase"):
         finale.pop(k, None)
+    arricchite = [c.get("origine_dominio") for c in confermate if c.get("_fase")]
 
     # Ultima dogana per le foto: si scaricano e si misurano.
     referer = finale.get("origine_url") or ""
@@ -1865,7 +2385,9 @@ async def apri_candidati(
     finale["_esiti"] = list(motivi)
     finale["_diagnosi"] = diario.chiudi(
         "trovato", f"Scheda trovata su {finale.get('origine_dominio') or 'un sito'}"
-        + (f", confermata da {len(confermate)} siti" if len(confermate) > 1 else "") + ".")
+        + (f", confermata da {len(confermate)} siti" if len(confermate) > 1 else "") + "."
+        + (" Completata cercando il codice produttore: " + ", ".join(dict.fromkeys(arricchite)) + "."
+           if arricchite else ""))
     log.info("Codice %s risolto su %s", gtin, finale.get("origine_dominio"))
     return finale
 

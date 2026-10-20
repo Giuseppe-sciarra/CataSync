@@ -180,7 +180,8 @@
     // Applications with a real topbar keep the language control alongside the
     // other actions instead of reserving a detached strip above the interface.
     const project=document.documentElement.dataset.project || '';
-    const inlineHost=['panopticon-lite','catasync'].includes(project) ? document.querySelector('.topbar') : null;
+    // A page can also say where it wants the control (data-lingua-qui), e.g. in its footer.
+    const inlineHost=['panopticon-lite','catasync'].includes(project) ? document.querySelector('[data-lingua-qui], .topbar') : null;
     if(inlineHost){
       bar.classList.add('language-switcher--inline');
       document.documentElement.classList.add('language-switcher-inline');

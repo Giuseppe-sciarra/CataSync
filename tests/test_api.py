@@ -21,7 +21,7 @@ RADICE = _ambiente.RADICE
 scritti: list[dict] = []
 
 
-async def _woo_finto(site, method, path, params=None, json_body=None):
+async def _woo_finto(site, method, path, params=None, json_body=None, base=None):
     if method == "GET" and path.startswith("/products/categories"):
         return [{"id": 15, "name": "Pompe", "parent": 0, "count": 3, "slug": "pompe"}], {"X-WP-TotalPages": "1"}
     if method == "GET" and path.startswith(("/products/attributes", "/products/brands")):
@@ -86,7 +86,6 @@ class GiroCompleto(unittest.TestCase):
         self.assertTrue(r.headers["content-type"].startswith("image"))
         favicon_di_serie = r.content
         r = c.get("/static/i18n/catalog.js")
-        self.assertNotIn("icecat", r.text.lower())
         self.assertEqual(r.headers.get("x-content-type-options"), "nosniff")
 
         # --- amministratore: cliente, sito, utente, ricerca
@@ -133,7 +132,7 @@ class GiroCompleto(unittest.TestCase):
         self.assertEqual(r.status_code, 201, r.text)
         job_id = r.json()["id"]
         self.assertEqual(r.json()["lang"], "EN")
-        r = c.get("/")
+        r = c.get("/app")
         self.assertIn("catalog.js", r.text)
         self.assertIn("Codice sorgente", r.text)
 

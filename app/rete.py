@@ -481,18 +481,21 @@ class Sessione:
         await attendi_turno(url)
         return await renderizza(url, self.render_url, self.lingua)
 
-    async def apri(self, url: str, rendi_se_serve: bool = True) -> Pagina:
-        """Legge una pagina come la leggerebbe un browser, se il sito lo consente."""
+    async def apri(self, url: str, rendi_se_serve: bool = True, ignora_robots: bool = False) -> Pagina:
+        """Legge una pagina come la leggerebbe un browser, se il sito lo consente.
+
+        ``ignora_robots`` vale solo per le ricerche interne dei cataloghi, se l'amministratore
+        l'ha acceso in Impostazioni: il controllo sugli indirizzi interni resta."""
         assert self.client is not None
         pagina = Pagina(url=url)
         regole, stato_robots = await robots_per(url, self.client)
         if stato_robots == "interno":
             pagina.errore = "IndirizzoNonPubblico"
             return pagina
-        if stato_robots == "irraggiungibile":
+        if stato_robots == "irraggiungibile" and not ignora_robots:
             pagina.robots = "irraggiungibile"
             return pagina
-        if regole is not None and not regole.consente(url):
+        if regole is not None and not regole.consente(url) and not ignora_robots:
             pagina.robots = "vietato"
             return pagina
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from .. import billing, codici, config, lingue, providers, quality, scheduler, wc_rest
+from .. import billing, codici, config, lingue, providers, quality, scheduler, wc_rest, web_search
 from ..html_sicuro import scheda_sicura, svg_attivo
 from ..db import get_db
 from ..models import CategoryMap, Client, Job, JobItem, Site, User
@@ -174,6 +174,8 @@ def _job_json(db: Session, job: Job) -> dict:
         "counts": counts,
         "created_at": job.created_at.isoformat(),
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        # Pausa fra un gruppo di codici e l'altro (epoch): il banner dice quando si riparte.
+        "pausa_giro_fino": (web_search.fine_riposo_giro() or None) if job.status in ("queued", "running") else None,
     }
 
 
@@ -337,7 +339,8 @@ def item_preview(item_id: int, db: Session = Depends(get_db), user: User = Depen
     # Si mostrano solo le caratteristiche che finiranno davvero sul sito: vederne
     # novanta per poi scriverne sei confonde e basta.
     tutte = product.get("attributes") or []
-    product["attributes"] = wc_rest.taglia_specifiche(tutte, site.specs_limit)
+    product["attributes"] = wc_rest.taglia_specifiche(tutte, site.specs_limit,
+                                                      wc_rest.etichette_filtro_note(site.id) if site.specs_meta else [])
     product["attributes_totali"] = len(tutte)
     return {
         "id": item.id,
@@ -1316,9 +1319,9 @@ def _delete_catalog_item(db: Session, site: Site, item: JobItem) -> int:
             gtins_da_svuotare.add(row.gtin)
 
     # Se in futuro viene reinserito, non deve riesumare una vecchia cache web
-    # parziale/non trovata: ripartirà davvero da zero.
+    # parziale/non trovata: ripartirà davvero da zero. Le schede complete restano in archivio.
     if gtins_da_svuotare:
-        providers.svuota_cache_web(db, list(gtins_da_svuotare))
+        providers.svuota_cache_web(db, list(gtins_da_svuotare), anche_buone=False)
     return eliminate
 
 

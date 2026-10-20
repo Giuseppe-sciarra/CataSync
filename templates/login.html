@@ -27,40 +27,137 @@
 })();
 </script>
 <link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
+<script src="/static/passkey.js?v={{ static_v }}"></script>
 <script defer src="/static/alpine.min.js?v={{ static_v }}"></script>
 
   <link rel="stylesheet" href="/static/i18n/i18n.css?v={{ static_v }}">
 </head>
 <body>
 <div class="login-shell" x-data="loginForm()">
+  <div class="login-colonna">
+
+  {% if manutenzione %}
+  <!-- Avviso di manutenzione programmata: si accende da Impostazioni e sparisce da solo a fine lavori. -->
+  <aside class="avviso-manutenzione{% if manutenzione.stato == 'in_corso' %} in-corso{% endif %}" id="avviso-manutenzione"
+         role="status" data-stato="{{ manutenzione.stato }}" data-giorno="{{ manutenzione.giorno }}"
+         data-dalle="{{ manutenzione.dalle }}" data-alle="{{ manutenzione.alle }}"
+         data-a-cavallo="{{ '1' if manutenzione.a_cavallo else '0' }}">
+    <span class="avviso-manutenzione-icona" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.4-.4-2.1z"/></svg>
+    </span>
+    <div class="avviso-manutenzione-testo">
+      <strong class="avviso-manutenzione-titolo">{% if manutenzione.stato == 'in_corso' %}<span>Manutenzione in corso</span>{% else %}<span>Manutenzione programmata</span>{% endif %}</strong>
+      <p class="avviso-frase" translate="no">{{ manutenzione.frase }}</p>
+      {% if manutenzione.nota %}<p class="avviso-nota" translate="no">{{ manutenzione.nota }}</p>{% endif %}
+    </div>
+  </aside>
+  {% endif %}
+
   <div class="login-card card">
     <div class="body">
       {% if portal_logo %}<img src="{{ portal_logo }}" alt="{{ app_name }}" class="login-logo">
       {% else %}<p class="mark">{{ app_name }}</p>{% endif %}
-      <h1 style="margin-bottom:18px">Accedi</h1>
 
-      <template x-if="error">
-        <div class="notice n-err" x-text="error"></div>
+      <!-- ================================================ 1. email e password -->
+      <template x-if="passo === 'password'">
+        <div>
+          <h1 style="margin-bottom:18px">Accedi</h1>
+
+          <template x-if="error">
+            <div class="notice n-err" x-text="error"></div>
+          </template>
+
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" x-model="email" autocomplete="username"
+                   @keydown.enter="submit()" autofocus>
+          </div>
+          <div class="field">
+            <label for="pwd">Password</label>
+            <input id="pwd" type="password" x-model="password" autocomplete="current-password"
+                   @keydown.enter="submit()">
+          </div>
+
+          <button style="width:100%; justify-content:center" @click="submit()" :disabled="busy">
+            <span x-text="busy ? 'Un attimo…' : 'Entra'"></span>
+          </button>
+
+          <p class="hint" style="margin-top:14px">
+            Le credenziali te le fornisce l'amministratore del portale. Se non riesci a entrare, scrivi all'assistenza.
+          </p>
+        </div>
       </template>
 
-      <div class="field">
-        <label for="email">Email</label>
-        <input id="email" type="email" x-model="email" autocomplete="username"
-               @keydown.enter="submit()" autofocus>
-      </div>
-      <div class="field">
-        <label for="pwd">Password</label>
-        <input id="pwd" type="password" x-model="password" autocomplete="current-password"
-               @keydown.enter="submit()">
-      </div>
+      <!-- ================================================ 2. verifica in due passaggi -->
+      <template x-if="passo === '2fa'">
+        <div class="secondo-passo">
+          <h1>Verifica in due passaggi</h1>
+          <p class="hint" style="margin:4px 0 16px">La password è giusta: ora un'ultima prova che sei tu</p>
 
-      <button style="width:100%; justify-content:center" @click="submit()" :disabled="busy">
-        <span x-text="busy ? 'Un attimo…' : 'Entra'"></span>
-      </button>
+          <template x-if="metodi.length > 1">
+            <div class="metodi-scelta" role="tablist">
+              <template x-for="m in metodi" :key="m">
+                <button type="button" role="tab" class="filtro sm" :class="metodo === m && 'on'"
+                        :aria-selected="metodo === m" @click="scegli(m)" x-text="nomeMetodo(m)"></button>
+              </template>
+            </div>
+          </template>
 
-      <p class="hint" style="margin-top:14px">
-        Le credenziali te le fornisce l'amministratore del portale. Se non riesci a entrare, scrivi all'assistenza.
-      </p>
+          <template x-if="error">
+            <div class="notice n-err" x-text="error"></div>
+          </template>
+          <template x-if="info && !error">
+            <div class="notice n-ok" x-text="info"></div>
+          </template>
+
+          <!-- passkey -->
+          <template x-if="metodo === 'passkey'">
+            <div>
+              <p class="secondo-passo-spiega">Usa l'impronta, il volto o il PIN del dispositivo, oppure la tua chiave di sicurezza.</p>
+              <button style="width:100%; justify-content:center" @click="conPasskey()" :disabled="busy">
+                <span x-text="busy ? 'Un attimo…' : 'Usa la passkey'"></span>
+              </button>
+            </div>
+          </template>
+
+          <!-- app, email, codice di riserva -->
+          <template x-if="metodo === 'app' || metodo === 'email' || metodo === 'riserva'">
+            <div>
+              <template x-if="metodo === 'app'">
+                <p class="secondo-passo-spiega">Apri l'app di autenticazione e scrivi il codice di 6 cifre.</p>
+              </template>
+              <template x-if="metodo === 'riserva'">
+                <p class="secondo-passo-spiega">Scrivi uno dei codici di riserva che hai salvato. Ognuno vale una volta sola.</p>
+              </template>
+              <div class="field">
+                <label for="codice" x-text="metodo === 'riserva' ? 'Codice di riserva' : 'Codice di verifica'"></label>
+                <input id="codice" type="text" class="codice-2fa" x-model="codice" x-ref="codice"
+                       :inputmode="metodo === 'riserva' ? 'text' : 'numeric'" autocomplete="one-time-code"
+                       :maxlength="metodo === 'riserva' ? 14 : 8" spellcheck="false" autocapitalize="off"
+                       :placeholder="metodo === 'riserva' ? 'xxxxx-xxxxx' : '123456'"
+                       @keydown.enter="verifica()">
+              </div>
+              <button style="width:100%; justify-content:center" @click="verifica()" :disabled="busy || !codice">
+                <span x-text="busy ? 'Un attimo…' : 'Verifica'"></span>
+              </button>
+              <template x-if="metodo === 'email'">
+                <p class="hint" style="margin-top:12px">
+                  Non è arrivato? Guarda anche nello spam, oppure
+                  <button type="button" class="link" @click="inviaCodice()" :disabled="busy">fatti mandare un altro codice</button>
+                </p>
+              </template>
+            </div>
+          </template>
+
+          <div class="secondo-passo-piede">
+            <template x-if="haRiserva && metodo !== 'riserva'">
+              <p class="hint">Hai perso il telefono? <button type="button" class="link" @click="scegli('riserva')">Usa un codice di riserva</button></p>
+            </template>
+            <p class="hint"><button type="button" class="link" @click="indietro()">← Torna all'accesso</button></p>
+          </div>
+        </div>
+      </template>
+
       <!-- AGPL-3.0: chi usa il portale deve poter arrivare al suo codice sorgente. -->
       <p class="piede piede-login">
         <span translate="no">{{ app_version }}</span>{% if source_url %} ·
@@ -69,34 +166,189 @@
       </p>
     </div>
   </div>
+
+  </div>
 </div>
 
 <script>
+/* L'avviso di manutenzione nella lingua di chi legge: la frase si prende dal catalogo delle
+   traduzioni e la data si scrive con le parole di quella lingua. Giorno e orari in grassetto. */
+(function () {
+  var avviso = document.getElementById('avviso-manutenzione');
+  if (!avviso) return;
+  var frasi = {{ frasi_manutenzione | tojson }};
+  function scrivi() {
+    var d = avviso.dataset;
+    var lingua = (window.I18n && window.I18n.locale) || 'it';
+    var t = function (s) { try { return window.I18n ? window.I18n.t(s) : s; } catch (e) { return s; } };
+    var valori, modello;
+    if (d.stato === 'in_corso') {
+      modello = t(frasi.in_corso); valori = [d.alle];
+    } else {
+      var giorno = d.giorno;
+      try {
+        giorno = new Intl.DateTimeFormat(lingua, { weekday: 'long', day: 'numeric', month: 'long' })
+          .format(new Date(d.giorno + 'T12:00:00'));
+      } catch (e) {}
+      modello = t(d.aCavallo === '1' ? frasi.a_cavallo : frasi.stesso_giorno);
+      valori = [giorno, d.dalle, d.alle];
+    }
+    var frase = avviso.querySelector('.avviso-frase');
+    frase.textContent = '';
+    modello.split(/(\{\d\})/).forEach(function (pezzo, i) {
+      var m = /^\{(\d)\}$/.exec(pezzo);
+      if (m) {
+        var b = document.createElement('strong');
+        b.textContent = valori[+m[1]] || '';
+        frase.appendChild(b);
+      } else if (pezzo) {
+        frase.appendChild(document.createTextNode(pezzo));
+      }
+    });
+    // La frase comincia con la data: maiuscola anche quando la lingua la scrive minuscola.
+    var primo = frase.firstChild;
+    var testo = primo && (primo.nodeType === 3 ? primo : primo.firstChild);
+    if (testo && testo.nodeValue) testo.nodeValue = testo.nodeValue.charAt(0).toUpperCase() + testo.nodeValue.slice(1);
+  }
+  scrivi();
+  window.addEventListener('languagechange', scrivi);
+})();
+
 function loginForm() {
+  const t = s => { try { return window.I18n ? window.I18n.t(s) : s; } catch (e) { return s; } };
+  const lingua = () => (window.I18n && window.I18n.locale) || 'it';
   return {
-    email: '', password: '', error: '', busy: false,
+    passo: 'password',
+    email: '', password: '', error: '', info: '', busy: false,
+    metodi: [], metodo: '', emailMascherata: '', haRiserva: false, codice: '', inviato: false,
+
+    nomeMetodo(m) {
+      return { passkey: 'Passkey', app: 'App', email: 'Email', riserva: 'Codice di riserva' }[m] || m;
+    },
+
+    async chiama(indirizzo, corpo) {
+      const res = await fetch(indirizzo, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo || {})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(typeof data.detail === 'string' ? data.detail : 'Accesso non riuscito.');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    },
+
     async submit() {
       if (this.busy) return;
       this.error = '';
       if (!this.email || !this.password) { this.error = 'Inserisci email e password.'; return; }
       this.busy = true;
       try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: this.email, password: this.password })
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          this.error = data.detail || 'Accesso non riuscito.';
+        const data = await this.chiama('/api/auth/login', { email: this.email, password: this.password });
+        if (data.due_fattori) {
           this.busy = false;
+          this.password = '';
+          this.metodi = data.metodi || [];
+          this.emailMascherata = data.email || '';
+          this.haRiserva = !!data.riserva;
+          this.passo = '2fa';
+          this.scegli(this.metodi[0]);
           return;
         }
-        window.location.href = '/';
+        window.location.href = '/app';
       } catch (e) {
-        this.error = 'Server non raggiungibile.';
+        this.error = e.status ? e.message : 'Server non raggiungibile.';
         this.busy = false;
       }
+    },
+
+    scegli(m) {
+      this.metodo = m;
+      this.codice = '';
+      this.error = '';
+      this.info = '';
+      if (m === 'email' && !this.inviato) this.inviaCodice();
+      else if (m === 'email') this.info = t('Ti abbiamo mandato un codice a {0}').replace('{0}', this.emailMascherata);
+      this.$nextTick(() => { if (this.$refs.codice) this.$refs.codice.focus(); });
+    },
+
+    // Fuori tempo (dieci minuti dalla password) si torna al primo passo.
+    scaduto(e) {
+      if (e.status !== 401) return false;
+      this.passo = 'password';
+      this.error = e.message;
+      this.busy = false;
+      return true;
+    },
+
+    async inviaCodice() {
+      this.busy = true;
+      this.error = '';
+      this.info = '';
+      try {
+        const data = await this.chiama('/api/auth/2fa/email/invia', { lingua: lingua() });
+        this.inviato = true;
+        this.info = t('Ti abbiamo mandato un codice a {0}').replace('{0}', data.email || this.emailMascherata);
+      } catch (e) {
+        if (this.scaduto(e)) return;
+        this.error = e.status ? e.message : 'Server non raggiungibile.';
+      }
+      this.busy = false;
+      this.$nextTick(() => { if (this.$refs.codice) this.$refs.codice.focus(); });
+    },
+
+    async verifica() {
+      if (this.busy || !this.codice) return;
+      this.busy = true;
+      this.error = '';
+      try {
+        const data = await this.chiama('/api/auth/2fa/verifica', { metodo: this.metodo, codice: this.codice });
+        if (this.metodo === 'riserva') {
+          try { sessionStorage.setItem('td_riserva_rimasti', String(data.riserva_rimasti)); } catch (e) {}
+        }
+        window.location.href = '/app';
+      } catch (e) {
+        if (this.scaduto(e)) return;
+        this.error = e.status ? e.message : 'Server non raggiungibile.';
+        this.codice = '';
+        this.busy = false;
+        this.$nextTick(() => { if (this.$refs.codice) this.$refs.codice.focus(); });
+      }
+    },
+
+    async conPasskey() {
+      if (this.busy) return;
+      this.error = '';
+      if (!window.Passkey || !window.Passkey.supportata()) {
+        this.error = 'Questo browser non può usare le passkey qui: scegli un altro modo.';
+        return;
+      }
+      this.busy = true;
+      try {
+        const opzioni = await this.chiama('/api/auth/2fa/passkey/opzioni');
+        let credenziale;
+        try { credenziale = await window.Passkey.usa(opzioni); }
+        catch (e) { this.error = window.Passkey.messaggio(e); this.busy = false; return; }
+        await this.chiama('/api/auth/2fa/passkey/verifica', { credenziale: credenziale });
+        window.location.href = '/app';
+      } catch (e) {
+        if (this.scaduto(e)) return;
+        this.error = e.status ? e.message : 'Server non raggiungibile.';
+        this.busy = false;
+      }
+    },
+
+    async indietro() {
+      try { await this.chiama('/api/auth/2fa/annulla'); } catch (e) {}
+      this.passo = 'password';
+      this.error = '';
+      this.info = '';
+      this.codice = '';
+      this.inviato = false;
+      this.busy = false;
     }
   };
 }

@@ -88,9 +88,21 @@ def too_many_attempts(key: str, limit: int = 8, window: int = 300) -> bool:
     poche decine di utenti; se un giorno serve distribuito, si sposta su Redis."""
     now = time.monotonic()
     hits = [t for t in _attempts.get(key, []) if now - t < window]
-    _attempts[key] = hits
-    if len(_attempts) > 5000:  # non far crescere il dizionario all'infinito
-        _attempts.clear()
+    # Niente chiavi vuote: prima ogni controllo ne lasciava una, e superate le 5000 il
+    # dizionario si svuotava tutto, contatori veri compresi. Bastava una raffica di richieste
+    # inventate per azzerare i limiti. Ora si tengono solo i tentativi veri e, se diventano
+    # davvero tanti, si buttano quelli vecchi di un'ora.
+    if hits:
+        _attempts[key] = hits
+    else:
+        _attempts.pop(key, None)
+    if len(_attempts) > 50_000:
+        for chiave in list(_attempts):
+            recenti = [t for t in _attempts[chiave] if now - t < 3600]
+            if recenti:
+                _attempts[chiave] = recenti
+            else:
+                del _attempts[chiave]
     return len(hits) >= limit
 
 

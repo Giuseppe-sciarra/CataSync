@@ -133,6 +133,15 @@ inglese, francese e tedesco.
 - Categoria e prezzo li mette il cliente direttamente in tabella; una categoria si assegna a
   più righe insieme.
 - Nome, logo e favicon del portale caricabili dal pannello; tema chiaro e scuro.
+- **Verifica in due passaggi** per tutti, clienti e amministratori, dalla pagina *Account* (si
+  apre con un clic sull'email in alto): **app di autenticazione** (codice QR), **codice via email**
+  (col server SMTP del `.env`) o **passkey** (impronta, volto, PIN del dispositivo, chiave di
+  sicurezza). Si possono attivare tutti e all'accesso si sceglie; con il primo arrivano dieci
+  **codici di riserva**. Finché non è attiva, in cima al pannello una riga piccola lo ricorda.
+  Attivarla, cambiarla o spegnerla chiede la password; da *Account* si cambia anche la password.
+- **Avviso di manutenzione**: da *Impostazioni* si accende con giorno, ora d'inizio, ora di fine e
+  una nota facoltativa. Compare nella pagina di accesso, sopra email e password, nella lingua di chi
+  legge, e sparisce da solo a fine lavori.
 - Chiavi REST cifrate a riposo, descrizioni ripulite prima di salvarle e pubblicarle, richieste
   solo verso indirizzi pubblici, SVG con contenuti attivi rifiutati.
 
@@ -187,6 +196,10 @@ pannello.
 Al primo avvio LibreTranslate scarica i modelli delle lingue: la traduzione funziona qualche
 minuto dopo.
 
+Per il codice via email della verifica in due passaggi servono i dati del server di posta nel
+`.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`):
+senza, quel modo non si può attivare (l'app e le passkey funzionano comunque).
+
 ### Dietro un reverse proxy
 
 ```dotenv
@@ -238,6 +251,25 @@ Solo se vuoi le categorie nel menu del sito; senza il mu-plugin il menu non lo t
 Il plugin lavora da solo sul sito: il portale non lo chiama, quindi alla chiave REST non servono
 permessi in più.
 
+## Specifiche e filtri (facoltativo)
+
+Se il negozio mostra le specifiche col plugin **TD Product Specs** (meta `_td_product_specs`,
+shortcode `[td_specifiche]` e campi YOOtheme), CataSync scrive anche lì
+(*Siti → Modifica → Scrivi le specifiche anche per TD Product Specs*) e lavora insieme a quello che c'è sul sito:
+
+- Quello che un prodotto ha già resta, comprese le righe scritte a mano. Con *Solo se vuoto* sulle
+  specifiche CataSync aggiunge le voci che mancano; con *Sempre* aggiorna anche i valori delle stesse
+  voci. Le voci che non conosce non si tolgono mai.
+- Dalla versione 1.1 il plugin trasforma in filtri le etichette che scegli (*Prodotti → Filtri
+  specifiche*), per i prodotti messi a mano come per quelli di CataSync. CataSync legge quali sono e
+  quelle voci le scrive sempre, prima delle altre e oltre il numero di specifiche impostato per il
+  sito: così i prodotti nuovi compaiono sotto i filtri.
+- In *Magazzino → scheda prodotto* le specifiche di un prodotto che ha le righe del plugin sono
+  quelle righe: le stesse che il negozio mostra e filtra. A un prodotto con le specifiche solo nel
+  plugin non si creano attributi WooCommerce che non aveva.
+
+Senza il plugin non cambia niente: il meta resta sul prodotto e non fa nulla.
+
 ## Perché un codice non si trova
 
 Ogni ricerca si chiude con una causa, quella che il cliente vede in tabella e in **Perché?**:
@@ -271,6 +303,10 @@ segnala da rileggere; senza LibreTranslate la scheda resta nella lingua trovata,
 | Stato dei motori, cause dei mancati, siti che rifiutano la lettura | *Impostazioni → Com'è andata la ricerca* |
 | Un elenco di codici cercati uno per uno, con l'esito | *Impostazioni → Prova a lotti* |
 | Nome, logo e favicon del portale | *Impostazioni → Aspetto del portale* |
+| Avviso di manutenzione nella pagina di accesso | *Impostazioni → Avviso di manutenzione* |
+| Verifica in due passaggi e password, per ogni utente | *Account* (l'email in alto a destra) |
+| Togliere la verifica in due passaggi a chi ha perso telefono e codici | *Utenti → Togli 2FA* |
+| Server di posta per il codice via email della verifica in due passaggi | `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` |
 | Prodotti già sul sito: ricerca, scheda completa, categoria, prezzo, cestino | *Magazzino* |
 | Aggiungere, rinominare, eliminare e ordinare le categorie del negozio | *Categorie* |
 | Voce di menu sotto cui vanno le categorie (mu-plugin facoltativo) | sul sito, *Aspetto → Menu categorie* |
@@ -317,8 +353,10 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
 ## Se qualcosa non va
 
 - **Tutti i codici «non trovati» o rimandati** — apri *Impostazioni → Com'è andata la
-  ricerca*. Se i motori bloccano, i codici si riprovano da soli; alza `SEARCH_PAUSE` e aggiorna
-  SearXNG (`docker compose pull searxng`).
+  ricerca*. Se i motori bloccano, i codici si riprovano da soli e i motori che bloccano restano
+  in pausa (15 minuti, poi sempre di più) mentre lavorano gli altri; alza `SEARCH_PAUSE` e
+  aggiorna SearXNG (`docker compose pull searxng`). Se a rispondere non resta nessuno per ore,
+  l'unica via stabile è un'API ufficiale (Brave o Google) in *Ricerca automatica sul web*.
 - **«SearXNG: uscita JSON non abilitata»** — il `settings.yml` in uso non ha
   `search: formats: [html, json]`: usa quello in `searxng/`.
 - **Il container `searxng` non parte** — manca `SEARXNG_SECRET` nel `.env`.
@@ -334,6 +372,17 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
   l'intestazione `Authorization` (certe configurazioni Apache), CataSync riprova da solo con le
   chiavi nell'indirizzo.
 - **`FERNET_KEY` persa** — le chiavi REST dei negozi e quelle dei motori vanno reinserite.
+- **Il codice dell'app di autenticazione non passa** — l'ora del telefono è sbagliata: mettila
+  automatica. Ogni codice vale 30 secondi (più quello prima e quello dopo) e una volta sola.
+- **La passkey non si aggiunge o non funziona più** — le passkey vogliono HTTPS (oppure
+  `localhost`) e sono legate al dominio di `PUBLIC_URL`, o a quello aperto nel browser se è vuoto:
+  cambiando dominio vanno registrate di nuovo.
+- **Dopo aver cambiato `SECRET_KEY` o `FERNET_KEY` i codici non passano** — i codici di riserva
+  dipendono da `SECRET_KEY`, i segreti delle app da `FERNET_KEY`: togli la verifica agli utenti
+  (*Utenti → Togli 2FA*) e falla riattivare.
+- **Amministratore chiuso fuori dalla verifica in due passaggi** (telefono e codici di riserva
+  persi) — `docker exec -it catasync-hub python -m app.due_fattori togli admin@example.com`, poi
+  rientra con la sola password e riattivala da *Account*. Per i clienti basta *Utenti → Togli 2FA*.
 - **Categorie: «HTTP 403 dal sito»** quando aggiungi, rinomini o elimini — l'utente della chiave REST del
   negozio non può gestire le categorie dei prodotti: genera la chiave con un utente amministratore
   o gestore del negozio.

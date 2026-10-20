@@ -32,6 +32,15 @@ RICERCA_MOTORI = "ricerca_motori"      # motori di SearXNG da interrogare (vuoto
 TRAD_URL = "traduzione_url"            # indirizzo di LibreTranslate (vuoto = spenta)
 TRAD_CHIAVE = "traduzione_chiave"      # cifrata, facoltativa
 RENDER_URL = "render_url"              # browser headless per i siti solo-JavaScript
+GIRO_CODICI = "ricerca_giro_codici"    # codici cercati di fila prima di una pausa
+GIRO_PAUSA = "ricerca_giro_pausa"      # minuti di pausa fra un giro e l'altro
+RISERVA_CHIAVE = "ricerca_riserva_brave"  # chiave Brave Search API di riserva a SearXNG
+CATALOGHI_FORZA = "ricerca_cataloghi_forza"  # "1" = cataloghi letti anche se robots.txt lo vieta
+# Icecat: una sola utenza per tutto il portale, prima fonte per ogni cliente.
+ICECAT_ATTIVO = "icecat_attivo"
+ICECAT_UTENTE = "icecat_utente"
+ICECAT_API_TOKEN = "icecat_api_token"
+ICECAT_CONTENT_TOKEN = "icecat_content_token"
 
 BRAND_NAME_KEY = "portal_name"
 BRAND_LOGO_KEY = "portal_logo"
@@ -77,13 +86,65 @@ def ricerca_config(db: Session) -> dict:
         "lt_url": get_setting(db, TRAD_URL) or "",
         "lt_chiave": decrypt(get_setting(db, TRAD_CHIAVE) or ""),
         "render_url": get_setting(db, RENDER_URL) or "",
+        "giro_codici": _intero(get_setting(db, GIRO_CODICI), 5),
+        "giro_pausa": _decimale(get_setting(db, GIRO_PAUSA), 2.0),
+        "riserva_chiave": decrypt(get_setting(db, RISERVA_CHIAVE) or ""),
+        "cataloghi_forza": get_setting(db, CATALOGHI_FORZA) == "1",
     }
+
+
+def icecat_config(db: Session) -> dict:
+    """L'utenza Icecat del portale: vale per tutti i clienti."""
+    from .security import decrypt
+
+    utente = (get_setting(db, ICECAT_UTENTE) or "").strip()
+    return {
+        "attivo": get_setting(db, ICECAT_ATTIVO) == "1" and bool(utente),
+        "acceso": get_setting(db, ICECAT_ATTIVO) == "1",
+        "utente": utente,
+        "api_token": decrypt(get_setting(db, ICECAT_API_TOKEN) or ""),
+        "content_token": decrypt(get_setting(db, ICECAT_CONTENT_TOKEN) or ""),
+    }
+
+
+def salva_icecat(db: Session, attivo: bool, utente: str, api_token: str | None = None,
+                 content_token: str | None = None, togli_token: bool = False) -> None:
+    """Token vuoti = non toccare quelli salvati; ``togli_token`` li cancella (si torna a Open Icecat)."""
+    from .security import encrypt
+
+    set_setting(db, ICECAT_ATTIVO, "1" if attivo else "0")
+    set_setting(db, ICECAT_UTENTE, (utente or "").strip())
+    if togli_token:
+        set_setting(db, ICECAT_API_TOKEN, "")
+        set_setting(db, ICECAT_CONTENT_TOKEN, "")
+        return
+    if api_token:
+        set_setting(db, ICECAT_API_TOKEN, encrypt(api_token.strip()))
+    if content_token:
+        set_setting(db, ICECAT_CONTENT_TOKEN, encrypt(content_token.strip()))
+
+
+def _intero(valore: str, predefinito: int) -> int:
+    try:
+        return int(valore)
+    except (TypeError, ValueError):
+        return predefinito
+
+
+def _decimale(valore: str, predefinito: float) -> float:
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return predefinito
 
 
 def salva_ricerca(
     db: Session, motore: str, chiave: str | None, cx: str, url: str = "",
     lt_url: str | None = None, lt_chiave: str | None = None,
     render_url: str | None = None, motori: str | None = None,
+    giro_codici: int | None = None, giro_pausa: float | None = None,
+    riserva_chiave: str | None = None, togli_riserva: bool = False,
+    cataloghi_forza: bool | None = None,
 ) -> None:
     from .security import encrypt
 
@@ -101,3 +162,13 @@ def salva_ricerca(
     if motori is not None:
         pulito = ", ".join(p.strip().lower() for p in motori.split(",") if p.strip())
         set_setting(db, RICERCA_MOTORI, pulito)
+    if giro_codici is not None:
+        set_setting(db, GIRO_CODICI, str(int(giro_codici)))
+    if giro_pausa is not None:
+        set_setting(db, GIRO_PAUSA, f"{float(giro_pausa):g}")
+    if togli_riserva:
+        set_setting(db, RISERVA_CHIAVE, "")
+    elif riserva_chiave:
+        set_setting(db, RISERVA_CHIAVE, encrypt(riserva_chiave.strip()))
+    if cataloghi_forza is not None:
+        set_setting(db, CATALOGHI_FORZA, "1" if cataloghi_forza else "0")

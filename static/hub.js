@@ -74,9 +74,19 @@ function hub(isAdmin) {
     linguaScelta: false,
     salute: null,
     lotto: { codici: '', lingua: 'IT', busy: false, stato: null, timer: null },
+    registro: { esito: 'problemi', righe: [], prossimo: null, busy: false },
+    icecat: { attivo: false, pronto: false, utente: '', api_token: '', content_token: '', api_token_masked: '',
+              content_token_masked: '', livello: 'open', busy: false, prova: '', provaMarca: '', provaCodice: '',
+              provaBusy: false, esito: null },
     qualityFields: [],
     editingClientId: null,
     brandForm: { name: '', logo: '' },
+    // Avviso di manutenzione nella pagina di accesso (Impostazioni).
+    manut: { attiva: false, giorno: '', dalle: '', alle: '', nota: '', stato: 'spenta', fuso: '', busy: false },
+    // Account: verifica in due passaggi (null finché /me non risponde) e password.
+    dueFattori: null,
+    sic: { stato: null, busy: false, app: null, appCodice: '', emailInviata: false, emailCodice: '', passkeyNome: '' },
+    pwdForm: { attuale: '', nuova: '', ripeti: '', busy: false },
 
     // dati
     sites: [], allSites: [], clients: [], users: [], jobs: [], items: [],
@@ -189,7 +199,8 @@ function hub(isAdmin) {
       if (tab === 'users') this.loadUsers();
       if (tab === 'clients') this.loadClients();
       if (tab === 'shop') this.loadProfile();
-      if (tab === 'impostazioni') { this.loadAudit(); this.loadBrand(); this.loadRicerca(); this.loadSalute(); }
+      if (tab === 'impostazioni') { this.loadManutenzione(); this.loadAudit(); this.loadBrand(); this.loadIcecat(); this.loadRicerca(); this.loadSalute(); this.loadRegistro(); }
+      if (tab === 'account') this.loadSicurezza();
     },
 
     // -------------------------------------------------------------- tema
@@ -224,9 +235,16 @@ function hub(isAdmin) {
         if (me && me.authenticated) {
           this.brand = me.brand;
           this.sub = me.subscription;
+          this.dueFattori = !!me.due_fattori;
           this.allineaGuide(me.guide_chiuse || []);
         }
       } catch (e) {}
+      // Entrato con un codice di riserva: si dice quanti ne restano, e che conviene rifare la verifica.
+      let rimasti = null;
+      try { rimasti = sessionStorage.getItem('td_riserva_rimasti'); sessionStorage.removeItem('td_riserva_rimasti'); } catch (e) {}
+      if (rimasti !== null) {
+        this.say(this.tt('Sei entrato con un codice di riserva: te ne restano {0}. Se hai perso il telefono, configura di nuovo la verifica da Account.', rimasti), 'warn');
+      }
     },
     // Il server comanda. Unica eccezione: la «Come funziona» chiusa in questo browser con la
     // versione di prima, che il server non sa: chi l'aveva chiusa non rivede l'invito.
@@ -1856,8 +1874,16 @@ function hub(isAdmin) {
     async loadRicerca() {
       try {
         const r = await this.api('/api/admin/ricerca');
-        this.ricerca = Object.assign({ chiave: '' }, r);
+        this.ricerca = Object.assign({ chiave: '', riserva_chiave: '' }, r);
       } catch (e) {}
+    },
+
+    // Toglie la chiave Brave di riserva: da lì in poi si usa solo SearXNG.
+    async togliRiserva() {
+      this.ricerca.riserva_chiave = '';
+      this.ricerca.togli_riserva = true;
+      await this.salvaRicerca();
+      this.ricerca.togli_riserva = false;
     },
 
     async salvaRicerca() {
@@ -1872,10 +1898,15 @@ function hub(isAdmin) {
             motori: this.ricerca.motori || '',
             lt_url: this.ricerca.lt_url || '',
             lt_chiave: this.ricerca.lt_chiave ? this.ricerca.lt_chiave : null,
-            render_url: this.ricerca.render_url || ''
+            render_url: this.ricerca.render_url || '',
+            giro_codici: Math.max(1, Math.min(50, parseInt(this.ricerca.giro_codici, 10) || 5)),
+            giro_pausa: Math.max(0, Math.min(60, parseFloat(this.ricerca.giro_pausa) || 0)),
+            riserva_chiave: this.ricerca.riserva_chiave ? this.ricerca.riserva_chiave.trim() : null,
+            togli_riserva: !!this.ricerca.togli_riserva,
+            cataloghi_forza: !!this.ricerca.cataloghi_forza
           })
         });
-        this.ricerca = Object.assign({ chiave: '' }, r);
+        this.ricerca = Object.assign({ chiave: '', riserva_chiave: '' }, r);
         this.say(r.attiva ? 'Ricerca automatica attiva.' : 'Ricerca automatica spenta.');
       } catch (e) { this.say(e.message, 'err'); }
     },
@@ -2189,6 +2220,285 @@ function hub(isAdmin) {
       window.prompt('Nuova password per ' + r.email + ':', r.password);
     },
 
+    // Per chi ha perso telefono e codici di riserva: rientra con la sola password.
+    async togli2fa(u) {
+      if (!confirm(this.tt('Tolgo la verifica in due passaggi a {0}? Entrerà con la sola password e potrà riattivarla da Account.', u.email))) return;
+      try {
+        await this.api('/api/admin/users/' + u.id + '/2fa/reset', { method: 'POST' });
+        this.say(this.tt('Verifica in due passaggi tolta a {0}.', u.email));
+        this.loadUsers();
+      } catch (e) { this.fail(e.message); }
+    },
+
+    // ------------------------------------------------- avviso di manutenzione
+    // Le frasi sono le stesse di app/manutenzione.py e sono chiavi del catalogo delle traduzioni.
+    frasiManutenzione: {
+      stesso_giorno: '{0}, dalle {1} alle {2}, il portale sarà fermo per manutenzione: in quelle ore i servizi non funzioneranno',
+      a_cavallo: '{0}, dalle {1} alle {2} del giorno dopo, il portale sarà fermo per manutenzione: in quelle ore i servizi non funzioneranno',
+      in_corso: 'Fino alle {0} il portale è fermo per manutenzione: i servizi potrebbero non funzionare'
+    },
+
+    async loadManutenzione() {
+      try { this.manut = Object.assign({ busy: false }, await this.api('/api/admin/manutenzione')); } catch (e) { this.fail(e.message); }
+    },
+
+    async saveManutenzione() {
+      const m = this.manut;
+      m.busy = true;
+      try {
+        const r = await this.api('/api/admin/manutenzione', { method: 'PUT', body: JSON.stringify({
+          attiva: !!m.attiva, giorno: m.giorno || '', dalle: m.dalle || '', alle: m.alle || '', nota: m.nota || ''
+        }) });
+        this.manut = Object.assign({ busy: false }, r);
+        this.say(r.attiva ? this.t('Avviso di manutenzione salvato.') : this.t('Avviso di manutenzione spento.'));
+      } catch (e) { m.busy = false; this.fail(e.message); }
+    },
+
+    statoManutenzione(stato) {
+      return { spenta: 'spento', incompleta: 'da completare', programmata: 'visibile', in_corso: 'in corso', finita: 'scaduto' }[stato] || '';
+    },
+
+    testoStatoManutenzione() {
+      return {
+        programmata: 'Chi apre la pagina di accesso vede l\'avviso.',
+        in_corso: 'Manutenzione in corso: l\'avviso si vede nella pagina di accesso.',
+        finita: 'La manutenzione è finita: l\'avviso non si vede più.',
+        incompleta: 'Mancano il giorno o gli orari: l\'avviso non si vede.'
+      }[this.manut.stato] || '';
+    },
+
+    // Gli stessi conti della pagina di accesso, sull'orologio di questo computer: l'anteprima
+    // si vede mentre si scrive, prima di salvare.
+    finestraManutenzione() {
+      const m = this.manut, ora = /^\d\d:\d\d$/;
+      if (!/^\d{4}-\d\d-\d\d$/.test(m.giorno || '') || !ora.test(m.dalle || '') || !ora.test(m.alle || '')) return null;
+      if (m.dalle === m.alle) return null;
+      const inizio = new Date(m.giorno + 'T' + m.dalle + ':00');
+      const fine = new Date(m.giorno + 'T' + m.alle + ':00');
+      const aCavallo = m.alle < m.dalle;
+      if (aCavallo) fine.setDate(fine.getDate() + 1);
+      return { inizio, fine, aCavallo };
+    },
+
+    anteprimaInCorso() {
+      const f = this.finestraManutenzione();
+      const adesso = new Date();
+      return !!f && adesso >= f.inizio && adesso < f.fine;
+    },
+
+    fraseManutenzione() {
+      const f = this.finestraManutenzione();
+      if (!f) return null;
+      let modello, valori;
+      if (this.anteprimaInCorso()) {
+        modello = this.t(this.frasiManutenzione.in_corso);
+        valori = [this.manut.alle];
+      } else {
+        let giorno = this.manut.giorno;
+        try {
+          giorno = new Intl.DateTimeFormat(this.linguaUI().toLowerCase(), { weekday: 'long', day: 'numeric', month: 'long' })
+            .format(new Date(this.manut.giorno + 'T12:00:00'));
+        } catch (e) {}
+        modello = this.t(f.aCavallo ? this.frasiManutenzione.a_cavallo : this.frasiManutenzione.stesso_giorno);
+        valori = [giorno, this.manut.dalle, this.manut.alle];
+      }
+      const pezzi = modello.split(/(\{\d\})/).filter(Boolean).map(p => {
+        const m = /^\{(\d)\}$/.exec(p);
+        return m ? { testo: String(valori[+m[1]] || ''), forte: true } : { testo: p, forte: false };
+      });
+      if (pezzi.length) pezzi[0].testo = pezzi[0].testo.charAt(0).toUpperCase() + pezzi[0].testo.slice(1);
+      return pezzi;
+    },
+
+    // ------------------------------------------------------------ account
+    nomeMetodo2fa(m) {
+      return { passkey: 'Passkey', app: 'App', email: 'Email' }[m] || m;
+    },
+
+    passkeyPossibile() {
+      return !!(window.Passkey && window.Passkey.supportata());
+    },
+
+    async loadSicurezza() {
+      try { this.aggiornaSicurezza(await this.api('/api/auth/2fa')); } catch (e) { this.fail(e.message); }
+      if (!this.sic.passkeyNome && window.Passkey) this.sic.passkeyNome = window.Passkey.nomeDispositivo();
+    },
+
+    aggiornaSicurezza(stato) {
+      this.sic.stato = stato;
+      this.dueFattori = !!stato.attiva;
+      if (stato.codici_riserva && stato.codici_riserva.length) this.mostraRiserva(stato.codici_riserva);
+    },
+
+    async confermaApp() {
+      if (this.sic.busy || !this.sic.appCodice) return;
+      this.sic.busy = true;
+      try {
+        const r = await this.api('/api/auth/2fa/app/conferma', { method: 'POST', body: JSON.stringify({ codice: this.sic.appCodice }) });
+        this.sic.app = null;
+        this.sic.appCodice = '';
+        this.aggiornaSicurezza(r);
+        this.say(this.t('App di autenticazione attivata: dal prossimo accesso ti chiederà il codice.'));
+      } catch (e) { this.sic.appCodice = ''; this.fail(e.message); }
+      this.sic.busy = false;
+    },
+
+    async confermaEmail() {
+      if (this.sic.busy || !this.sic.emailCodice) return;
+      this.sic.busy = true;
+      try {
+        const r = await this.api('/api/auth/2fa/email/conferma', { method: 'POST', body: JSON.stringify({ codice: this.sic.emailCodice }) });
+        this.sic.emailInviata = false;
+        this.sic.emailCodice = '';
+        this.aggiornaSicurezza(r);
+        this.say(this.t('Codice via email attivato: dal prossimo accesso te lo mandiamo.'));
+      } catch (e) { this.sic.emailCodice = ''; this.fail(e.message); }
+      this.sic.busy = false;
+    },
+
+    // Attivare, cambiare o spegnere la verifica chiede la password (il server la tiene buona per
+    // dieci minuti): se è stata scritta da poco si va dritti, altrimenti si chiede.
+    confermaRecente() {
+      return !!this.sic.confermata && Date.now() - this.sic.confermata < 9 * 60 * 1000;
+    },
+
+    conPassword(azione, passkey) {
+      if (this.sic.busy) return;
+      if (this.confermaRecente()) this.eseguiAzione(azione, passkey || null, '');
+      else this.chiediPassword(azione, passkey);
+    },
+
+    chiediPassword(azione, passkey) {
+      const s = this.sic.stato || { metodi: [], passkey: [] };
+      const inizia = ['Conferma la tua password', 'Per sicurezza, prima di cambiare la verifica in due passaggi scrivi la tua password.', 'Continua', false];
+      const testi = {
+        'app-inizia': inizia, 'email-inizia': inizia, 'passkey-inizia': inizia,
+        app: ['Disattiva l\'app di autenticazione', 'All\'accesso il portale non chiederà più il codice dell\'app.', 'Disattiva', true],
+        email: ['Disattiva il codice via email', 'All\'accesso il portale non manderà più il codice via email.', 'Disattiva', true],
+        passkey: ['Rimuovi la passkey', '', 'Rimuovi', true],
+        riserva: ['Nuovi codici di riserva', 'I codici di riserva che hai adesso smettono di valere e ne arrivano dieci nuovi.', 'Genera nuovi codici', false]
+      }[azione];
+      let testo = azione === 'passkey'
+        ? this.tt('Rimuovi «{0}»: con quella passkey non potrai più entrare.', passkey.nome)
+        : this.t(testi[1]);
+      if (['app', 'email', 'passkey'].includes(azione)) {
+        const restano = s.metodi.filter(m => m !== azione || (azione === 'passkey' && s.passkey.length > 1));
+        if (!restano.length) testo += ' ' + this.t('È l\'ultimo modo attivo: l\'account resterà protetto solo dalla password.');
+      }
+      this.modal = {
+        error: null, kind: 'sicpwd', title: this.t(testi[0]),
+        data: { azione: azione, passkey: passkey || null, testo: testo, bottone: this.t(testi[2]), pericolo: testi[3], password: '' }
+      };
+    },
+
+    eseguiConPassword() {
+      const d = this.modal.data;
+      if (this.sic.busy || !d.password) return;
+      this.eseguiAzione(d.azione, d.passkey, d.password);
+    },
+
+    async eseguiAzione(azione, passkey, password) {
+      const indirizzo = {
+        'app-inizia': '/api/auth/2fa/app/inizia',
+        'email-inizia': '/api/auth/2fa/email/inizia',
+        'passkey-inizia': '/api/auth/2fa/passkey/inizia',
+        app: '/api/auth/2fa/app/disattiva',
+        email: '/api/auth/2fa/email/disattiva',
+        riserva: '/api/auth/2fa/riserva',
+        passkey: '/api/auth/2fa/passkey/' + (passkey && passkey.id) + '/rimuovi'
+      }[azione];
+      const nelModulo = this.modal.kind === 'sicpwd';
+      this.sic.busy = true;
+      let r;
+      try {
+        r = await this.api(indirizzo, {
+          method: 'POST', body: JSON.stringify({ password: password || '', lingua: this.linguaUI().toLowerCase() })
+        });
+      } catch (e) {
+        this.sic.busy = false;
+        // Conferma scaduta sul server: si chiede la password.
+        if (e.status === 403 && !nelModulo) { this.sic.confermata = 0; this.chiediPassword(azione, passkey); return; }
+        if (nelModulo) { this.modal.error = e.message; this.modal.data.password = ''; } else this.fail(e.message);
+        return;
+      }
+      this.sic.confermata = Date.now();
+      if (nelModulo) this.modal.kind = null;
+      this.sic.busy = false;
+      if (azione === 'app-inizia') {
+        this.sic.app = r;
+        this.sic.appCodice = '';
+        this.$nextTick(() => { const el = document.getElementById('codice-app'); if (el) el.focus(); });
+      } else if (azione === 'email-inizia') {
+        this.sic.emailInviata = true;
+        this.sic.emailCodice = '';
+        this.say(this.tt('Codice spedito a {0}: controlla la casella.', r.email));
+        this.$nextTick(() => { const el = document.getElementById('codice-email'); if (el) el.focus(); });
+      } else if (azione === 'passkey-inizia') {
+        await this.registraPasskey(r);
+      } else {
+        this.aggiornaSicurezza(r);
+        const fatto = { app: 'App di autenticazione disattivata.', email: 'Codice via email disattivato.', passkey: 'Passkey rimossa.' }[azione];
+        if (fatto) this.say(this.t(fatto));
+      }
+    },
+
+    // Dopo la password: il browser crea la passkey (impronta, volto, PIN) e il portale la registra.
+    async registraPasskey(opzioni) {
+      this.sic.busy = true;
+      try {
+        let credenziale;
+        try { credenziale = await window.Passkey.crea(opzioni); }
+        catch (e) { this.sic.busy = false; this.fail(this.t(window.Passkey.messaggio(e))); return; }
+        const r = await this.api('/api/auth/2fa/passkey/conferma', {
+          method: 'POST', body: JSON.stringify({ credenziale: credenziale, nome: this.sic.passkeyNome || '' })
+        });
+        this.sic.passkeyNome = '';
+        this.aggiornaSicurezza(r);
+        this.say(this.t('Passkey aggiunta: dal prossimo accesso puoi usarla.'));
+      } catch (e) { this.fail(e.message); }
+      this.sic.busy = false;
+    },
+
+    mostraRiserva(codici) {
+      this.modal = { error: null, kind: 'sicriserva', title: this.t('I tuoi codici di riserva'), data: { codici: codici.slice(), copiati: false } };
+    },
+
+    testoRiserva() {
+      const chi = (this.sic.stato && this.sic.stato.email_indirizzo) || '';
+      return [this.tt('Codici di riserva per {0}', chi), this.t('Ognuno vale una volta sola.'), ''].concat(this.modal.data.codici).join('\n') + '\n';
+    },
+
+    async copiaRiserva() {
+      try {
+        await navigator.clipboard.writeText(this.testoRiserva());
+        this.modal.data.copiati = true;
+      } catch (e) { this.modal.error = this.t('Copia non riuscita: selezionali e copiali a mano.'); }
+    },
+
+    scaricaRiserva() {
+      const blob = new Blob([this.testoRiserva()], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'codici-di-riserva.txt';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    },
+
+    async cambiaPassword() {
+      const f = this.pwdForm;
+      if (f.nuova !== f.ripeti) { this.fail(this.t('Le due password nuove non coincidono.')); return; }
+      if (f.nuova.length < 10) { this.fail(this.t('Usa almeno 10 caratteri.')); return; }
+      f.busy = true;
+      try {
+        await this.api('/api/auth/password', {
+          method: 'POST', body: JSON.stringify({ current_password: f.attuale, new_password: f.nuova })
+        });
+        this.pwdForm = { attuale: '', nuova: '', ripeti: '', busy: false };
+        this.say(this.t('Password cambiata.'));
+      } catch (e) { f.busy = false; this.fail(e.message); }
+    },
+
 
     // ------------------------------------------------- perché non si trova
     causaTesto(causa) {
@@ -2226,7 +2536,8 @@ function hub(isAdmin) {
         http: 'errore del sito', rete: 'non risponde', senza_dati: 'senza dati leggibili',
         altro_prodotto: 'altro prodotto', non_conferma: 'non conferma il codice',
         incoerente: 'non coerente con gli altri siti', documento: 'documento PDF',
-        elenco: 'pagina di categoria o di ricerca'
+        elenco: 'pagina di categoria o di ricerca', icecat_assente: 'non c\'è su Icecat',
+        assente: 'non c\'è nelle banche dati'
       }[esito] || esito || '';
     },
 
@@ -2263,15 +2574,19 @@ function hub(isAdmin) {
                 '<th class="right">Risultati</th><th class="right">Col codice</th><th>Motori</th></tr></thead><tbody>';
         ricerche.forEach(r => {
           const ok = (r.ok || []).map(m => '<span class="chip ok" translate="no">' + e(m) + '</span>').join(' ');
-          const ko = (r.ko || []).map(k => '<span class="chip ko"><span translate="no">' + e(k[0]) + '</span> · ' +
-                                         e(k[1] || '') + '</span>').join(' ');
+          const ko = (r.ko || []).map(k => '<span class="chip ' + (k[1] === 'in pausa' ? 'pausa' : 'ko') + '"><span translate="no">' +
+                                         e(k[0]) + '</span> · ' + e(k[1] || '') + '</span>').join(' ');
+          // Motori lasciati fuori da questa domanda perché in pausa dopo un blocco: grigi, con l'ora di ripresa.
+          const pausa = (r.pausa || []).map(k => '<span class="chip pausa"><span translate="no">' + e(k[0]) + '</span> · ' +
+                                         e(this.tt('in pausa fino alle {0}', this.fmtOra(k[1] * 1000))) + '</span>').join(' ');
           html += '<tr><td><span class="mono" translate="no">' + e(r.q || '—') + '</span>' +
                   (r.via && r.via !== 'searxng' ? ' <span class="hint" translate="no">(' + e(r.via) + ')</span>' : '') +
+                  (r.fase ? ' <span class="chip">' + e(this.t('col codice produttore')) + '</span>' : '') +
                   (r.lingua ? ' <span class="hint">· ' + e(r.lingua === '*' ? this.t('tutte le lingue') : this.t(this.nomeLingua(r.lingua))) + '</span>' : '') +
                   (r.errore ? '<div class="hint err">' + e(r.errore) + '</div>' : '') + '</td>' +
                   '<td class="right num">' + e(r.risultati == null ? '—' : r.risultati) + '</td>' +
                   '<td class="right num">' + e(r.ancorati == null ? '—' : r.ancorati) + '</td>' +
-                  '<td>' + ok + ' ' + ko + '</td></tr>';
+                  '<td>' + ok + ' ' + ko + ' ' + pausa + '</td></tr>';
         });
         html += '</tbody></table>';
       }
@@ -2283,6 +2598,7 @@ function hub(isAdmin) {
           html += '<tr><td><a class="mono" translate="no" href="' + e(p.url) + '" target="_blank" rel="noopener">' +
                   e(p.dominio) + '</a></td><td><span class="esito es-' + e(p.esito) + '">' + e(this.esitoTesto(p.esito)) +
                   '</span></td><td class="hint">' + e(p.dettaglio || '') +
+                  (p.fase ? ' · ' + e(this.t('col codice produttore')) : '') +
                   (p.browser && !/browser/.test(p.dettaglio || '') ? ' · col browser' : '') +
                   (p.segue ? '<div><a translate="no" class="mono" href="' + e(p.segue) + '" target="_blank" rel="noopener">→ ' +
                              e(p.segue.replace(/^https?:\/\/[^/]+/, '').slice(0, 70)) + '</a> <span>apro la scheda del prodotto</span></div>' : '') +
@@ -2303,6 +2619,91 @@ function hub(isAdmin) {
     // ------------------------------------------------ salute e prove a lotti
     async loadSalute() {
       try { this.salute = await this.api('/api/admin/ricerca/salute'); } catch (e) { this.salute = null; }
+    },
+
+    // ------------------------------------------------ Icecat (utenza unica)
+    async loadIcecat() {
+      try {
+        const d = await this.api('/api/admin/icecat');
+        Object.assign(this.icecat, d, { api_token: '', content_token: '' });
+      } catch (e) {}
+    },
+
+    async salvaIcecat(togliToken = false) {
+      const ic = this.icecat;
+      ic.busy = true;
+      try {
+        const d = await this.api('/api/admin/icecat', {
+          method: 'PUT',
+          body: JSON.stringify({
+            attivo: !!ic.attivo, utente: (ic.utente || '').trim(),
+            api_token: ic.api_token ? ic.api_token.trim() : null,
+            content_token: ic.content_token ? ic.content_token.trim() : null,
+            togli_token: !!togliToken
+          })
+        });
+        Object.assign(ic, d, { api_token: '', content_token: '' });
+        this.say(d.pronto ? 'Icecat attivo: la prima ricerca va lì.' : 'Icecat spento.');
+      } catch (e) { this.fail(e.message); }
+      ic.busy = false;
+    },
+
+    async provaIcecat() {
+      const ic = this.icecat;
+      const perCodice = ic.provaMarca.trim() && ic.provaCodice.trim();
+      if (!ic.prova.trim() && !perCodice) return;
+      ic.provaBusy = true; ic.esito = null;
+      try {
+        const q = perCodice
+          ? 'marca=' + encodeURIComponent(ic.provaMarca.trim()) + '&codice=' + encodeURIComponent(ic.provaCodice.trim())
+          : 'gtin=' + encodeURIComponent(ic.prova.trim());
+        ic.esito = await this.api('/api/admin/icecat/prova?' + q + '&lang=' + this.linguaUI(), { method: 'POST' });
+      } catch (e) { this.fail(e.message); }
+      ic.provaBusy = false;
+    },
+
+    // Registro delle ricerche: codici ed esiti, senza clienti. «altre» aggiunge le precedenti.
+    async loadRegistro(altre = false) {
+      const r = this.registro;
+      r.busy = true;
+      try {
+        let url = '/api/admin/ricerca/registro?esito=' + encodeURIComponent(r.esito);
+        if (altre && r.prossimo) url += '&prima_di=' + r.prossimo;
+        const d = await this.api(url);
+        r.righe = altre ? r.righe.concat(d.righe) : d.righe;
+        r.prossimo = d.prossimo;
+      } catch (e) { if (!altre) r.righe = []; this.fail(e.message); }
+      r.busy = false;
+    },
+
+    esitoRegistro(esito) {
+      return this.t({
+        trovato: 'trovato', incompleto: 'trovato a metà', non_trovato: 'non trovato',
+        rimandato: 'rimandato', errore: 'errore', in_ricerca: 'in ricerca'
+      }[esito] || esito);
+    },
+
+    badgeRegistro(esito) {
+      return { trovato: 'b-ok', incompleto: 'b-warn', rimandato: 'b-warn', in_ricerca: 'b-run' }[esito] || 'b-err';
+    },
+
+    motivoRegistro(r) {
+      if (r.esito === 'trovato') return r.origine ? this.tt('su {0}', r.origine) : this.t('Trovata');
+      if (r.esito === 'incompleto') {
+        return this.tt('Mancano: {0}', r.mancano.map(c => this.t(c)).join(', ')) +
+               (r.origine ? ' · ' + this.tt('su {0}', r.origine) : '');
+      }
+      if (r.causa === 'pubblicazione') return this.t('Trovato, ma non è arrivato sul negozio');
+      let testo = this.t(this.causaBreve(r.causa)) || this.t('Nessun motivo registrato');
+      if (r.esito === 'rimandato' && r.riprova_alle) testo += ' · ' + this.tt('riprova alle {0}', this.fmtOra(r.riprova_alle));
+      return testo;
+    },
+
+    async apriRegistro(r) {
+      try {
+        const d = await this.api('/api/admin/ricerca/registro/' + r.id);
+        this.apriDiario(d.diagnosi, d.gtin);
+      } catch (e) { this.fail(e.message); }
     },
 
     async avviaLotto() {

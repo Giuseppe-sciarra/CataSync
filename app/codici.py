@@ -65,13 +65,24 @@ def classifica(grezzo: str) -> tuple[str, str] | None:
         if gtin_a_circolazione_limitata(cifre):
             return ("interno", cifre)
         return ("ean", cifre)
-    # Codice produttore: da 4 a 32 caratteri, con almeno una cifra o quattro lettere.
-    codice = testo[:32]
-    if len(codice) < 4:
+    # Un EAN in mezzo a qualche parola («8801643654689 SAMSUNG», «EAN: 8801643654689»): si
+    # cerca l'EAN, le parole intorno farebbero solo confusione nella ricerca.
+    gtin_nella_riga = [t for t in re.findall(r"(?<![\w])\d{12,14}(?![\w])", testo) if checksum_gtin(t)]
+    if len(gtin_nella_riga) == 1 and len(testo.split()) <= 4:
+        cifre = gtin_nella_riga[0]
+        return ("interno", cifre) if gtin_a_circolazione_limitata(cifre) else ("ean", cifre)
+    # Codice produttore: da 4 a 32 caratteri e al massimo quattro pezzi («FAST 14 FI»), con
+    # almeno una cifra, oppure una parola sola di quattro lettere o più («ESYBOX»). Frasi,
+    # comandi e descrizioni incollate per sbaglio («docker inspect searxng --format»,
+    # «GAMMA POMPE DI CALORE (EHS) – Unità esterna…») non sono codici: cercarle consuma
+    # ricerche e fa scattare i blocchi dei motori.
+    if len(testo) < 4 or len(testo) > 32 or len(testo.split()) > 4:
         return None
-    if not (re.search(r"\d", codice) or len(re.findall(r"[A-Za-z]", codice)) >= 4):
+    if re.search(r"--|https?:|www\.|[$|<>{}=@]", testo):
         return None
-    return ("mpn", codice)
+    if not (re.search(r"\d", testo) or (" " not in testo and len(re.findall(r"[A-Za-z]", testo)) >= 4)):
+        return None
+    return ("mpn", testo)
 
 
 def parse_codici(raw: str) -> tuple[list[str], list[str]]:

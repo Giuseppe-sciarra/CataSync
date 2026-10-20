@@ -261,6 +261,26 @@ class Magazzino(unittest.TestCase):
         self.assertEqual(self.c.put(self.url("/122/scheda"), json={}).json()["cambiato"], False)
         db.close()
 
+    def test_2e_specifiche_scritte_a_mano(self):
+        # Prodotto messo a mano: le specifiche stanno solo in TD Product Specs, niente attributi WooCommerce.
+        self.woo.prodotti[123].update({"attributes": [{"id": 3, "name": "Colore", "options": ["Bianco"], "variation": False}],
+                                       "meta_data": [{"key": wc_rest.TD_SPECS_META_KEY, "value": [
+                                           {"label": "Marca", "value": "Innova"},
+                                           {"label": "Garanzia", "value": '<a href="https://innova.example">2 anni</a>'}]}]})
+        d = self.c.get(self.url("/123/scheda")).json()
+        self.assertTrue(d["specifiche_plugin"])
+        self.assertEqual([(s["nome"], s["valore"], s["globale"]) for s in d["specifiche"]],
+                         [("Colore", "Bianco", True), ("Marca", "Innova", False), ("Garanzia", "2 anni", False)])
+        r = self.c.put(self.url("/123/scheda"), json={"specifiche": [
+            {"nome": "Marca", "valore": "Innova srl"}, {"nome": "Garanzia", "valore": "2 anni"}, {"nome": "Potenza", "valore": "3,1 kW"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        put = self.woo.chiamate[-1][3]
+        self.assertNotIn("attributes", put)                       # nessun attributo WooCommerce nuovo
+        self.assertEqual(put["meta_data"][0]["value"], [
+            {"label": "Marca", "value": "Innova srl"},
+            {"label": "Garanzia", "value": '<a href="https://innova.example">2 anni</a>'},   # non toccata: il link resta
+            {"label": "Potenza", "value": "3,1 kW"}])
+
     def test_2d_foto_dal_computer(self):
         png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
         vecchio = config.PUBLIC_URL

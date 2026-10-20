@@ -16,6 +16,14 @@ class Codici(unittest.TestCase):
         self.assertEqual(codici.classifica("FAST 14 FI"), ("mpn", "FAST 14 FI"))
         self.assertEqual(codici.classifica("2001234567893")[0], "interno")          # prefisso 20-29
         self.assertIsNone(codici.classifica("ab"))
+        # Righe che non sono codici: non si cercano (consumano ricerche e fanno scattare i blocchi).
+        self.assertIsNone(codici.classifica("docker inspect searxng --format"))
+        self.assertIsNone(codici.classifica("GAMMA POMPE DI CALORE (EHS) - Unita esterna monofase"))
+        self.assertIsNone(codici.classifica("DAB ESYBOX"))
+        self.assertEqual(codici.classifica("8801643654689 SAMSUNG"), ("ean", "8801643654689"))
+        self.assertEqual(codici.classifica("EAN: 8801643654689"), ("ean", "8801643654689"))
+        self.assertEqual(codici.classifica("AE040RXEDEG/EU"), ("mpn", "AE040RXEDEG/EU"))
+        self.assertEqual(codici.classifica("ESYBOX"), ("mpn", "ESYBOX"))
 
     def test_parse(self):
         buoni, scarti = codici.parse_codici("8059893356383, 5712608909306\n97924465\n\nxx\n2001234567893")

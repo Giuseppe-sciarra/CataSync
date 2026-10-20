@@ -1,5 +1,222 @@
 # Changelog
 
+## 2.9.0 — 2026-10-20
+
+### Added
+- **Banche dati libere** prima della ricerca sul web (`app/banche_dati.py`): UPCitemdb (piano trial,
+  100 richieste al giorno per IP, nessuna chiave) e Open Food / Beauty / Pet Food / Products Facts.
+  Danno nome, marca, codice produttore e foto; la descrizione solo se nella lingua della scheda. Al
+  limite giornaliero si va avanti senza segnare il buco. Nel diario compaiono dopo Icecat.
+- Con marca e codice produttore noti, se i motori col solo EAN non trovano pagine si cerca il codice
+  produttore e le pagine si confermano su quello.
+- **Cataloghi diretti** (`web_search.CATALOGHI`, `ARCHIVI_EAN`): coi motori a vuoto o bloccati si
+  cercano i codici senza motore in mezzo. Archivi EAN (go-upc, barcodelookup, buycott, ean-search,
+  eandata, upcitemdb…), un centinaio di comparatori, negozi e marketplace per paese (idealo,
+  geizhals, billiger, eBay, ManoMano, trovaprezzi, MediaWorld, Unieuro, Cdiscount, Fnac,
+  PcComponentes, Currys, Newegg, grossisti di termoidraulica…) e le vetrine Google Shopping e Bing
+  Shopping, i cui link ai negozi diventano candidati. Si segue il link della scheda, che vale solo se
+  dichiara l'EAN. Chi respinge va in pausa come un motore e si vede fra i motori in Impostazioni;
+  budget a parte (14 pagine di catalogo per codice). Motori bloccati + cataloghi a vuoto = si rimanda.
+- Interruttore **«Leggi i cataloghi anche se robots.txt lo vieta»** in *Impostazioni → Cataloghi
+  diretti*, spento di serie: acceso apre anche eBay, ManoMano, trovaprezzi, kelkoo, ePrice,
+  pricerunner, Walmart. Amazon resta fuori comunque. Il controllo sugli indirizzi interni resta.
+
+### Changed
+- **Archivio delle schede**: `CACHE_DAYS=0` (nuovo valore di serie) tiene per sempre le schede
+  trovate, per codice e lingua, in `ean_cache` (solo testi e indirizzi delle foto). Un codice
+  cercato una volta è pronto per tutti i clienti. «Riprova» ricerca davvero; togliere un prodotto
+  dal catalogo butta solo le schede parziali o «non trovato», non quelle complete.
+
+### Removed
+- **Pagina pubblica** (presentazione, prezzi, «Richiedi informazioni», informativa privacy) e la sua
+  scheda in amministrazione: la radice del portale porta all'accesso (o al pannello, se già dentro).
+  Cosa fa il portale si spiega sul sito dell'agenzia. Via `CONTACT_TO`; la posta SMTP resta per il
+  codice via email della verifica in due passaggi. Via il carattere Instrument Sans.
+
+## 2.8.1 — 2026-10-19
+
+### Fixed
+- Icecat risponde HTTP 400 «The GTIN can not be found» quando non ha l'EAN: prima risultava un
+  guasto («Icecat non risponde come dovrebbe»), ora è «Icecat non ha questo EAN nel suo catalogo»
+  e si passa alla ricerca sul web come previsto.
+
+### Added
+- **Icecat per codice produttore**: se l'EAN non c'è ma la ricerca sul web trova marca e codice
+  produttore, si richiede a Icecat per marca + codice; trovata, la scheda Icecat fa da base e il
+  web riempie i buchi.
+- La prova in *Impostazioni → Icecat* accetta anche marca e codice produttore.
+
+## 2.8.0 — 2026-10-19
+
+### Added
+- **Icecat come prima fonte**, con un'utenza sola per tutto il portale (*Impostazioni → Icecat*:
+  nome utente, API access token, Content access token, cifrati). Ogni EAN di ogni cliente si chiede
+  prima a Icecat: scheda completa → la ricerca sul web non parte; parziale → la completa il web;
+  assente (o solo con Full Icecat, o fuori settore) → cerca il web. I testi che Icecat ha solo in
+  inglese si traducono con LibreTranslate.
+- **Prova un EAN su Icecat** in Impostazioni: cosa arriva o perché non c'è.
+- Icecat anche nella prova a lotti e nel confronto delle fonti del cliente; nel diario «Perché?»
+  è la prima riga, col suo esito.
+
+### Changed
+- Il vecchio collegamento a Icecat per cliente resta tolto: l'utenza ora è una, del portale.
+
+## 2.7.4 — 2026-10-19
+
+### Added
+- **Brave Search API di riserva a SearXNG** (*Impostazioni → Ricerca automatica sul web*): quando
+  i motori di SearXNG bloccano o non trovano il codice, la stessa domanda va all'API di Brave,
+  che non blocca mai. Facoltativa: senza chiave si usa solo SearXNG. Vale anche per la ricerca
+  col codice produttore.
+- **Seconda lettura col browser** delle pagine giuste ma povere (senza descrizione o con una foto
+  sola): Chrome le riapre dopo il JavaScript e si tiene la lettura più ricca.
+
+### Changed
+- Con un motore a pagamento giri e pause non si applicano più: servono solo ai motori letti
+  senza accordo (SearXNG, DuckDuckGo).
+- La nota su Google Programmable Search dice che l'API è chiusa ai nuovi clienti e si spegne il
+  1° gennaio 2027.
+
+### Fixed
+- Righe che non sono codici («docker inspect searxng --format», descrizioni incollate per
+  sbaglio) non si cercano più: consumavano ricerche e facevano scattare i blocchi. Da una riga
+  come «8801643654689 SAMSUNG» si cerca l'EAN.
+
+## 2.7.3 — 2026-10-19
+
+### Added
+- **Completamento col codice produttore.** Se le pagine trovate con l'EAN danno una scheda
+  povera (niente descrizione o una foto sola), si cerca anche il codice produttore che
+  riportano e si fondono le pagine nuove che lo confermano. Caso 8801643654689: chironpro.com
+  (francese, senza descrizione, una foto) si completa con Rexel e Sonepar (italiani, con
+  descrizione e foto). I kit con un altro modello nel nome si scartano. Nel diario le ricerche
+  e le pagine di questa fase sono segnate «col codice produttore».
+
+### Changed
+- Il codice produttore conferma anche senza la coda «/EU» e se compare nel nome della pagina;
+  due pagine con lo stesso codice produttore sono coerenti anche se i nomi non si somigliano.
+- Una marca scritta come sigla dal grossista («Produttore: SMG») è coerente col nome intero
+  («Samsung») e, se il titolo porta il nome intero, si usa quello.
+- I nomi tutti in maiuscolo diventano leggibili («Esterne EHS split R32 (monofase) 4.»).
+- Le specifiche non ripetono più codici e marca, che hanno i loro campi («Cod. produttore»,
+  «Produttore», «Réf. …»).
+- Una scheda povera resta in memoria 2 giorni invece di 30: la ricerca successiva ci riprova.
+
+### Fixed
+- Foto di Sonepar scartate come segnaposto: il «default.aspx» nel percorso è il programma che
+  serve le foto, non un'immagine di riserva.
+- Traduzione: le parole lasciate nella lingua di partenza («Unità Samsung Bibloc extérieur»)
+  si traducono da sole e si rimettono solo se il viaggio di ritorno le conferma.
+
+## 2.7.2 — 2026-10-19
+
+### Added
+- **Registro delle ricerche** in *Impostazioni*: ogni codice cercato dai clienti con esito e
+  motivo (motori che bloccano, siti che rifiutano, campi mancanti, sito d'origine), filtri,
+  diario «Dettagli» ed esportazione CSV. Senza dati dei clienti: niente cliente, negozio, utente,
+  nome del carico, titolo né messaggi d'errore del negozio.
+- **Ricerca a giri**: dopo 5 codici cercati davvero il portale si ferma 2 minuti e riparte da
+  solo (configurabile in *Impostazioni → Ricerca automatica sul web*). I codici già in memoria
+  non contano; durante la pausa la barra del carico dice quando riparte e le pubblicazioni vanno
+  avanti. Vale anche per la prova a lotti.
+
+### Fixed
+- Schede sbagliate dai negozi PrestaShop (es. 8801643654689 su chironpro.com): il nome e la marca
+  si prendevano dal primo `itemprop` della pagina, che era un prodotto collegato (INTUIS). Ora si
+  legge solo il blocco del prodotto che riporta il codice, e il nome deve somigliare al titolo
+  visibile della pagina.
+- L'insegna del negozio (`og:site_name`, «CHIRON Distribution») non passa più per marca: la marca
+  arriva dall'etichetta «Marque / Marca / Brand» della scheda; il codice produttore anche da
+  «Réf. fournisseur», «Codice produttore», «MPN».
+- Le foto PrestaShop `…-large_default/…` non vengono più scartate come segnaposto.
+- Traduzione: LibreTranslate a volte inventa sui termini tecnici («bibloc» → «Bilancio»). Nome e
+  valori di una parola si ritraducono all'indietro e le parole che non tornano restano com'erano.
+- I motori «in pausa» non contano più come nuovi blocchi nella salute della ricerca.
+
+## 2.7.1 — 2026-10-19
+
+### Changed
+- **Pausa per i motori che bloccano.** Un motore che risponde con un CAPTCHA, «troppe richieste»
+  o accesso negato non viene più richiamato a ogni domanda (era quello che teneva vivo il blocco):
+  resta fuori 15 minuti, poi 30, 60… fino a 6 ore, e intanto cercano gli altri. Finita la pausa
+  rientra con una domanda sola; se risponde torna normale, se blocca ancora la pausa raddoppia.
+- I motori più permalosi (DuckDuckGo, Startpage, Brave, Google, Bing) si interrogano al massimo una
+  volta ogni 30–60 secondi anche quando rispondono; Google CSE e Yandex tengono la cadenza normale.
+  Il giro diretto su DuckDuckGo si salta se è in pausa o è stato appena interrogato.
+- Se tutti i motori scelti sono in pausa il codice non si cerca a vuoto: riparte da solo a fine
+  pausa e non conta fra i rinvii.
+- Nel diario «Perché?» i motori in pausa compaiono in grigio con l'ora di ripresa; in
+  *Impostazioni → Com'è andata la ricerca* lo stato «in pausa» con l'ora in cui riprende.
+- `searxng/settings.yml`: tolti ahmia, torch e wikidata, che non servono ai codici e a ogni
+  avvio riempivano il log di errori.
+
+## 2.7.0 — 2026-10-18
+
+### Added
+- **Avviso di manutenzione** nella pagina di accesso: da *Impostazioni → Avviso di manutenzione*
+  si accende con giorno, ora d'inizio, ora di fine (anche a cavallo della mezzanotte) e una nota
+  facoltativa, con l'anteprima mentre si scrive. Compare sopra email e password, ben in vista, con
+  giorno e orari in grassetto nella lingua di chi legge; durante i lavori diventa «Manutenzione in
+  corso» e passata l'ora di fine sparisce da solo. Non compare nella pagina pubblica.
+- **Verifica in due passaggi** per clienti e amministratori, dalla nuova pagina **Account** (clic
+  sull'email in alto): **app di autenticazione** (codice QR o chiave da ricopiare), **codice via
+  email** (sei cifre, dieci minuti, col server SMTP del `.env`) e **passkey** (impronta, volto,
+  PIN del dispositivo o chiave di sicurezza). Si possono attivare tutti; all'accesso, dopo la
+  password, si sceglie quello che si ha sotto mano.
+- Dieci **codici di riserva** col primo modo attivato, da copiare o scaricare, ognuno buono una
+  volta; si rigenerano da *Account*. Chi entra con uno di questi viene avvisato di quanti ne restano.
+- Finché la verifica non è attiva, in cima al pannello una **riga piccola** invita ad attivarla, e
+  un pallino accanto all'email lo ricorda; attivata, sparisce.
+- In *Utenti* la colonna **2FA** con i modi attivi e **Togli 2FA** per chi ha perso telefono e
+  codici. Per l'amministratore chiuso fuori: `python -m app.due_fattori togli <email>` dentro il
+  container.
+- Da *Account* si **cambia la password**.
+- Tutto tradotto in inglese, francese e tedesco; anche l'email col codice parte nella lingua
+  dell'interfaccia.
+
+- Sicurezza della verifica: codici sbagliati contati nel database (sei ogni dieci minuti per
+  utente, anche in parallelo), ogni codice e ogni sfida valgono una volta sola anche con richieste
+  simultanee, al massimo sei codici via email l'ora.
+
+### Changed
+- Attivare, cambiare o spegnere un modo di verifica, togliere una passkey o rigenerare i codici
+  chiede di nuovo la password (vale dieci minuti), con un limite di tentativi; il limite vale ora
+  anche per il cambio della password.
+
+### Fixed
+- I limiti ai tentativi di accesso in memoria non si azzerano più tutti insieme quando le chiavi
+  superano le 5000: si tengono solo i tentativi veri e si potano quelli vecchi.
+- Nuove dipendenze: `webauthn` (passkey) e `segno` (codici QR), con `pyOpenSSL`, `cbor2` e
+  `asn1crypto` fissati per restare compatibili con `cryptography` 44.
+
+## 2.6.0 — 2026-10-16
+
+### Added
+- **Pagina pubblica** all'indirizzo del portale, scura e in stile prodotto: apertura col pannello
+  vero, il problema (a mano contro col portale), cinque esempi che girano da soli con la schermata
+  vera, come funziona in quattro passi con un codice a barre dal vivo che controlla la cifra finale,
+  le funzionalità a riquadri con una registrazione del pannello, i prezzi (mensile e annuale, col
+  risparmio, i mesi gratis e il confronto a barre), le domande frequenti e una chiusura con l'email.
+- In alto **Accedi** e **Richiedi informazioni**: un modulo col piano (Mensile o Annuale, già scelto
+  se si arriva dal pulsante di quel prezzo e scritto nella mail), nome, cognome, email e messaggio,
+  spedito col server SMTP del `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`,
+  `SMTP_PASSWORD`, `SMTP_FROM`, `CONTACT_TO`), con *Rispondi a* chi ha scritto. Campo trappola e
+  limite di invii contro lo spam; funziona anche senza JavaScript.
+- **Informativa privacy** di serie, scritta per il portale e coi dati del titolare, oppure la tua.
+- Nel piede i **dati legali**. Nell'amministrazione la scheda **Pagina pubblica**: accesa o spenta,
+  dati legali, prezzi e nota, chi riceve le richieste (con *Manda una mail di prova*), informativa.
+- Tutto tradotto in inglese, francese e tedesco, carattere ospitato dal portale.
+
+- **Specifiche e filtri** con TD Product Specs: le righe che un prodotto ha già, anche scritte a
+  mano, restano e il portale completa le voci che mancano (con *Sempre* aggiorna anche i valori delle
+  stesse voci). Dalla 1.1 del plugin il portale legge quali etichette il sito usa come filtri e
+  quelle le scrive sempre, prima delle altre e oltre il limite di specifiche. Nel Magazzino la
+  scheda mostra e salva le righe del plugin, quando il prodotto le ha.
+
+### Changed
+- Il pannello si apre su **/app**; la radice `/` è la pagina pubblica (spenta, porta all'accesso).
+- Il selettore della lingua può stare dove la pagina lo vuole (nella pagina pubblica, nel piede).
+
 ## 2.5.0 — 2026-10-15
 
 ### Added

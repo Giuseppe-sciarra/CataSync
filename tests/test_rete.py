@@ -63,3 +63,38 @@ class Codifica(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RobotsForzati(unittest.TestCase):
+    """L'interruttore «Leggi i cataloghi anche se robots.txt lo vieta» passa oltre il divieto,
+    ma non oltre il controllo sugli indirizzi interni."""
+
+    def test_ignora_robots_solo_dove_chiesto(self):
+        import time
+
+        def trasporto(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/robots.txt":
+                return httpx.Response(200, text="User-agent: *\nDisallow: /sch/\n")
+            return httpx.Response(200, text="<html><body>" + "x" * 4000 + "<img src=a></body></html>")
+
+        rete._robots.clear()
+        originale = rete.client_pubblico
+        rete.client_pubblico = lambda **o: httpx.AsyncClient(transport=httpx.MockTransport(trasporto))
+        ok_originale = rete.host_pubblico
+
+        async def sempre_pubblico(_host):
+            return True
+
+        rete.host_pubblico = sempre_pubblico
+        try:
+            async def prova(ignora):
+                async with rete.Sessione("IT", "") as s:
+                    return await s.apri("https://www.ebay.it/sch/i.html?_nkw=1", ignora_robots=ignora)
+            vietata = asyncio.run(prova(False))
+            self.assertEqual(vietata.robots, "vietato")
+            letta = asyncio.run(prova(True))
+            self.assertTrue(letta.leggibile)
+        finally:
+            rete.client_pubblico = originale
+            rete.host_pubblico = ok_originale
+            rete._robots.clear()

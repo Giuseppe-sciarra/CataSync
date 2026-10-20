@@ -27,7 +27,7 @@ from . import codici, config, lingue, web_search, web_source
 from .html_sicuro import scheda_sicura
 from .models import Client, EanCache, Provider
 from .security import decrypt
-from .store import ricerca_config
+from .store import icecat_config, ricerca_config
 
 log = logging.getLogger("catasync.providers")
 
@@ -94,9 +94,11 @@ class RicercaRimandata(Exception):
     """I motori di ricerca ci stanno bloccando: il codice non è stato cercato
     davvero. Il worker rimette la riga in coda più tardi invece di chiuderla."""
 
-    def __init__(self, messaggio: str, diagnosi: dict | None = None):
+    def __init__(self, messaggio: str, diagnosi: dict | None = None, riprova_alle: float | None = None):
         super().__init__(messaggio)
         self.diagnosi = diagnosi
+        # Motori tutti in pausa e nessuna domanda fatta: si riprende a quell'ora (epoch).
+        self.riprova_alle = riprova_alle
 
 
 def chain(db: Session, client: Client) -> list[Provider]:
@@ -281,12 +283,15 @@ def extra_ricerca(cfg: dict) -> dict:
     """Parametri extra per la ricerca: SearXNG, LibreTranslate, browser."""
     return {"cx": cfg.get("cx", ""), "url": cfg.get("url", ""),
             "lt_url": cfg.get("lt_url", ""), "lt_chiave": cfg.get("lt_chiave", ""),
-            "render_url": cfg.get("render_url", ""), "motori": cfg.get("motori", "")}
+            "render_url": cfg.get("render_url", ""), "motori": cfg.get("motori", ""),
+            "giro_codici": cfg.get("giro_codici", 5), "giro_pausa": cfg.get("giro_pausa", 2.0),
+            "riserva_chiave": cfg.get("riserva_chiave", ""), "cataloghi_forza": bool(cfg.get("cataloghi_forza"))}
 
 
 # Con questi motori la ricerca non costa niente: la cache negativa non ha motivo
 # di esistere e si ricerca sempre davvero. Serve solo coi motori a consumo.
 MOTORI_GRATUITI = ("searxng", "duckduckgo")
+GIORNI_SCHEDA_POVERA = 2
 
 
 def _riga_cache(db: Session, gtin: str, chiave: str) -> EanCache | None:
@@ -294,21 +299,27 @@ def _riga_cache(db: Session, gtin: str, chiave: str) -> EanCache | None:
 
 
 def _fresca(riga: EanCache, giorni: float) -> bool:
+    if giorni <= 0:      # CACHE_DAYS=0: l'archivio non scade
+        return True
     quando = riga.fetched_at
     if quando.tzinfo is None:
         quando = quando.replace(tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - quando < timedelta(days=giorni)
 
 
-async def _web_con_cache(db: Session, gtin: str, lang: str) -> dict:
+async def _web_con_cache(db: Session, gtin: str, lang: str, mpn: str = "") -> dict:
     cfg = ricerca_config(db)
     gratuito = cfg["motore"] in MOTORI_GRATUITI
     chiave = chiave_cache(lang)
 
     riga = _riga_cache(db, gtin, chiave)
     if riga:
-        if riga.found and _fresca(riga, config.CACHE_GIORNI):
-            return json.loads(riga.payload)
+        if riga.found:
+            dati = json.loads(riga.payload)
+            # Una scheda povera (niente descrizione, una foto) si tiene poco: magari quel
+            # giorno i motori bloccavano la ricerca col codice produttore che l'avrebbe completata.
+            if _fresca(riga, GIORNI_SCHEDA_POVERA if dati.pop("_povera", False) else config.CACHE_GIORNI):
+                return dati
         # Il buco vale poco: il web cambia. Coi motori gratuiti non vale niente.
         if not riga.found and not gratuito and _fresca(riga, 0.5):
             try:
@@ -325,7 +336,7 @@ async def _web_con_cache(db: Session, gtin: str, lang: str) -> dict:
 
     try:
         prodotto = await web_source.cerca_automatica(gtin, cfg["motore"], cfg["chiave"], extra_ricerca(cfg),
-                                                     lingua=lang)
+                                                     mpn=mpn, lingua=lang)
     except web_source.NonTrovato as exc:
         # Si ricorda anche il buco, col suo perché: senza, ogni riprova coi
         # motori a pagamento ripagherebbe la stessa ricerca a vuoto.
@@ -333,12 +344,14 @@ async def _web_con_cache(db: Session, gtin: str, lang: str) -> dict:
                                                    ensure_ascii=False), False)
         raise
 
-    salva_cache_web(db, gtin, lang, json.dumps(prodotto, ensure_ascii=False), True)
+    povera = not (prodotto.get("description") or "").strip() or len(prodotto.get("images") or []) < 2
+    salva_cache_web(db, gtin, lang, json.dumps({**prodotto, "_povera": True} if povera else prodotto,
+                                               ensure_ascii=False), True)
     return prodotto
 
 
-def salva_cache_web(db: Session, gtin: str, lang: str, payload: str, trovato: bool) -> None:
-    chiave = chiave_cache(lang)
+def salva_cache_web(db: Session, gtin: str, lang: str, payload: str, trovato: bool, chiave: str = "") -> None:
+    chiave = chiave or chiave_cache(lang)
     riga = _riga_cache(db, gtin, chiave)
     if riga:
         riga.payload = payload
@@ -349,14 +362,19 @@ def salva_cache_web(db: Session, gtin: str, lang: str, payload: str, trovato: bo
     db.commit()
 
 
-def svuota_cache_web(db: Session, gtins: list[str]) -> int:
-    """Butta la cache web (tutte le lingue) di questi codici: la prossima ricerca riparte da zero."""
+def svuota_cache_web(db: Session, gtins: list[str], anche_buone: bool = True) -> int:
+    """Butta la cache web (tutte le lingue) di questi codici: la prossima ricerca riparte da zero.
+    Con anche_buone=False restano le schede complete: l'archivio serve a tutti i clienti."""
     if not gtins:
         return 0
     righe = db.scalars(select(EanCache).where(EanCache.gtin.in_(gtins), EanCache.lang.like(CACHE_WEB + "%"))).all()
+    tolte = 0
     for riga in righe:
+        if not anche_buone and riga.found and '"_povera"' not in (riga.payload or ""):
+            continue
         db.delete(riga)
-    return len(righe)
+        tolte += 1
+    return tolte
 
 
 def _ha_contenuto_base(product: dict) -> bool:
@@ -413,6 +431,137 @@ def _fondi_fonti(base: dict, extra: dict) -> dict:
     return base
 
 
+# ------------------------------------------------------------------- Icecat
+# Prima fonte per tutti i clienti, con l'utenza del portale. La cache sta accanto a quella
+# web («_WEBI:IT»): «Riprova dati» la svuota insieme all'altra.
+CACHE_ICECAT = "_WEBI"
+
+
+def chiave_icecat(lang: str) -> str:
+    return f"{CACHE_ICECAT}:{lingue.normalizza(lang)}"
+
+
+async def _icecat_con_cache(db: Session, gtin: str, lang: str) -> dict:
+    """La scheda Icecat (tradotta se serve). FonteNonTrovata se Icecat non ce l'ha."""
+    from . import icecat
+
+    chiave = chiave_icecat(lang)
+    riga = _riga_cache(db, gtin, chiave)
+    if riga:
+        if riga.found and _fresca(riga, config.CACHE_GIORNI):
+            return json.loads(riga.payload)
+        if not riga.found and _fresca(riga, config.ICECAT_GIORNI_ASSENTE):
+            try:
+                motivo = json.loads(riga.payload or "{}").get("motivo") or ""
+            except ValueError:
+                motivo = ""
+            raise FonteNonTrovata(motivo or "non c'è su Icecat")
+    rc = ricerca_config(db)
+    try:
+        prodotto = await icecat.scheda(gtin, lang, icecat_config(db), {"url": rc.get("lt_url", ""),
+                                                                         "chiave": rc.get("lt_chiave", "")})
+    except icecat.IcecatAssente as exc:
+        salva_cache_web(db, gtin, lang, json.dumps({"motivo": str(exc)}, ensure_ascii=False), False, chiave)
+        raise FonteNonTrovata(str(exc)) from exc
+    except icecat.IcecatErrore as exc:
+        raise FonteErrore(str(exc)) from exc
+    salva_cache_web(db, gtin, lang, json.dumps(prodotto, ensure_ascii=False), True, chiave)
+    return prodotto
+
+
+CACHE_ICECAT_CODICE = "_WEBJ"     # Icecat per marca + codice produttore, sullo stesso EAN
+
+
+async def _icecat_per_codice(db: Session, gtin: str, marca: str, codice: str, lang: str) -> dict:
+    """Icecat non ha l'EAN, ma magari ha il prodotto: lo si chiede per marca e codice produttore
+    (quelli trovati dalle pagine che riportano l'EAN). «Samsung Electronics» si prova anche come
+    «Samsung», il nome che usa Icecat."""
+    from . import icecat
+
+    chiave = f"{CACHE_ICECAT_CODICE}:{lingue.normalizza(lang)}"
+    riga = _riga_cache(db, gtin, chiave)
+    if riga:
+        if riga.found and _fresca(riga, config.CACHE_GIORNI):
+            return json.loads(riga.payload)
+        if not riga.found and _fresca(riga, config.ICECAT_GIORNI_ASSENTE):
+            raise FonteNonTrovata(icecat.MANCA_CODICE)
+    rc = ricerca_config(db)
+    trad = {"url": rc.get("lt_url", ""), "chiave": rc.get("lt_chiave", "")}
+    marche = [marca.strip()]
+    if len(marca.split()) > 1:
+        marche.append(marca.split()[0])
+    for nome in marche:
+        try:
+            prodotto = await icecat.scheda(gtin, lang, icecat_config(db), trad, marca=nome, codice=codice.strip())
+        except icecat.IcecatAssente:
+            continue
+        except icecat.IcecatErrore as exc:
+            raise FonteErrore(str(exc)) from exc
+        prodotto["gtin"] = gtin
+        salva_cache_web(db, gtin, lang, json.dumps(prodotto, ensure_ascii=False), True, chiave)
+        return prodotto
+    salva_cache_web(db, gtin, lang, json.dumps({"motivo": icecat.MANCA_CODICE}, ensure_ascii=False), False, chiave)
+    raise FonteNonTrovata(icecat.MANCA_CODICE)
+
+
+# ------------------------------------------------------- banche dati libere
+# UPCitemdb e Open*Facts (app/banche_dati.py): gratuite, senza chiavi. La cache sta con
+# le altre («_WEBD:IT»), quindi «Riprova» la svuota insieme.
+CACHE_BANCHE = "_WEBD"
+GIORNI_BANCHE_ASSENTE = 3
+
+
+async def _banche_dati_con_cache(db: Session, gtin: str, lang: str) -> dict:
+    """L'identità del prodotto dalle banche dati libere. FonteNonTrovata se non lo conoscono,
+    FonteErrore se nessuna ha potuto rispondere (limiti giornalieri, rete)."""
+    from . import banche_dati
+
+    chiave = f"{CACHE_BANCHE}:{lingue.normalizza(lang)}"
+    riga = _riga_cache(db, gtin, chiave)
+    if riga:
+        if riga.found and _fresca(riga, config.CACHE_GIORNI):
+            return json.loads(riga.payload)
+        if not riga.found and _fresca(riga, GIORNI_BANCHE_ASSENTE):
+            raise FonteNonTrovata("non c'è nelle banche dati")
+    try:
+        prodotto = await banche_dati.scheda(gtin, lang)
+    except banche_dati.NonDisponibile as exc:
+        raise FonteErrore(str(exc)) from exc
+    if not prodotto:
+        salva_cache_web(db, gtin, lang, "{}", False, chiave)
+        raise FonteNonTrovata("non c'è nelle banche dati")
+    salva_cache_web(db, gtin, lang, json.dumps(prodotto, ensure_ascii=False), True, chiave)
+    return prodotto
+
+
+def _pagina_banche(esito: str, dettaglio: str, fonte: str = "") -> dict:
+    return {"dominio": fonte or "banche dati libere", "url": "https://www.upcitemdb.com/", "esito": esito,
+            "dettaglio": dettaglio[:160], "fonte": "banche_dati"}
+
+
+def _manca_ean() -> str:
+    from . import icecat
+
+    return icecat.MANCA_EAN
+
+
+def _codice_icecat(codice: str) -> bool:
+    from . import icecat
+
+    return icecat.codice_buono(codice)
+
+
+def _pagina_icecat(esito: str, dettaglio: str) -> dict:
+    return {"dominio": "icecat.biz", "url": "https://icecat.biz/", "esito": esito, "dettaglio": dettaglio[:160],
+            "fonte": "icecat"}
+
+
+def _diario_icecat(gtin: str, lang: str, voce: dict, spiegazione: str) -> dict:
+    return {"versione": 1, "gtin": gtin, "lingua": lang, "motore": "icecat", "ricerche": [], "risultati": 0,
+            "ancorati": 0, "candidati": [], "pagine": [voce], "note": [], "causa": "trovato",
+            "spiegazione": spiegazione, "quando": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
 async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict, str]:
     """Prova le fonti in ordine e le usa anche per ARRICCHIRE la prima risposta.
 
@@ -437,7 +586,43 @@ async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict
     diagnosi: dict | None = None
     rimandata: RicercaRimandata | None = None
 
-    for provider in providers:
+    # Icecat per primo, con l'utenza del portale, solo per gli EAN (Icecat cerca per GTIN).
+    # Se la scheda è completa (nome, descrizione, foto) la ricerca sul web non parte; se
+    # manca qualcosa, le fonti del cliente la completano; se non c'è, cercano loro.
+    voce_icecat: dict | None = None
+    if icecat_config(db)["attivo"] and codici.e_ean(gtin):
+        try:
+            prodotto_icecat = await _icecat_con_cache(db, gtin, lang)
+            prodotto_icecat.pop("_diagnosi", None)
+            migliore = prodotto_icecat
+            fonti_usate.append("Icecat")
+            voce_icecat = _pagina_icecat("confermata", "scheda Icecat" + (
+                "" if _ha_contenuto_base(prodotto_icecat) else ", completata dal web"))
+        except FonteNonTrovata as exc:
+            voce_icecat = _pagina_icecat("icecat_assente", str(exc) or "non c'è su Icecat")
+        except FonteErrore as exc:
+            errors.append(f"Icecat: {exc}")
+            voce_icecat = _pagina_icecat("http", str(exc))
+
+    # Banche dati libere: danno nome, marca, codice produttore e foto. Se Icecat non ha
+    # l'EAN o la scheda è incompleta, con marca e codice la ricerca sul web va a segno.
+    voce_banche: dict | None = None
+    if (migliore is None or not _ha_contenuto_base(migliore)) and codici.e_ean(gtin):
+        try:
+            da_banche = await _banche_dati_con_cache(db, gtin, lang)
+        except FonteNonTrovata as exc:
+            voce_banche = _pagina_banche("assente", str(exc))
+        except FonteErrore as exc:
+            errors.append(f"Banche dati: {exc}")
+            voce_banche = _pagina_banche("http", str(exc))
+        else:
+            migliore = da_banche if migliore is None else _fondi_fonti(migliore, da_banche)
+            fonti_usate.append("Banche dati libere")
+            voce_banche = _pagina_banche("confermata", "identità del prodotto: " + (da_banche.get("title") or ""),
+                                         da_banche.get("source_ref") or "")
+    mpn_noto = (migliore or {}).get("mpn") or ""
+
+    for provider in (providers if migliore is None or not _ha_contenuto_base(migliore) else []):
         if provider.kind == "manual":
             continue
         use_lang = lingue.normalizza(provider.lang or lang)
@@ -454,7 +639,7 @@ async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict
                         log.info("Codice %s: indirizzi fissi a vuoto (%s), passo alla ricerca automatica", gtin, exc)
                         product = None
                 if product is None:
-                    product = await _web_con_cache(db, gtin, use_lang)
+                    product = await _web_con_cache(db, gtin, use_lang, mpn=mpn_noto)
             elif provider.kind == "http_json":
                 raw = await _fetch_http_json(provider, gtin, use_lang)
                 field_map = json.loads(provider.field_map or "{}")
@@ -484,7 +669,8 @@ async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict
 
         except web_search.MotoriBloccati as exc:
             errors.append(f"{label}: {exc}")
-            rimandata = RicercaRimandata(str(exc), getattr(exc, "diagnosi", None))
+            rimandata = RicercaRimandata(str(exc), getattr(exc, "diagnosi", None),
+                                         getattr(exc, "riprova_alle", None))
             diagnosi = diagnosi or getattr(exc, "diagnosi", None)
         except web_search.RicercaSpenta as exc:
             errors.append(f"{label}: {exc}")
@@ -503,6 +689,47 @@ async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict
                 provider.last_error = str(exc)[:400]
                 db.commit()
 
+    # Icecat non aveva l'EAN, ma la ricerca sul web ha trovato marca e codice produttore: si
+    # richiede a Icecat per codice. Icecat ha spesso il prodotto senza quell'EAN collegato, e la
+    # sua scheda (testi e foto con licenza) diventa la base; il web riempie i buchi.
+    if (voce_icecat is not None and voce_icecat.get("dettaglio") == _manca_ean() and migliore is not None
+            and (migliore.get("brand") or "").strip() and _codice_icecat(migliore.get("mpn") or "")):
+        mpn = migliore["mpn"].strip()
+        try:
+            da_codice = await _icecat_per_codice(db, gtin, migliore["brand"], mpn, lang)
+        except FonteNonTrovata:
+            voce_icecat["dettaglio"] = f"{_manca_ean()}, né il codice produttore {mpn}"[:160]
+        except FonteErrore as exc:
+            errors.append(f"Icecat: {exc}")
+        else:
+            da_codice.pop("_diagnosi", None)
+            migliore = _fondi_fonti(da_codice, migliore)
+            fonti_usate.insert(0, "Icecat")
+            voce_icecat = _pagina_icecat("confermata", f"scheda Icecat trovata col codice produttore {mpn}")
+
+    # Nel diario della ricerca, le banche dati stanno subito dopo Icecat.
+    if voce_banche is not None:
+        if diagnosi:
+            diagnosi = dict(diagnosi)
+            diagnosi["pagine"] = [voce_banche] + [p for p in diagnosi.get("pagine") or [] if p.get("fonte") != "banche_dati"]
+        elif voce_banche["esito"] == "confermata":
+            diagnosi = _diario_icecat(gtin, lang, voce_banche, "Prodotto riconosciuto dalle banche dati libere.")
+            diagnosi["motore"] = "banche_dati"
+
+    # Nel diario della ricerca, Icecat è il primo «sito» aperto: trovato, assente o in errore.
+    if voce_icecat is not None:
+        if diagnosi:
+            diagnosi = dict(diagnosi)
+            diagnosi["pagine"] = [voce_icecat] + [p for p in diagnosi.get("pagine") or [] if p.get("fonte") != "icecat"]
+            if voce_icecat["esito"] == "confermata":
+                diagnosi["spiegazione"] = ("Scheda trovata su Icecat e completata dalla ricerca sul web. "
+                                           + (diagnosi.get("spiegazione") or ""))[:400]
+                diagnosi["causa"] = "trovato"
+        elif voce_icecat["esito"] == "confermata":
+            diagnosi = _diario_icecat(gtin, lang, voce_icecat, "Scheda trovata su Icecat.")
+        if migliore is not None and diagnosi:
+            migliore["_diagnosi"] = diagnosi
+
     if migliore is not None:
         if errors and not _ha_contenuto_base(migliore):
             avvisi = migliore.setdefault("warnings", [])
@@ -519,7 +746,7 @@ async def fetch(db: Session, client: Client, gtin: str, lang: str) -> tuple[dict
 
     joined = " · ".join(errors) or "Nessuna fonte ha risposto."
     if rimandata is not None:
-        rimandata.diagnosi = rimandata.diagnosi or diagnosi
+        rimandata.diagnosi = diagnosi or rimandata.diagnosi
         raise rimandata
     if hard_error:
         raise FonteErrore(joined, diagnosi)

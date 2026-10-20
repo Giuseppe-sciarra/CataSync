@@ -119,6 +119,9 @@ Tolta la creazione delle categorie è sparito anche l'unico endpoint senza auten
 Ora ogni rotta del portale richiede una sessione, tranne la pagina di accesso e il logo e la
 favicon dell'agenzia che quella pagina deve mostrare (`/media/portale/logo`,
 `/media/portale/favicon`, `/favicon.ico`).
+Le rotte del secondo passaggio dell'accesso (`/api/auth/2fa/verifica`, `/2fa/email/invia`,
+`/2fa/passkey/opzioni`, `/2fa/passkey/verifica`, `/2fa/annulla`) non chiedono la sessione
+completa ma quella «in attesa», che nasce solo dopo la password giusta e dura dieci minuti.
 
 ## 6. Note sul modello di rischio
 
@@ -173,4 +176,65 @@ ogni secondo e mezzo per sito, pagine oltre 4 MB troncate, al massimo 16 tentati
 pagine lette per prodotto. Le verifiche anti-bot (Cloudflare, Akamai, DataDome, Imperva,
 CAPTCHA, 403/429) non si aggirano: la pagina si salta e il motivo finisce nel diario. Il
 browser serve solo per le pagine fatte di JavaScript e per i guasti del server.
+
+
+---
+
+## 8. Verifica in due passaggi e avviso di manutenzione (v2.7)
+
+**Accesso in due tempi.** Con la verifica attiva, la password giusta non apre la sessione: il
+cookie ricorda solo chi sta facendo il secondo passaggio (`mfa_uid`, dieci minuti) e
+`current_user()` non lo considera entrato. La sessione vera nasce solo dopo il secondo
+passaggio. Codici provati: al massimo sei ogni dieci minuti per utente, contati **nel
+database** e prenotati prima del controllo (`UPDATE … WHERE errori_2fa < 6`), così il tetto
+tiene anche con richieste in parallelo, da indirizzi diversi o dopo un riavvio. Ogni errore va
+nel registro attività con l'indirizzo di rete (`2fa_errato`).
+
+**Codici usati una volta sola, anche in parallelo.** Intervallo TOTP, codice via email, codice di
+riserva e sfida della passkey si consumano con un UPDATE condizionato (confronta e scambia): di due
+richieste partite nello stesso istante col medesimo codice ne passa una.
+
+**App di autenticazione (TOTP, RFC 6238).** Segreto da 160 bit cifrato a riposo con Fernet;
+diventa buono solo quando l'utente lo conferma col primo codice. Si accettano l'intervallo
+corrente, quello prima e quello dopo, e mai due volte lo stesso (`totp_ultimo_passo`): un
+codice letto da sopra la spalla non si riusa. Il QR si genera nel portale (segno), senza
+servizi esterni.
+
+**Codice via email.** Sei cifre casuali (`secrets`), valide dieci minuti, cinque tentativi, un
+invio ogni 30 secondi e al massimo sei l'ora per utente. Nel database c'è solo l'impronta HMAC-SHA256 legata a `SECRET_KEY` e
+all'utente, mai il codice; la sessione (cookie firmato ma leggibile) non contiene niente del
+codice.
+
+**Passkey (WebAuthn).** Verifica crittografica con py_webauthn: origine, `rp_id`, sfida, firma e
+contatore. La sfida sta nel database e si cancella appena letta, così una risposta catturata non
+si rigioca. `rp_id` e origine attesi vengono da `PUBLIC_URL`, come il controllo di provenienza:
+una pagina di phishing su un altro dominio non ottiene firme valide. L'identificativo utente
+passato all'autenticatore è un'impronta, non l'email né l'id.
+
+**Codici di riserva.** Dieci, da 10 caratteri senza simboli ambigui (circa 49 bit l'uno), si
+vedono una volta sola; nel database ci sono solo le impronte HMAC, e ognuno si cancella appena
+usato. Spento l'ultimo modo, spariscono anche loro.
+
+**Operazioni delicate.** Attivare o cambiare un modo (nuovo QR, codice via email, passkey),
+spegnerlo, togliere una passkey o rigenerare i codici chiede di nuovo la password, con il suo
+limite di tentativi; riscritta, vale dieci minuti (`conferma_t` nella sessione firmata). Così con
+una sessione rubata non si toglie l'account al titolare né lo si lega a un altro telefono.
+L'amministratore può togliere la verifica a un utente (*Utenti → Togli 2FA*, nel registro come
+`user_2fa_reset`); per l'amministratore stesso c'è solo la riga di comando dentro il container.
+
+**Limiti noti.**
+- I contatori della *password* restano in memoria. Prima un'ondata di richieste inventate (oltre
+  5000 chiavi) li azzerava tutti; ora si tengono solo i tentativi veri e si potano quelli vecchi.
+  Il contatore per indirizzo usa l'IP che arriva dal proxy: con `--forwarded-allow-ips "*"` (il
+  Dockerfile) si fida di qualunque `X-Forwarded-For`. Meglio mettere lì l'IP del reverse proxy.
+- Le sessioni già aperte non si chiudono quando si attiva la verifica: valgono fino alla scadenza
+  (`SESSION_MAX_AGE`).
+- I codici di riserva e quelli via email sono impronte legate a `SECRET_KEY`: cambiandola, i
+  codici di riserva non valgono più. I segreti TOTP sono cifrati con `FERNET_KEY` (se manca, con
+  una chiave derivata da `SECRET_KEY`): persa quella, le app vanno riconfigurate. In entrambi i
+  casi si rientra togliendo la verifica (*Utenti → Togli 2FA* o la riga di comando).
+
+**Avviso di manutenzione.** La nota scritta dall'amministratore si mostra come testo (Jinja la
+sfugge e la pagina la scrive con `textContent`), mai come HTML. L'avviso compare solo nella
+pagina di accesso e non rivela niente oltre a quello che l'amministratore ha scritto.
 

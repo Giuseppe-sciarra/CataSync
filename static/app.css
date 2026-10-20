@@ -776,6 +776,7 @@ table.diario td .mono { word-break: break-all; }
 }
 .chip.ok { border-color: var(--ok); color: var(--ok); }
 .chip.ko { border-color: var(--err); color: var(--err); }
+.chip.pausa { border-color: var(--line); color: var(--muted); border-style: dashed; }
 .esito { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap;
          background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
 .esito.es-confermata { color: var(--ok); border-color: var(--ok); }
@@ -975,3 +976,169 @@ button.icona { width: 30px; padding: 0; font-size: 10px; }
 }
 .quota-barra span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
 .quota-barra.piena span { background: var(--err); }
+
+
+/* ======================================================= avviso di manutenzione
+   Nella pagina di accesso, sopra il modulo: si deve leggere al primo sguardo. Lo stesso
+   riquadro fa da anteprima in Impostazioni. */
+input[type=date], input[type=time] {
+  width: 100%; padding: 7px 10px; min-height: 38px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); font: inherit;
+}
+.login-colonna { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; }
+.login-colonna .login-card { max-width: none; }
+.avviso-manutenzione {
+  display: flex; gap: 14px; align-items: flex-start; text-align: left;
+  padding: 16px 18px; border-radius: var(--radius);
+  background: #fff6dc; border: 1px solid #efd58c; border-left: 5px solid var(--warn);
+  color: #3d2c00; box-shadow: var(--shadow);
+}
+.avviso-manutenzione-icona {
+  flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--warn); color: #fff;
+}
+.avviso-manutenzione-icona svg { width: 20px; height: 20px; }
+.avviso-manutenzione-testo { min-width: 0; }
+.avviso-manutenzione-titolo {
+  display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: #835c00;
+}
+.avviso-frase { margin: 0; font-size: 15px; line-height: 1.5; }
+.avviso-frase strong, .avviso-frase .forte { font-weight: 700; white-space: nowrap; }
+.avviso-nota { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: #6b5100; }
+.avviso-manutenzione.in-corso { background: #fdeeea; border-color: #f2b8ab; border-left-color: var(--err); color: #4d1206; }
+.avviso-manutenzione.in-corso .avviso-manutenzione-icona { background: var(--err); }
+.avviso-manutenzione.in-corso .avviso-manutenzione-titolo { color: #a3230b; }
+.avviso-manutenzione.in-corso .avviso-nota { color: #7a2a1a; }
+.avviso-manutenzione.anteprima { max-width: 460px; box-shadow: none; }
+:root[data-theme="dark"] .avviso-manutenzione { background: rgba(224,179,65,.10); border-color: rgba(224,179,65,.34); border-left-color: var(--warn); color: var(--ink); }
+:root[data-theme="dark"] .avviso-manutenzione-icona { color: #1a1c1f; }
+:root[data-theme="dark"] .avviso-manutenzione-titolo { color: var(--warn); }
+:root[data-theme="dark"] .avviso-nota { color: var(--ink-2); }
+:root[data-theme="dark"] .avviso-manutenzione.in-corso { background: rgba(240,106,77,.10); border-color: rgba(240,106,77,.34); border-left-color: var(--err); }
+:root[data-theme="dark"] .avviso-manutenzione.in-corso .avviso-manutenzione-titolo { color: var(--err); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .avviso-manutenzione { background: rgba(224,179,65,.10); border-color: rgba(224,179,65,.34); border-left-color: var(--warn); color: var(--ink); }
+  :root:not([data-theme="light"]) .avviso-manutenzione-icona { color: #1a1c1f; }
+  :root:not([data-theme="light"]) .avviso-manutenzione-titolo { color: var(--warn); }
+  :root:not([data-theme="light"]) .avviso-nota { color: var(--ink-2); }
+  :root:not([data-theme="light"]) .avviso-manutenzione.in-corso { background: rgba(240,106,77,.10); border-color: rgba(240,106,77,.34); border-left-color: var(--err); }
+  :root:not([data-theme="light"]) .avviso-manutenzione.in-corso .avviso-manutenzione-titolo { color: var(--err); }
+}
+.manutenzione-orari { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; max-width: 560px; }
+@media (max-width: 560px) { .manutenzione-orari { grid-template-columns: 1fr 1fr; } .manutenzione-orari .field:first-child { grid-column: 1 / -1; } }
+
+
+/* ======================================================= verifica in due passaggi */
+button.link, button.link:hover, button.link:disabled {
+  display: inline; height: auto; padding: 0; border: 0; background: none; box-shadow: none;
+  font: inherit; font-weight: 600; color: var(--accent-ink); white-space: normal;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; filter: none;
+}
+button.link:hover { color: var(--accent); }
+button.link:disabled { opacity: .5; cursor: default; }
+
+/* accesso: il secondo passaggio */
+.metodi-scelta { display: flex; gap: 6px; margin-bottom: 14px; }
+.metodi-scelta button { flex: 1 1 0; min-width: 0; padding: 0 8px; }
+.secondo-passo-spiega { margin: 0 0 14px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+input.codice-2fa {
+  font-family: var(--mono); font-size: 22px; letter-spacing: .28em; text-align: center;
+  padding: 10px 8px; font-variant-numeric: tabular-nums;
+}
+input.codice-2fa::placeholder { color: var(--line); letter-spacing: .28em; }
+.secondo-passo-piede { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.secondo-passo-piede .hint { margin: 6px 0 0; }
+
+/* pannello: la dicitura piccola finché la verifica non è attiva */
+.avviso-2fa { margin: -6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.avviso-2fa svg { display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; color: var(--warn); }
+.avviso-2fa button.link { margin-left: 6px; }
+
+/* in alto a destra: l'email apre l'account */
+.topbar button.who {
+  height: 34px; padding: 0 10px; gap: 7px; border: 1px solid transparent; background: transparent;
+  color: var(--topbar-muted); font-size: 13px; font-weight: 500; box-shadow: none;
+}
+.topbar button.who:hover, .topbar button.who.on { background: var(--surface-2); color: var(--topbar-ink); border-color: var(--line); }
+.topbar button.who svg { width: 16px; height: 16px; flex: none; }
+.topbar button.who .punto { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+@media (max-width: 720px) {
+  .topbar button.who { display: inline-flex; padding: 0 8px; }
+  .topbar button.who .who-email { display: none; }
+}
+
+/* pagina Account */
+.metodi-2fa { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.metodo-2fa {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.metodo-2fa.attivo { border-color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
+.metodo-2fa-testa { display: flex; align-items: center; gap: 10px; }
+.metodo-2fa-testa strong { flex: 1; font-size: 14.5px; }
+.metodo-2fa-icona {
+  flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-ink);
+}
+.metodo-2fa-icona svg { width: 18px; height: 18px; }
+.metodo-2fa > p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.metodo-2fa > .row:last-child { margin-top: auto; }
+.metodo-2fa .field { margin-bottom: 0; }
+.metodo-2fa input.codice-2fa { font-size: 18px; max-width: 220px; }
+.qr-2fa { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.qr-2fa img { width: 164px; height: 164px; flex: none; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.qr-2fa > div { flex: 1 1 160px; min-width: 0; }
+.segreto-2fa {
+  display: block; margin-top: 6px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--surface-2); font-family: var(--mono); font-size: 12.5px; letter-spacing: .04em;
+  word-break: normal; overflow-wrap: anywhere; user-select: all;
+}
+.indirizzo-2fa { font-weight: 600; overflow-wrap: anywhere; }
+.passkey-elenco { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.passkey-elenco li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.passkey-elenco li > div { flex: 1; min-width: 0; }
+.passkey-elenco strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.passkey-elenco .hint { margin: 0; }
+.riserva-2fa {
+  display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-top: 16px;
+  padding: 12px 14px; border-radius: var(--radius); background: var(--surface-2);
+}
+.riserva-2fa p { margin: 0; flex: 1 1 260px; font-size: 13px; color: var(--ink-2); }
+.codici-riserva {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; margin: 14px 0;
+  padding: 14px 18px; border: 1px dashed var(--muted); border-radius: var(--radius);
+  font-family: var(--mono); font-size: 15.5px; letter-spacing: .06em; user-select: all;
+}
+.password-account { max-width: 420px; }
+.modal.piccola { max-width: 540px; }
+
+/* Registro delle ricerche: sul telefono ogni riga diventa una scheda (codice ed esito in alto,
+   il perché sotto), invece di una tabella più larga dello schermo. */
+table.registro td .hint { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  table.registro thead { display: none; }
+  table.registro, table.registro tbody { display: block; width: 100%; }
+  table.registro tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 0;
+    grid-template-areas: "codice dettagli" "esito dettagli" "perche perche" "quando quando";
+    border-bottom: 1px solid var(--line-soft);
+  }
+  table.registro td { display: block; border: 0; padding: 0; width: auto !important; }
+  table.registro td:nth-child(1) { grid-area: quando; }
+  table.registro td:nth-child(2) { grid-area: codice; }
+  table.registro td:nth-child(3) { grid-area: esito; }
+  table.registro td:nth-child(4) { grid-area: perche; }
+  table.registro td:nth-child(5) { grid-area: dettagli; align-self: start; }
+}
+@media (max-width: 640px) {
+  .card > header.head-wrap { flex-wrap: wrap; row-gap: 8px; }
+  .card > header.head-wrap > .hint { flex: 1 1 100%; order: 1; margin-top: -4px; }
+  .card > header.head-wrap > .grow { display: none; }
+  .card > header.head-wrap > select, .card > header.head-wrap > a, .card > header.head-wrap > button { order: 2; }
+  .card > header.head-wrap > select { flex: 1 1 auto; min-width: 0; }
+}

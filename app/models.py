@@ -81,11 +81,59 @@ class User(Base):
     # browser e dispositivo.
     guide_chiuse: Mapped[str] = mapped_column(String(255), default="")
 
+    # --- verifica in due passaggi (app/due_fattori.py) ---------------------
+    # App di autenticazione: il segreto TOTP, cifrato. «in_attesa» è quello appena mostrato
+    # col QR, che diventa buono solo quando l'utente lo conferma col primo codice.
+    totp_segreto: Mapped[str] = mapped_column(Text, default="")
+    totp_in_attesa: Mapped[str] = mapped_column(Text, default="")
+    # Ultimo intervallo di 30 secondi usato: lo stesso codice non vale due volte.
+    totp_ultimo_passo: Mapped[int] = mapped_column(Integer, default=0)
+    # Codice via email: acceso o spento, più l'ultimo codice spedito (solo l'impronta).
+    email_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
+    codice_email: Mapped[str] = mapped_column(String(128), default="")
+    codice_email_scopo: Mapped[str] = mapped_column(String(16), default="")   # accesso | attiva
+    codice_email_scade: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    codice_email_tentativi: Mapped[int] = mapped_column(Integer, default=0)
+    codice_email_inviato: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Codici di riserva, per chi perde il telefono: JSON con le impronte, ognuno vale una volta.
+    codici_riserva: Mapped[str] = mapped_column(Text, default="")
+    # Codici sbagliati nel secondo passaggio, contati qui e non in memoria: valgono per ogni
+    # processo e nessuno li azzera da fuori. «dal» è l'inizio della finestra di dieci minuti.
+    errori_2fa: Mapped[int] = mapped_column(Integer, default=0)
+    errori_2fa_dal: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Codici via email spediti nell'ultima ora: c'è un tetto, contro le raffiche.
+    invii_email: Mapped[int] = mapped_column(Integer, default=0)
+    invii_email_dal: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Sfida dell'ultima richiesta di passkey: sta qui e non nel cookie, così non si riusa.
+    sfida_passkey: Mapped[str] = mapped_column(String(128), default="")
+    sfida_passkey_scade: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     client: Mapped[Client | None] = relationship(back_populates="users")
+    passkey: Mapped[list["Passkey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", order_by="Passkey.id"
+    )
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+
+class Passkey(Base):
+    """Una passkey (WebAuthn) registrata da un utente come secondo passaggio dell'accesso."""
+
+    __tablename__ = "passkey"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    credential_id: Mapped[str] = mapped_column(String(512), unique=True)   # base64url
+    chiave_pubblica: Mapped[str] = mapped_column(Text, default="")        # COSE, base64url
+    contatore: Mapped[int] = mapped_column(Integer, default=0)
+    trasporti: Mapped[str] = mapped_column(String(120), default="")       # usb,nfc,internal…
+    nome: Mapped[str] = mapped_column(String(80), default="")
+    creata: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ultimo_uso: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="passkey")
 
 
 class Site(Base):
