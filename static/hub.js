@@ -116,6 +116,8 @@ function hub(isAdmin) {
     schedaHtml: { descrizione: false, descrizione_breve: false },
     schedaSpeciale: { descrizione: false, descrizione_breve: false },
     nuovaFotoUrl: '', nuovaCatScheda: 0,
+    // Foto delle schede del catalogo (correzione e revisione), prima della pubblicazione.
+    editFotoUrl: '', editFotoBusy: false, editCaricaFoto: false,
     magRichiesta: 0,
     guidaSezione: 'import',
     catOrdine: {}, catOrdineSalvato: '{}', catTrascinata: null, catBersaglio: null, catBusy: false,
@@ -1416,9 +1418,12 @@ function hub(isAdmin) {
       this.job = await this.api('/api/jobs/' + id);
       this.itemFilter = null;
       await this.loadItems();
-      // La card si apre sotto la lista: la si porta a schermo, sennò sembra che
-      // il tasto non abbia fatto niente.
-      this.$nextTick(() => { const el = document.getElementById('job-card'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      // La card si apre sotto la riga del carico: si porta a schermo la riga, con
+      // i dettagli subito sotto (o la card da sola, se il carico non è nell'elenco).
+      this.$nextTick(() => {
+        const el = document.getElementById('carico-' + id) || document.getElementById('job-card');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
       // Se la ricerca è già finita (o era istantanea) la revisione parte subito:
       // il cliente non deve capire dove premere.
       const c = this.job.counts || {};
@@ -1543,6 +1548,8 @@ function hub(isAdmin) {
       const pr = d.product || {};
       this.review.item = { id: d.id, gtin: d.gtin, status: d.status, source: d.source, issues: d.issues || [], can_delete: !!d.can_delete };
       this.review.labels = d.field_labels || {};
+      this.editCaricaFoto = !!d.carica_foto;
+      this.editFotoUrl = '';
       this.edit = {
         title: pr.title || '',
         brand: pr.brand || '',
@@ -1626,6 +1633,8 @@ function hub(isAdmin) {
       if (!this.categories.length) await this.loadTaxonomy();
       const d = await this.api('/api/items/' + itemId + '/preview');
       const p = d.product || {};
+      this.editCaricaFoto = !!d.carica_foto;
+      this.editFotoUrl = '';
       this.edit = {
         title: p.title || '',
         brand: p.brand || '',
@@ -1646,6 +1655,37 @@ function hub(isAdmin) {
         data: { id: d.id, gtin: d.gtin, status: d.status, source: d.source,
                 issues: d.issues || [], field_labels: d.field_labels || {} }
       };
+    },
+
+    // Foto della scheda: da un indirizzo o dal computer. Restano nel modulo finché non si salva.
+    aggiungiFotoEdit() {
+      const url = this.editFotoUrl.trim();
+      if (!/^https?:\/\//i.test(url)) return;
+      this.edit.images = this.edit.images.filter(u => u && u.trim()).concat([url]);
+      this.editFotoUrl = '';
+    },
+    spostaFotoEdit(i, verso) {
+      const l = this.edit.images, j = i + verso;
+      if (j < 0 || j >= l.length) return;
+      [l[i], l[j]] = [l[j], l[i]];
+      this.edit.images = l.slice();
+    },
+    async caricaFotoEdit(event, itemId) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length || !itemId) return;
+      this.editFotoBusy = true;
+      for (const file of files) {
+        const body = new FormData();
+        body.append('file', file);
+        try {
+          const res = await fetch('/api/items/' + itemId + '/foto', { method: 'POST', body });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(this.errorText(data, res.status));
+          this.edit.images = this.edit.images.filter(u => u && u.trim()).concat([data.src]);
+        } catch (e) { this.fail(e.message); }
+      }
+      this.editFotoBusy = false;
+      event.target.value = '';
     },
 
     async saveItem() {
@@ -2526,7 +2566,13 @@ function hub(isAdmin) {
         non_confermato: 'Nessuna pagina conferma che sia lui',
         solo_somiglianza: 'Trovato solo per somiglianza del nome',
         ricerca_spenta: 'Ricerca automatica spenta',
-        codice_interno: 'Codice interno del grossista'
+        codice_interno: 'Codice interno del grossista',
+        pub_foto: 'il sito non è riuscito a scaricare le foto',
+        pub_sku: 'lo SKU c\'è già su un altro prodotto del sito',
+        pub_ean: 'l\'EAN c\'è già su un altro prodotto del sito',
+        pub_chiavi: 'il sito ha rifiutato le chiavi REST',
+        pub_rete: 'il sito non ha risposto in tempo',
+        pub_woo: 'WooCommerce non risponde come dovrebbe'
       }[causa] || causa || '';
     },
 
@@ -2694,6 +2740,7 @@ function hub(isAdmin) {
                (r.origine ? ' · ' + this.tt('su {0}', r.origine) : '');
       }
       if (r.causa === 'pubblicazione') return this.t('Trovato, ma non è arrivato sul negozio');
+      if (/^pub_/.test(r.causa || '')) return this.tt('Trovato, ma non è arrivato sul negozio: {0}', this.t(this.causaBreve(r.causa)));
       let testo = this.t(this.causaBreve(r.causa)) || this.t('Nessun motivo registrato');
       if (r.esito === 'rimandato' && r.riprova_alle) testo += ' · ' + this.tt('riprova alle {0}', this.fmtOra(r.riprova_alle));
       return testo;

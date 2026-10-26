@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
-from . import billing, config, providers, quality, scheduler, wc_rest, web_search
+from . import billing, config, foto, providers, quality, scheduler, wc_rest, web_search
 from .db import SessionLocal
 from .models import CategoryMap, Job, JobItem, Site
 
@@ -248,8 +248,18 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
     normalized["regular_price"] = item.regular_price
     normalized["sale_price"] = item.sale_price
     normalized["source"] = item.source
+    # Le foto prese dal web passano dal portale: WooCommerce le scarica come un robot e molti
+    # siti dei produttori a un robot le negano. Il portale le prende come un browser, dalla
+    # pagina dove le ha trovate, e le dà a WooCommerce da un indirizzo suo.
+    immagini = [u for u in (normalized.get("images") or []) if str(u).startswith("http")][:8]
+    if immagini and foto.attivo():
+        normalized["images"], _ = await foto.riospita(immagini, referer=normalized.get("origine_url") or "",
+                                                     sito=site.base_url)
+    politica = scheduler.policy_for(site, job.kind)
     options = {
-        "write_policy": scheduler.policy_for(site, job.kind),
+        "write_policy": politica,
+        # Il sito pretende le foto? Allora senza nessuna foto il prodotto non si crea.
+        "foto_obbligatorie": "images" in quality.effective(site, politica),
         "status": job.product_status or site.default_status,
         "categories": (
             [item.wc_category_id]
@@ -267,7 +277,7 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
         result = await wc_rest.push_product(site, normalized, options)
     except wc_rest.SiteError as exc:
         item.attempts += 1
-        item.error = str(exc)
+        item.error = wc_rest.spiega(exc)[:900]
         item.status = "error" if item.attempts >= MAX_ATTEMPTS else "ready"
         db.commit()
         return
@@ -275,7 +285,17 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
     item.wc_product_id = result.get("product_id")
     item.wc_action = result.get("action", "")
     item.status = "pushed"
+    item.attempts = 0
     item.error = "; ".join(result.get("warnings") or [])
+    if result.get("images"):
+        # Ora le foto stanno nella libreria del sito: la scheda punta lì, e le copie del
+        # portale (scaricate o caricate dal computer) non servono più.
+        try:
+            salvata = json.loads(item.normalized or "{}")
+            salvata["images"] = result["images"]
+            item.normalized = json.dumps(salvata, ensure_ascii=False)
+        except ValueError:
+            pass
     db.commit()
 
 
@@ -338,6 +358,11 @@ def _finalize(db: Session, job: Job) -> None:
 async def _tick() -> None:
     db = SessionLocal()
     try:
+        # Foto del portale che nessuno usa più (al massimo un giro ogni sei ore).
+        try:
+            foto.pulisci(foto.in_uso_nel_catalogo(db))
+        except Exception:
+            log.exception("Pulizia delle foto fallita")
         # Pausa fra un gruppo di codici e l'altro: intanto niente ricerche nuove, ma le
         # pubblicazioni e le eliminazioni vanno avanti.
         statuses = [] if web_search.fine_riposo_giro() else ["pending"]

@@ -2282,5 +2282,15 @@
   "Leggi i cataloghi anche se robots.txt lo vieta": "Read the catalogues even where robots.txt forbids it",
   "Acceso, si aprono anche i cataloghi che vietano la ricerca ai programmi, sempre con il ritmo di una persona e le pause automatiche. È una scelta di chi gestisce il portale, non del programma: Amazon resta fuori comunque.": "When on, the catalogues that forbid automated searches are opened too, always at a human pace and with the automatic pauses. It is a choice of whoever runs the portal, not of the software: Amazon stays out anyway.",
   "Cataloghi:": "Catalogues:",
-  ". Con l'asterisco quelli che vietano.": ". Those with an asterisk forbid it."
+  ". Con l'asterisco quelli che vietano.": ". Those with an asterisk forbid it.",
+  "JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.": "JPG, PNG or WebP, up to 8 MB. The photos join the product sheet when you save it.",
+  "Trovato, ma non è arrivato sul negozio: {0}": "Found, but it didn't reach the shop: {0}",
+  "il sito non è riuscito a scaricare le foto": "the site couldn't download the photos",
+  "lo SKU c'è già su un altro prodotto del sito": "the SKU is already on another product of the site",
+  "l'EAN c'è già su un altro prodotto del sito": "the EAN is already on another product of the site",
+  "il sito ha rifiutato le chiavi REST": "the site rejected the REST keys",
+  "il sito non ha risposto in tempo": "the site didn't answer in time",
+  "WooCommerce non risponde come dovrebbe": "WooCommerce isn't answering as it should",
+  "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} photos not published: the site couldn't download them.",
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 photo not published: the site couldn't download it."
 }

@@ -2282,5 +2282,15 @@
   "Leggi i cataloghi anche se robots.txt lo vieta": "Kataloge auch lesen, wenn robots.txt es verbietet",
   "Acceso, si aprono anche i cataloghi che vietano la ricerca ai programmi, sempre con il ritmo di una persona e le pause automatiche. È una scelta di chi gestisce il portale, non del programma: Amazon resta fuori comunque.": "Eingeschaltet werden auch die Kataloge geöffnet, die die automatisierte Suche verbieten, immer im Tempo eines Menschen und mit den automatischen Pausen. Das ist eine Entscheidung des Portalbetreibers, nicht der Software: Amazon bleibt ohnehin außen vor.",
   "Cataloghi:": "Kataloge:",
-  ". Con l'asterisco quelli che vietano.": ". Mit Sternchen die, die es verbieten."
+  ". Con l'asterisco quelli che vietano.": ". Mit Sternchen die, die es verbieten.",
+  "JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.": "JPG, PNG oder WebP, bis 8 MB. Die Fotos kommen beim Speichern in das Datenblatt.",
+  "Trovato, ma non è arrivato sul negozio: {0}": "Gefunden, aber nicht im Shop angekommen: {0}",
+  "il sito non è riuscito a scaricare le foto": "die Website konnte die Fotos nicht herunterladen",
+  "lo SKU c'è già su un altro prodotto del sito": "die SKU ist schon bei einem anderen Produkt der Website vergeben",
+  "l'EAN c'è già su un altro prodotto del sito": "die EAN ist schon bei einem anderen Produkt der Website vergeben",
+  "il sito ha rifiutato le chiavi REST": "die Website hat die REST-Schlüssel abgelehnt",
+  "il sito non ha risposto in tempo": "die Website hat nicht rechtzeitig geantwortet",
+  "WooCommerce non risponde come dovrebbe": "WooCommerce antwortet nicht wie erwartet",
+  "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} Fotos nicht veröffentlicht: Die Website konnte sie nicht herunterladen.",
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 Foto nicht veröffentlicht: Die Website konnte es nicht herunterladen."
 }

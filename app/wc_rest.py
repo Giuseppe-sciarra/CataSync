@@ -41,7 +41,51 @@ _cache_filtri: dict[int, tuple[float, list[str]]] = {}
 
 
 class SiteError(Exception):
-    pass
+    """Il sito ha detto no. `codice` è il codice d'errore di WooCommerce, quando c'è
+    («woocommerce_product_image_upload_error», «product_invalid_sku»…): il messaggio è
+    tradotto nella lingua del sito, il codice no."""
+
+    def __init__(self, messaggio: str = "", codice: str = ""):
+        super().__init__(messaggio)
+        self.codice = codice or ""
+
+
+# Una foto che WooCommerce non riesce a scaricare (o non accetta) fa saltare il prodotto intero.
+CODICI_FOTO = {
+    "woocommerce_product_image_upload_error", "woocommerce_rest_invalid_remote_image_url",
+    "woocommerce_rest_invalid_image", "woocommerce_rest_invalid_image_url",
+    "woocommerce_product_invalid_image_id", "woocommerce_variation_image_upload_error",
+}
+# Gli stessi errori quando il codice non arriva: messaggi di WooCommerce in inglese e in italiano.
+TESTI_FOTO = ("remote image", "invalid image", "immagine remota", "immagine non valida", "image_upload")
+# Le scritture dei prodotti con le foto aspettano di più: WooCommerce le scarica una per una
+# prima di rispondere.
+TIMEOUT_CON_FOTO = 180.0
+
+
+def errore_foto(exc: Exception) -> bool:
+    if getattr(exc, "codice", "") in CODICI_FOTO:
+        return True
+    testo = str(exc).lower()
+    return any(t in testo for t in TESTI_FOTO)
+
+
+def spiega(exc: Exception) -> str:
+    """L'errore del sito detto in italiano, col messaggio originale fra parentesi."""
+    codice = getattr(exc, "codice", "")
+    testo = str(exc)
+    basso = testo.lower()
+    if errore_foto(exc):
+        motivo = "Il sito non è riuscito a scaricare le foto"
+    elif codice == "product_invalid_sku" or "sku" in basso:
+        motivo = "Lo SKU c'è già su un altro prodotto del sito"
+    elif codice == "product_invalid_global_unique_id" or "gtin" in basso:
+        motivo = "L'EAN c'è già su un altro prodotto del sito"
+    else:
+        return testo
+    if testo.startswith(motivo):
+        return testo
+    return f"{motivo} ({testo})"
 
 
 class PluginMancante(SiteError):
@@ -73,6 +117,9 @@ async def _request(
     url = site.base_url.rstrip("/") + base + path
     params = dict(params or {})
     headers = {"Accept": "application/json", "User-Agent": "TDSyncCatalog/2.0"}
+    timeout = config.SITE_TIMEOUT
+    if method in ("POST", "PUT") and isinstance(json_body, dict) and json_body.get("images"):
+        timeout = max(timeout, TIMEOUT_CON_FOTO)
 
     async def call(use_query: bool):
         auth = None if use_query else (key, secret)
@@ -80,7 +127,7 @@ async def _request(
         if use_query:
             query["consumer_key"] = key
             query["consumer_secret"] = secret
-        async with httpx.AsyncClient(timeout=config.SITE_TIMEOUT, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             return await client.request(method, url, params=query, json=json_body, auth=auth, headers=headers)
 
     try:
@@ -98,9 +145,12 @@ async def _request(
             raise PluginMancante("Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
         raise SiteError("Endpoint non trovato: WooCommerce non risponde o i permalink non sono attivi.")
     if resp.status_code >= 400:
-        detail = ""
+        detail, codice = "", ""
         try:
-            detail = resp.json().get("message", "")
+            corpo = resp.json()
+            if isinstance(corpo, dict):
+                detail = html.unescape(str(corpo.get("message") or ""))
+                codice = str(corpo.get("code") or "")
         except ValueError:
             detail = resp.text[:200]
         if base != BASE:
@@ -111,8 +161,8 @@ async def _request(
                                 "dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o "
                                 "plugin di sicurezza deve bloccare /wp-json/wc-catasync/.")
             if resp.status_code == 400 and detail:
-                raise SiteError(detail)   # il plugin spiega già cosa non va, in italiano
-        raise SiteError(f"HTTP {resp.status_code} dal sito. {detail}".strip())
+                raise SiteError(detail, codice)   # il plugin spiega già cosa non va, in italiano
+        raise SiteError(f"HTTP {resp.status_code} dal sito. {detail}".strip(), codice)
 
     try:
         return resp.json(), resp.headers
@@ -719,11 +769,13 @@ async def push_product(site, product: dict, options: dict) -> dict:
         payload["catalog_visibility"] = "visible"
 
     if is_new:
-        created, _ = await _request(site, "POST", "/products", json_body=payload)
+        created = await _scrivi_con_foto(site, "POST", "/products", payload, warnings,
+                                         options.get("foto_obbligatorie", False))
         return {
             "product_id": created.get("id"),
             "action": "created",
             "permalink": created.get("permalink", ""),
+            "images": _foto_sul_sito(created),
             "warnings": warnings,
         }
 
@@ -735,13 +787,67 @@ async def push_product(site, product: dict, options: dict) -> dict:
             "warnings": warnings + ["Niente da aggiornare con le politiche impostate."],
         }
 
-    updated, _ = await _request(site, "PUT", f"/products/{existing['id']}", json_body=payload)
+    updated = await _scrivi_con_foto(site, "PUT", f"/products/{existing['id']}", payload, warnings,
+                                     options.get("foto_obbligatorie", False))
     return {
         "product_id": updated.get("id"),
         "action": "updated",
         "permalink": updated.get("permalink", ""),
+        "images": _foto_sul_sito(updated) if "images" in payload else [],
         "warnings": warnings,
     }
+
+
+def _foto_sul_sito(prodotto: dict) -> list[str]:
+    return [i.get("src") for i in (prodotto or {}).get("images") or [] if isinstance(i, dict) and i.get("src")]
+
+
+async def _scrivi_con_foto(site, metodo: str, path: str, payload: dict, warnings: list[str],
+                           foto_obbligatorie: bool = False) -> dict:
+    """Scrive il prodotto. Se WooCommerce non riesce a scaricare una foto rifiuta il prodotto
+    intero: allora si toglie quella foto e si riprova, così il prodotto arriva con le altre.
+
+    WooCommerce di solito dice quale foto non ha preso («Error getting remote image <url>»);
+    quando non lo dice (formato non accettato) si tengono solo le foto del portale, che sono
+    già controllate. Se non ne resta nessuna: col sito che pretende le foto ci si ferma e si
+    dice perché, altrimenti il prodotto va senza foto e lo si segnala."""
+    from . import foto
+
+    tolte: list[str] = []
+    for _ in range(6):
+        try:
+            data, _ = await _request(site, metodo, path, json_body=payload)
+            break
+        except SiteError as exc:
+            immagini = payload.get("images") or []
+            if not immagini or not errore_foto(exc):
+                raise
+            srcs = [i.get("src") for i in immagini if i.get("src")]
+            colpevoli = foto.nel_messaggio(srcs, str(exc))
+            if not colpevoli:
+                colpevoli = [s for s in srcs if not foto.del_portale(s)] or srcs
+            tolte += colpevoli
+            rimaste = [i for i in immagini if i.get("src") not in colpevoli]
+            if rimaste:
+                payload["images"] = rimaste
+                continue
+            dal_portale = any(foto.del_portale(s) for s in tolte)
+            if foto_obbligatorie:
+                consiglio = ("Il sito non riesce a scaricare le foto dal portale: controlla che "
+                             f"{foto.indirizzo('')} sia raggiungibile dal server del sito (firewall, WAF)."
+                             if dal_portale else
+                             "Carica le foto dal computer nella scheda, oppure metti l'indirizzo di altre foto, "
+                             "e pubblica di nuovo.")
+                raise SiteError(f"Il sito non è riuscito a scaricare nessuna delle foto. {consiglio} ({exc})",
+                                exc.codice)
+            payload.pop("images", None)   # e si riprova senza foto
+    else:
+        raise SiteError("Il sito non è riuscito a scaricare le foto: troppi tentativi.", "woocommerce_product_image_upload_error")
+    if tolte:
+        quante = len(dict.fromkeys(tolte))
+        warnings.append(f"{quante} foto non pubblicate: il sito non è riuscito a scaricarle." if quante > 1
+                        else "1 foto non pubblicata: il sito non è riuscito a scaricarla.")
+    return data
 
 
 # --------------------------------------------------------------- catalogo

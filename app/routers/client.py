@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from .. import billing, codici, config, lingue, providers, quality, scheduler, wc_rest, web_search
+from .. import billing, codici, config, foto, lingue, providers, quality, scheduler, wc_rest, web_search
 from ..html_sicuro import scheda_sicura, svg_attivo
 from ..db import get_db
 from ..models import CategoryMap, Client, Job, JobItem, Site, User
@@ -357,7 +357,36 @@ def item_preview(item_id: int, db: Session = Depends(get_db), user: User = Depen
             and item.status not in ("pushed", "pushing", "fetching", "pending", "to_delete", "deleted")
         ),
         "product": product,
+        "carica_foto": foto.attivo(),
     }
+
+
+@router.post("/items/{item_id}/foto")
+async def carica_foto_scheda(
+    item_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(require_user)
+):
+    """Una foto dal computer per la scheda, prima che vada sul sito.
+
+    Il portale la tiene a un indirizzo pubblico e non indovinabile (app/foto.py) e la scheda
+    la usa come una foto presa da un link: alla pubblicazione WooCommerce la scarica da qui
+    nella libreria media del sito. Finché una scheda la usa non si butta; per questo serve
+    PUBLIC_URL, raggiungibile dal sito. La foto entra nella scheda quando la si salva."""
+    item = db.get(JobItem, item_id)
+    if not item:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Riga non trovata.")
+    _visible_job(db, item.job_id, user)
+    if not foto.attivo():
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Per caricare foto dal computer il portale deve avere PUBLIC_URL impostato: per ora usa un indirizzo.")
+    blob = await file.read(foto.MAX_BYTES + 1)
+    if len(blob) > foto.MAX_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "La foto non deve superare gli 8 MB.")
+    if not foto.tipo(blob):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Formati accettati: JPG, PNG, WebP.")
+    foto.pulisci(foto.in_uso_nel_catalogo(db))
+    nome = foto.salva(blob)
+    audit(db, user.email, "item_foto", f"{item.gtin} · {nome}")
+    return {"src": foto.indirizzo(nome)}
 
 
 @router.get("/items/{item_id}/diagnosi")

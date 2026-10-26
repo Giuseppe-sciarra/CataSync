@@ -205,13 +205,13 @@ def portal_favicon(db=Depends(get_db)):
 
 @app.get("/media/foto/{nome}", include_in_schema=False)
 def foto_temporanea(nome: str):
-    """Foto caricate dal Magazzino: pubbliche perché WooCommerce le deve scaricare, con un
-    nome casuale lungo 32 cifre, e solo per due giorni."""
-    import re as _re
-    if not _re.fullmatch(r"[0-9a-f]{32}\.(?:jpg|png|webp)", nome):
-        return JSONResponse({"detail": "Non disponibile."}, status_code=404)
-    path = config.UPLOAD_DIR / "foto-temporanee" / nome
-    if not path.is_file():
+    """Foto caricate dal computer (Magazzino e schede del catalogo) e foto del web che il
+    portale passa a WooCommerce: pubbliche perché WooCommerce le deve scaricare, con un nome
+    di 32 cifre che non si indovina (vedi app/foto.py)."""
+    from . import foto
+
+    path = foto.percorso(nome)
+    if not path:
         return JSONResponse({"detail": "Non disponibile."}, status_code=404)
     return _risposta_immagine(path, "", "public, max-age=3600")
 

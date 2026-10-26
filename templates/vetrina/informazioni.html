@@ -1,0 +1,102 @@
+{% extends "vetrina/base.html" %}
+{% from "vetrina/_icone.html" import icona %}
+{% block titolo %}Richiedi informazioni · {{ app_name }}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+{% block corpo %}
+<section class="v-modulo" aria-labelledby="modulo-titolo">
+  <div class="v-sfondo" aria-hidden="true"><span class="v-luce v-luce--1"></span><span class="v-luce v-luce--2"></span><span class="v-griglia"></span></div>
+  <div class="v-modulo-lato">
+    <p class="v-pillola" data-rise style="--i:0"><span class="v-punto" aria-hidden="true"></span><span>Ti rispondiamo per email</span></p>
+    <h1 id="modulo-titolo" class="v-righe">
+      <span class="v-riga"><span data-line style="--i:0">Richiedi</span></span>
+      <span class="v-riga"><span data-line style="--i:1" class="v-sfumato">informazioni</span></span>
+    </h1>
+    <p class="v-modulo-frase" data-rise style="--i:2">Scrivici cosa vendi e su quale negozio: ti rispondiamo per email.</p>
+    <ul class="v-modulo-punti" data-rise style="--i:3">
+      <li><span class="v-icona-tonda">{{ icona("posta") }}</span><span>Servono solo nome, cognome, email e il messaggio.</span></li>
+      <li><span class="v-icona-tonda">{{ icona("lucchetto") }}</span><span>Usiamo questi dati solo per risponderti.</span></li>
+      <li><span class="v-icona-tonda">{{ icona("spina") }}</span><span>Niente da installare sul negozio</span></li>
+    </ul>
+    {% if prezzi.mostra and (prezzi.mese or prezzi.anno_mese) %}
+    <!-- I due riquadri sono etichette dei pulsanti «Piano» del modulo: un clic sceglie il piano anche lì. -->
+    <div class="v-modulo-prezzi" data-rise style="--i:4">
+      {% if prezzi.mese %}<label class="v-modulo-piano" for="f-piano-mensile" data-piano="mensile"><span>Mensile</span><strong translate="no">{{ prezzi.mese }} €</strong><span>al mese</span><span class="v-modulo-spunta" aria-hidden="true">{{ icona("check") }}</span></label>{% endif %}
+      {% if prezzi.anno_mese %}<label class="v-modulo-piano" for="f-piano-annuale" data-piano="annuale"><span>Annuale</span><strong translate="no">{{ prezzi.anno_mese }} €</strong><span>al mese</span><span class="v-modulo-spunta" aria-hidden="true">{{ icona("check") }}</span></label>{% endif %}
+      {% if prezzi.nota %}<p class="v-modulo-nota">{{ prezzi.nota }}</p>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="v-modulo-corpo">
+    {% if inviata %}
+    <div class="v-grazie" role="status" data-rise style="--i:0">
+      <span class="v-grazie-segno" aria-hidden="true">{{ icona("check") }}</span>
+      <h2>Richiesta inviata</h2>
+      <p>Grazie: abbiamo ricevuto il messaggio e ti rispondiamo all'indirizzo che hai indicato.</p>
+      <a class="v-btn" href="/"><span>Torna alla pagina iniziale</span>{{ icona("freccia") }}</a>
+    </div>
+    {% else %}
+    <form class="v-form" method="post" action="/richiedi-informazioni" novalidate data-rise style="--i:2">
+      {% if errori %}
+      <div class="v-errori" role="alert">
+        <p>Controlla il modulo:</p>
+        <ul>{% for e in errori %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if prezzi.mostra and (prezzi.mese or prezzi.anno_mese) %}
+      <!-- Il piano arriva già scelto dai pulsanti dei prezzi (?piano=mensile|annuale) e finisce nella mail. -->
+      <fieldset class="v-form-piani">
+        <legend>Piano che ti interessa</legend>
+        <div class="v-form-piani-scelte">
+          {% if prezzi.mese %}
+          <label class="v-scelta">
+            <input id="f-piano-mensile" name="piano" type="radio" value="mensile"{% if valori.piano == "mensile" %} checked{% endif %}>
+            <span class="v-scelta-segno" aria-hidden="true">{{ icona("check") }}</span>
+            <span class="v-scelta-nome">Mensile</span>
+            <span class="v-scelta-prezzo"><strong translate="no">{{ prezzi.mese }} €</strong> <span>al mese</span></span>
+          </label>
+          {% endif %}
+          {% if prezzi.anno_mese %}
+          <label class="v-scelta">
+            <input id="f-piano-annuale" name="piano" type="radio" value="annuale"{% if valori.piano == "annuale" %} checked{% endif %}>
+            <span class="v-scelta-segno" aria-hidden="true">{{ icona("check") }}</span>
+            <span class="v-scelta-nome">Annuale</span>
+            <span class="v-scelta-prezzo"><strong translate="no">{{ prezzi.anno_mese }} €</strong> <span>al mese</span></span>
+          </label>
+          {% endif %}
+        </div>
+      </fieldset>
+      {% elif valori.piano %}
+      <p class="v-form-piano">{{ icona("etichetta") }}<span>Piano che ti interessa:</span> <strong>{{ piani[valori.piano] }}</strong></p>
+      <input type="hidden" name="piano" value="{{ valori.piano }}">
+      {% endif %}
+      <div class="v-form-coppia">
+        <div class="v-form-campo">
+          <label for="f-nome">Nome</label>
+          <input id="f-nome" name="nome" type="text" autocomplete="given-name" maxlength="80" required value="{{ valori.nome }}">
+        </div>
+        <div class="v-form-campo">
+          <label for="f-cognome">Cognome</label>
+          <input id="f-cognome" name="cognome" type="text" autocomplete="family-name" maxlength="80" required value="{{ valori.cognome }}">
+        </div>
+      </div>
+      <div class="v-form-campo">
+        <label for="f-email">Email</label>
+        <input id="f-email" name="email" type="email" autocomplete="email" maxlength="190" required value="{{ valori.email }}">
+      </div>
+      <div class="v-form-campo">
+        <label for="f-messaggio">Messaggio</label>
+        <textarea id="f-messaggio" name="messaggio" rows="7" maxlength="5000" required>{{ valori.messaggio }}</textarea>
+      </div>
+      <!-- Trappola per i programmi che compilano tutto: le persone non la vedono. -->
+      <div class="v-trappola" aria-hidden="true">
+        <label for="f-sito">Non compilare questo campo</label>
+        <input id="f-sito" name="sito_web" type="text" tabindex="-1" autocomplete="off">
+      </div>
+      <button class="v-btn v-btn--pieno v-btn--grande" type="submit"><span>Invia la richiesta</span>{{ icona("freccia") }}</button>
+      <p class="v-form-nota">Usiamo i tuoi dati solo per risponderti. <a href="/privacy">Leggi l'informativa privacy</a>.</p>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

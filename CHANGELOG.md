@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.10.0 — 2026-10-26
+
+### Fixed
+- **Prodotti trovati che non arrivavano sul negozio** («Trovato, ma non è arrivato sul negozio»):
+  WooCommerce le foto le scarica da sé, come un robot (niente Referer, «WordPress/x.y»), e
+  molti siti dei produttori a un robot le negano; per una sola foto negata WooCommerce rifiuta
+  il prodotto intero («Error getting remote image …»). Il portale invece le aveva verificate
+  come un browser, quindi la scheda risultava pronta e poi falliva tre volte di fila. Ora:
+  - le foto prese dal web passano dal portale (`app/foto.py`): le scarica come un browser,
+    dalla pagina dove le ha trovate, controlla che siano JPG, PNG, WebP o GIF e le dà a
+    WooCommerce da `PUBLIC_URL/media/foto/…`. Senza `PUBLIC_URL` si va come prima;
+  - se WooCommerce rifiuta comunque una foto, si toglie quella e si riprova: il prodotto va
+    sul sito con le altre e la riga lo segnala. Se non ne resta nessuna e il sito pretende
+    le foto, la riga dice di caricarle dal computer (o, se le rifiuta anche dal portale, di
+    controllare che il portale sia raggiungibile dal server del sito);
+  - le scritture dei prodotti con foto aspettano fino a 180 secondi invece di `SITE_TIMEOUT`;
+  - gli errori del sito si salvano spiegati in italiano (foto, SKU o EAN già usati), col
+    messaggio originale fra parentesi; dopo la pubblicazione la scheda punta alle foto nella
+    libreria del sito.
+- **Registro delle ricerche**: per le schede non arrivate sul negozio dice anche il perché
+  (foto non scaricate, SKU o EAN già su un altro prodotto, chiavi REST rifiutate, sito che non
+  risponde), senza mostrare l'indirizzo del sito. Vale anche per gli errori già registrati.
+
+### Added
+- **Foto dal computer nelle schede del catalogo** (Correggi la scheda e Rivedi una a una), non
+  solo da indirizzo: `POST /api/items/{id}/foto`. Nella correzione le foto si vedono in
+  miniatura, si mettono in ordine e la prima è la principale, come nel Magazzino. Le foto
+  caricate restano sul portale finché una scheda le usa (cartella `foto-schede`); quelle che
+  nessuno usa più si buttano dopo una settimana.
+
+### Changed
+- **Storico**: «Dettagli» (cliente) e «Apri» (amministratore) aprono la scheda del carico subito
+  sotto la sua riga, non più in fondo a tutto l'elenco; la riga aperta resta evidenziata e si porta
+  a schermo sotto la barra in alto. «Chiudi» la richiude lì.
+
 ## 2.9.0 — 2026-10-20
 
 ### Added

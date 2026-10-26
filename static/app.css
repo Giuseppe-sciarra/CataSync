@@ -722,6 +722,20 @@ button.aiuto { width: 32px; padding: 0; font-weight: 700; }
 /* Storico: esito del carico in pill, azioni affiancate */
 .storico .esito-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .storico .azioni > span { display: inline-flex; gap: 6px; }
+/* Dettagli del carico aperti sotto la sua riga, dentro la tabella dello Storico. */
+table.storico > tbody > tr.aperto > td { background: var(--surface-2); border-bottom-color: transparent; }
+table.storico > tbody > tr.riga-dettagli > td { padding: 4px 12px 18px; background: var(--surface-2); }
+/* La riga dei dettagli non si accende al passaggio del mouse (né tutte le celle dentro la card);
+   le righe delle tabelle della card sì, come sempre. */
+table.storico > tbody > tr.riga-dettagli:hover td { background: transparent; }
+table.storico > tbody > tr.riga-dettagli:hover > td { background: var(--surface-2); }
+table.storico tr.riga-dettagli tbody tr:hover td { background: var(--surface-2); }
+/* Larga quanto la tabella, senza allargarla: le tabelle della card scorrono dentro. */
+.dettagli-carico { width: 0; min-width: 100%; overflow-x: auto; }
+.dettagli-carico > .card { margin: 0; }
+.dettagli-carico .card > .body.tight { overflow-x: auto; }
+/* Portati a schermo all'apertura: restano sotto la barra in alto, che è fissa. */
+table.storico > tbody > tr, #job-card { scroll-margin-top: 76px; }
 
 /* modali larghe: i campi affiancati in 3 colonne dove ha senso */
 .modal .grid-2 { gap: 16px; }

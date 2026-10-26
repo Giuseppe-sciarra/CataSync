@@ -2282,5 +2282,15 @@
   "Leggi i cataloghi anche se robots.txt lo vieta": "Lire les catalogues même si robots.txt l'interdit",
   "Acceso, si aprono anche i cataloghi che vietano la ricerca ai programmi, sempre con il ritmo di una persona e le pause automatiche. È una scelta di chi gestisce il portale, non del programma: Amazon resta fuori comunque.": "Activé, les catalogues qui interdisent la recherche automatisée sont ouverts aussi, toujours au rythme d'une personne et avec les pauses automatiques. C'est un choix de qui gère le portail, pas du logiciel : Amazon reste exclu de toute façon.",
   "Cataloghi:": "Catalogues :",
-  ". Con l'asterisco quelli che vietano.": ". Avec l'astérisque, ceux qui l'interdisent."
+  ". Con l'asterisco quelli che vietano.": ". Avec l'astérisque, ceux qui l'interdisent.",
+  "JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.": "JPG, PNG ou WebP, jusqu’à 8 Mo. Les photos entrent dans la fiche quand vous l’enregistrez.",
+  "Trovato, ma non è arrivato sul negozio: {0}": "Trouvé, mais n'est pas arrivé sur la boutique : {0}",
+  "il sito non è riuscito a scaricare le foto": "le site n'a pas réussi à télécharger les photos",
+  "lo SKU c'è già su un altro prodotto del sito": "le SKU existe déjà sur un autre produit du site",
+  "l'EAN c'è già su un altro prodotto del sito": "l'EAN existe déjà sur un autre produit du site",
+  "il sito ha rifiutato le chiavi REST": "le site a refusé les clés REST",
+  "il sito non ha risposto in tempo": "le site n'a pas répondu à temps",
+  "WooCommerce non risponde come dovrebbe": "WooCommerce ne répond pas comme il le devrait",
+  "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} photos non publiées : le site n'a pas réussi à les télécharger.",
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 photo non publiée : le site n'a pas réussi à la télécharger."
 }

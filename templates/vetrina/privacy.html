@@ -1,0 +1,53 @@
+{% extends "vetrina/base.html" %}
+{% block titolo %}Informativa privacy · {{ app_name }}{% endblock %}
+{% block corpo %}
+<article class="v-privacy" aria-labelledby="privacy-titolo">
+  <header class="v-privacy-testa">
+    <div class="v-sfondo" aria-hidden="true"><span class="v-luce v-luce--1"></span><span class="v-luce v-luce--2"></span><span class="v-griglia"></span></div>
+    <p class="v-pillola" data-rise style="--i:0"><span class="v-punto" aria-hidden="true"></span><span>GDPR · Regolamento UE 2016/679</span></p>
+    <h1 id="privacy-titolo" class="v-righe">
+      <span class="v-riga"><span data-line style="--i:0">Informativa privacy</span></span>
+    </h1>
+    <p class="v-privacy-data" data-rise style="--i:1">Ultimo aggiornamento: <span translate="no">{{ aggiornata.strftime('%d/%m/%Y') }}</span></p>
+  </header>
+
+  {% if testo_personalizzato %}
+  <div class="v-privacy-testo" translate="no">{{ testo_personalizzato|safe }}</div>
+  {% else %}
+  <div class="v-privacy-testo">
+    <p>Qui trovi quali dati personali tratta questo portale, perché, per quanto tempo e quali sono i tuoi diritti, come chiede il Regolamento europeo 2016/679 (GDPR).</p>
+
+    <h2>Chi è il titolare</h2>
+    {% if v.ragione_sociale or legali or v.pec or v.email %}
+    <dl class="v-privacy-titolare">
+      {% if v.ragione_sociale %}<div><dt>Titolare del trattamento</dt><dd translate="no">{{ v.ragione_sociale }}</dd></div>{% endif %}
+      {% for etichetta, valore in legali %}<div><dt>{{ etichetta }}</dt><dd translate="no">{{ valore }}</dd></div>{% endfor %}
+      {% if v.pec %}<div><dt>PEC</dt><dd translate="no"><a href="mailto:{{ v.pec }}">{{ v.pec }}</a></dd></div>{% endif %}
+      {% if v.email %}<div><dt>Email</dt><dd translate="no"><a href="mailto:{{ v.email }}">{{ v.email }}</a></dd></div>{% endif %}
+    </dl>
+    {% else %}
+    <p class="v-avviso">I dati del titolare non sono ancora stati inseriti: li aggiunge l'amministratore del portale.</p>
+    {% endif %}
+
+    <h2>Quali dati trattiamo e perché</h2>
+    <h3>Richieste di informazioni</h3>
+    <p>Quando usi il modulo «Richiedi informazioni» ci mandi nome, cognome, email e il tuo messaggio. Li usiamo solo per risponderti e, se lo chiedi, per prepararti un'offerta. La base giuridica sono le misure precontrattuali prese su tua richiesta (art. 6.1.b del GDPR). Li conserviamo per il tempo che serve a seguire la richiesta e comunque non oltre 24 mesi.</p>
+    <h3>Account del portale</h3>
+    <p>Per i clienti trattiamo l'email di accesso, la password (salvata solo in forma cifrata, che nessuno può rileggere) e i dati dell'azienda che servono a fornire il servizio e a fatturarlo. Le basi giuridiche sono il contratto (art. 6.1.b) e gli obblighi di legge, per esempio fiscali (art. 6.1.c). Li conserviamo per la durata del contratto e poi per il tempo chiesto dalla legge.</p>
+    <h3>Negozi collegati</h3>
+    <p>Il portale lavora sui prodotti e sulle categorie del negozio WooCommerce che colleghi, con chiavi che salviamo cifrate. Non legge ordini, clienti o altri dati personali del negozio.</p>
+    <h3>Dati tecnici</h3>
+    <p>Il server registra, come tutti, l'indirizzo IP e le pagine richieste. Servono alla sicurezza e a capire eventuali guasti, per legittimo interesse (art. 6.1.f), e restano per poco tempo.</p>
+
+    <h2>Cookie e memoria del browser</h2>
+    <p>Usiamo un solo cookie tecnico, quello che tiene aperta la sessione di chi accede al portale. La lingua e il tema che scegli restano nel tuo browser. Non ci sono cookie di profilazione, statistiche di terze parti, pubblicità, né font o script caricati da altri siti: per questo non ti chiediamo alcun consenso.</p>
+
+    <h2>A chi li comunichiamo</h2>
+    <p>Non vendiamo e non cediamo i tuoi dati. Li possono trattare solo i fornitori che ci aiutano a far funzionare il servizio, come l'hosting e la posta elettronica, nominati responsabili del trattamento. Non trasferiamo i dati fuori dall'Unione europea.</p>
+
+    <h2>I tuoi diritti</h2>
+    <p>Puoi chiedere di vedere i tuoi dati, di correggerli, di cancellarli, di limitarne l'uso, di riceverli in un formato leggibile e di opporti al loro trattamento (articoli 15–22 del GDPR). Basta scriverci ai contatti qui sopra. Se ritieni che i tuoi dati siano trattati in modo non corretto puoi rivolgerti al Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it" target="_blank" rel="noopener" translate="no">garanteprivacy.it</a>).</p>
+  </div>
+  {% endif %}
+</article>
+{% endblock %}

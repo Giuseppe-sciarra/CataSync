@@ -1,0 +1,29 @@
+<!-- Icone della pagina pubblica: tratto semplice, colore del testo, disegnate per questa pagina. -->
+{% macro icona(nome, classe="v-ic") -%}
+<svg class="{{ classe }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if nome == "check" %}<path d="M5 12.5l4.5 4.5L19 7.5"/>
+{%- elif nome == "x" %}<path d="M7 7l10 10M17 7L7 17"/>
+{%- elif nome == "freccia" %}<path d="M5 12h14M13 6l6 6-6 6"/>
+{%- elif nome == "giu" %}<path d="M12 5v14M6 13l6 6 6-6"/>
+{%- elif nome == "barre" %}<path d="M4 5v14M7 5v14M9.5 5v14M13 5v14M15.5 5v14M18 5v14M20.5 5v14"/>
+{%- elif nome == "cerca" %}<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>
+{%- elif nome == "mondo" %}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>
+{%- elif nome == "luna" %}<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>
+{%- elif nome == "scudo" %}<path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6l7-3z"/><path d="M9 12l2 2 4-4"/>
+{%- elif nome == "cartella" %}<path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M8 12h8M8 15h5"/>
+{%- elif nome == "scatola" %}<path d="M3 7.5l9-4.5 9 4.5-9 4.5z"/><path d="M3 7.5v9l9 4.5 9-4.5v-9M12 12v9"/>
+{%- elif nome == "scheda" %}<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>
+{%- elif nome == "domanda" %}<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.7.3-1 .9-1 1.6v.4M12 17h.01"/>
+{%- elif nome == "fattura" %}<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>
+{%- elif nome == "codice" %}<path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/>
+{%- elif nome == "etichetta" %}<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.4"/>
+{%- elif nome == "spina" %}<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v5"/>
+{%- elif nome == "occhio" %}<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>
+{%- elif nome == "posta" %}<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>
+{%- elif nome == "lucchetto" %}<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+{%- elif nome == "orologio" %}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+{%- elif nome == "carica" %}<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-3"/>
+{%- elif nome == "occhiolino" %}<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/>
+{%- endif %}
+</svg>
+{%- endmacro %}

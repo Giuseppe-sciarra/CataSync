@@ -483,81 +483,9 @@
     </div>
   </template>
 
-  <!-- ======================================================= IMPORTAZIONI -->
-  <template x-if="tab==='jobs'">
-    <div class="stack">
-      <template x-if="!(soloJob && job)">
-      <div class="card">
-        <header>
-          <h2>Importazioni</h2>
-          <div class="grow"></div>
-          <button class="ghost sm" @click="loadJobs()">Aggiorna</button>
-        </header>
-        <div class="body tight">
-          <template x-if="!jobs.length">
-            <div class="empty"><p>Ancora nessuna importazione.</p>
-              <button class="ghost" @click="go('catalogo')">Caricane una</button></div>
-          </template>
-          <template x-if="jobs.length">
-            <table class="storico">
-              <thead><tr>
-                <th>Carico</th><th x-show="isAdmin">Sito</th>
-                <th style="width:38%" x-text="isAdmin ? 'Avanzamento' : 'Com\'è andata'"></th>
-                <th class="right">Prodotti</th><th class="right" x-show="isAdmin">Stato</th><th></th>
-              </tr></thead>
-              <tbody>
-                <template x-for="j in jobs" :key="j.id">
-                  <tr>
-                    <td>
-                      <div class="row" style="gap:6px">
-                        <strong x-text="j.label"></strong>
-                        <span class="badge b-run" x-show="j.kind === 'resync'">notturno</span>
-                      </div>
-                      <div class="hint" x-text="fmtDate(j.created_at)"></div>
-                    </td>
-                    <td x-show="isAdmin" x-text="j.site_name"></td>
-                    <td>
-                      <!-- admin: barra tecnica; cliente: pill in parole povere -->
-                      <template x-if="isAdmin">
-                        <div>
-                          <div class="barcode" x-html="barcode(j)"></div>
-                          <div class="hint" x-text="fase(j) + ' · ' + countsLabel(j)"></div>
-                        </div>
-                      </template>
-                      <template x-if="!isAdmin">
-                        <div class="esito-pills">
-                          <span class="pill p-sul_sito" x-show="j.counts.pushed" x-text="j.counts.pushed + ' sul sito'"></span>
-                          <span class="pill p-pronto" x-show="j.counts.ready" x-text="j.counts.ready + ' pronti'"></span>
-                          <span class="pill p-da_completare" x-show="j.counts.incomplete" x-text="j.counts.incomplete + ' da completare'"></span>
-                          <span class="pill p-non_trovato" x-show="j.counts.not_found" x-text="j.counts.not_found + ' non trovati'"></span>
-                          <span class="pill p-problema" x-show="(j.counts.error||0)+(j.counts.blocked||0)" x-text="((j.counts.error||0)+(j.counts.blocked||0)) + ' problemi'"></span>
-                          <span class="pill p-in_corso" x-show="(j.counts.pending||0)+(j.counts.fetching||0)+(j.counts.pushing||0)" x-text="'in lavorazione'"></span>
-                        </div>
-                      </template>
-                    </td>
-                    <td class="right num" x-text="j.total"></td>
-                    <td class="right" x-show="isAdmin"><span class="badge" :class="jobBadge(j.status)" x-text="jobLabel(j.status)"></span></td>
-                    <td class="right azioni">
-                      <template x-if="!isAdmin">
-                        <span>
-                          <button class="sm" @click="mostraCarico(j)">Mostra nei Prodotti</button>
-                          <button class="ghost sm" @click="openJob(j.id)" title="Scheda tecnica e revisione guidata una a una">Dettagli</button>
-                        </span>
-                      </template>
-                      <template x-if="isAdmin">
-                        <button class="sm" @click="openJob(j.id)">Apri</button>
-                      </template>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </template>
-        </div>
-      </div>
-      </template>
-
-      <template x-if="job">
+  <!-- Scheda del carico aperto (macro Jinja): si disegna sotto la sua riga nello Storico, o da
+       sola nella modalità «solo carico». Un solo sorgente per i due posti. -->
+  {% macro scheda_carico() %}
         <div class="card" id="job-card">
           <header>
             <h2 x-text="job.label"></h2>
@@ -605,6 +533,10 @@
                         <div class="hint" style="text-align:center">nessuna immagine</div>
                       </template>
                       <div class="hint" x-text="edit.images.length + ' immagini'"></div>
+                      <label class="btn ghost sm" style="margin:8px 0 0;cursor:pointer" x-show="editCaricaFoto">
+                        <span x-text="editFotoBusy ? t('Carico…') : t('Carica dal computer')"></span>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" multiple style="display:none" @change="caricaFotoEdit($event, review.item.id)">
+                      </label>
                     </div>
 
                     <div class="review-main">
@@ -749,6 +681,91 @@
             </template>
           </div>
         </div>
+  {% endmacro %}
+
+  <!-- ======================================================= IMPORTAZIONI -->
+  <template x-if="tab==='jobs'">
+    <div class="stack">
+      <template x-if="!(soloJob && job)">
+      <div class="card">
+        <header>
+          <h2>Importazioni</h2>
+          <div class="grow"></div>
+          <button class="ghost sm" @click="loadJobs()">Aggiorna</button>
+        </header>
+        <div class="body tight">
+          <template x-if="!jobs.length">
+            <div class="empty"><p>Ancora nessuna importazione.</p>
+              <button class="ghost" @click="go('catalogo')">Caricane una</button></div>
+          </template>
+          <template x-if="jobs.length">
+            <table class="storico">
+              <thead><tr>
+                <th>Carico</th><th x-show="isAdmin">Sito</th>
+                <th style="width:38%" x-text="isAdmin ? 'Avanzamento' : 'Com\'è andata'"></th>
+                <th class="right">Prodotti</th><th class="right" x-show="isAdmin">Stato</th><th></th>
+              </tr></thead>
+              <template x-for="j in jobs" :key="j.id">
+                <tbody>
+                  <tr :id="'carico-' + j.id" :class="job && job.id === j.id && 'aperto'">
+                    <td>
+                      <div class="row" style="gap:6px">
+                        <strong x-text="j.label"></strong>
+                        <span class="badge b-run" x-show="j.kind === 'resync'">notturno</span>
+                      </div>
+                      <div class="hint" x-text="fmtDate(j.created_at)"></div>
+                    </td>
+                    <td x-show="isAdmin" x-text="j.site_name"></td>
+                    <td>
+                      <!-- admin: barra tecnica; cliente: pill in parole povere -->
+                      <template x-if="isAdmin">
+                        <div>
+                          <div class="barcode" x-html="barcode(j)"></div>
+                          <div class="hint" x-text="fase(j) + ' · ' + countsLabel(j)"></div>
+                        </div>
+                      </template>
+                      <template x-if="!isAdmin">
+                        <div class="esito-pills">
+                          <span class="pill p-sul_sito" x-show="j.counts.pushed" x-text="j.counts.pushed + ' sul sito'"></span>
+                          <span class="pill p-pronto" x-show="j.counts.ready" x-text="j.counts.ready + ' pronti'"></span>
+                          <span class="pill p-da_completare" x-show="j.counts.incomplete" x-text="j.counts.incomplete + ' da completare'"></span>
+                          <span class="pill p-non_trovato" x-show="j.counts.not_found" x-text="j.counts.not_found + ' non trovati'"></span>
+                          <span class="pill p-problema" x-show="(j.counts.error||0)+(j.counts.blocked||0)" x-text="((j.counts.error||0)+(j.counts.blocked||0)) + ' problemi'"></span>
+                          <span class="pill p-in_corso" x-show="(j.counts.pending||0)+(j.counts.fetching||0)+(j.counts.pushing||0)" x-text="'in lavorazione'"></span>
+                        </div>
+                      </template>
+                    </td>
+                    <td class="right num" x-text="j.total"></td>
+                    <td class="right" x-show="isAdmin"><span class="badge" :class="jobBadge(j.status)" x-text="jobLabel(j.status)"></span></td>
+                    <td class="right azioni">
+                      <template x-if="!isAdmin">
+                        <span>
+                          <button class="sm" @click="mostraCarico(j)">Mostra nei Prodotti</button>
+                          <button class="ghost sm" @click="openJob(j.id)" title="Scheda tecnica e revisione guidata una a una">Dettagli</button>
+                        </span>
+                      </template>
+                      <template x-if="isAdmin">
+                        <button class="sm" @click="openJob(j.id)">Apri</button>
+                      </template>
+                    </td>
+                  </tr>
+                  <!-- I dettagli si aprono qui, sotto la riga del carico, non in fondo all'elenco. -->
+                  <template x-if="job && job.id === j.id && !soloJob">
+                    <tr class="riga-dettagli">
+                      <td colspan="6"><div class="dettagli-carico">{{ scheda_carico() }}</div></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </template>
+            </table>
+          </template>
+        </div>
+      </div>
+      </template>
+
+      <!-- Riserva: il carico aperto non è fra le righe dell'elenco (o modalità «solo carico»). -->
+      <template x-if="job && (soloJob || !jobs.some(x => x.id === job.id))">
+        {{ scheda_carico() }}
       </template>
     </div>
   </template>
@@ -2377,13 +2394,36 @@
 
             <div class="field">
               <label>Immagini</label>
-              <template x-for="(img, i) in edit.images" :key="'img' + i">
-                <div class="row riga" style="margin-bottom:6px">
-                  <input type="text" class="mono" x-model="edit.images[i]" placeholder="https://">
-                  <button class="danger sm" @click="edit.images.splice(i,1)">Togli</button>
-                </div>
-              </template>
-              <button class="ghost sm" @click="edit.images.push('')">Aggiungi immagine</button>
+              <p class="hint" style="margin-top:0">La prima è la foto principale. Con le frecce cambi l'ordine.</p>
+              <div class="scheda-foto">
+                <template x-for="(img, i) in edit.images" :key="'img' + i + img">
+                  <figure :class="i === 0 && 'principale'">
+                    <img :src="img" alt="" loading="lazy">
+                    <span class="badge-foto" x-show="i === 0">Principale</span>
+                    <div class="foto-azioni">
+                      <button type="button" class="ghost sm icona" @click="spostaFotoEdit(i, -1)" :disabled="i === 0" title="Prima" aria-label="Prima">◀</button>
+                      <button type="button" class="ghost sm icona" @click="spostaFotoEdit(i, 1)" :disabled="i === edit.images.length - 1" title="Dopo" aria-label="Dopo">▶</button>
+                      <button type="button" class="danger sm icona" @click="edit.images.splice(i, 1)" title="Togli la foto" aria-label="Togli la foto">×</button>
+                    </div>
+                  </figure>
+                </template>
+                <template x-if="!edit.images.length">
+                  <div class="hint">Nessuna foto.</div>
+                </template>
+              </div>
+              <div class="row riga" style="margin-top:10px">
+                <input type="text" class="mono" x-model="editFotoUrl" placeholder="Indirizzo di una foto (https://…)" aria-label="Indirizzo di una foto"
+                       @keydown.enter.prevent="aggiungiFotoEdit()">
+                <button class="ghost sm" @click="aggiungiFotoEdit()" :disabled="!/^https?:\/\//i.test(editFotoUrl.trim())">Aggiungi</button>
+              </div>
+              <div class="row" style="margin-top:8px" x-show="editCaricaFoto">
+                <label class="btn ghost sm" style="margin:0;cursor:pointer">
+                  <span x-text="editFotoBusy ? t('Carico…') : t('Carica dal computer')"></span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" multiple style="display:none" @change="caricaFotoEdit($event, modal.data.id)">
+                </label>
+                <span class="hint">JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.</span>
+              </div>
+              <p class="hint" x-show="!editCaricaFoto">Per caricare foto dal computer serve PUBLIC_URL nella configurazione del portale: intanto si aggiungono con l'indirizzo.</p>
             </div>
 
             <div class="field">

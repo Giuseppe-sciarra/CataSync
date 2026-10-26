@@ -2282,5 +2282,15 @@
   "Leggi i cataloghi anche se robots.txt lo vieta": "Leggi i cataloghi anche se robots.txt lo vieta",
   "Acceso, si aprono anche i cataloghi che vietano la ricerca ai programmi, sempre con il ritmo di una persona e le pause automatiche. È una scelta di chi gestisce il portale, non del programma: Amazon resta fuori comunque.": "Acceso, si aprono anche i cataloghi che vietano la ricerca ai programmi, sempre con il ritmo di una persona e le pause automatiche. È una scelta di chi gestisce il portale, non del programma: Amazon resta fuori comunque.",
   "Cataloghi:": "Cataloghi:",
-  ". Con l'asterisco quelli che vietano.": ". Con l'asterisco quelli che vietano."
+  ". Con l'asterisco quelli che vietano.": ". Con l'asterisco quelli che vietano.",
+  "JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.": "JPG, PNG o WebP, fino a 8 MB. Le foto entrano nella scheda quando la salvi.",
+  "Trovato, ma non è arrivato sul negozio: {0}": "Trovato, ma non è arrivato sul negozio: {0}",
+  "il sito non è riuscito a scaricare le foto": "il sito non è riuscito a scaricare le foto",
+  "lo SKU c'è già su un altro prodotto del sito": "lo SKU c'è già su un altro prodotto del sito",
+  "l'EAN c'è già su un altro prodotto del sito": "l'EAN c'è già su un altro prodotto del sito",
+  "il sito ha rifiutato le chiavi REST": "il sito ha rifiutato le chiavi REST",
+  "il sito non ha risposto in tempo": "il sito non ha risposto in tempo",
+  "WooCommerce non risponde come dovrebbe": "WooCommerce non risponde come dovrebbe",
+  "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} foto non pubblicate: il sito non è riuscito a scaricarle.",
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 foto non pubblicata: il sito non è riuscito a scaricarla."
 }

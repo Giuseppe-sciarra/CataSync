@@ -4,8 +4,6 @@ WordPress); da lì si ripristina o si elimina per sempre. WordPress svuota il ce
 dopo i giorni impostati sul sito (EMPTY_TRASH_DAYS, di serie 30)."""
 import json
 import re
-import secrets
-import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -13,8 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import codici, config, quality, wc_rest
-from ..html_sicuro import pulisci_html_ricco, testo_puro, tipo_immagine
+from .. import codici, config, foto, quality, wc_rest
+from ..html_sicuro import pulisci_html_ricco, testo_puro
 from ..db import get_db
 from ..models import Job, JobItem, ProdottoCestinato, Site, User
 from ..security import require_user
@@ -226,9 +224,8 @@ async def modifica_prodotto(
 STATI_SCHEDA = ("publish", "draft", "pending", "private")
 DISPONIBILITA = ("instock", "outofstock", "onbackorder")
 # Foto caricate dal computer: restano qui il tempo che WooCommerce le scarichi.
-CARTELLA_FOTO = "foto-temporanee"
-FOTO_MAX_BYTES = 8 * 1024 * 1024
-FOTO_DURATA = 2 * 24 * 3600
+CARTELLA_FOTO = foto.CARTELLA_MAGAZZINO
+FOTO_MAX_BYTES = foto.MAX_BYTES
 
 
 def _testo_specifica(valore) -> str:
@@ -488,16 +485,6 @@ async def salva_scheda(
             "prodotto": _riga(aggiornato, site.giorni_cestino or 30)}
 
 
-def _pulisci_foto_vecchie(cartella) -> None:
-    limite = time.time() - FOTO_DURATA
-    for f in cartella.glob("*"):
-        try:
-            if f.is_file() and f.stat().st_mtime < limite:
-                f.unlink()
-        except OSError:
-            pass
-
-
 @router.post("/{site_id}/magazzino/foto")
 async def carica_foto(
     site_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(require_user)
@@ -513,16 +500,12 @@ async def carica_foto(
     blob = await file.read(FOTO_MAX_BYTES + 1)
     if len(blob) > FOTO_MAX_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "La foto non deve superare gli 8 MB.")
-    tipo = tipo_immagine(blob) if blob else ""
-    if tipo not in (".jpg", ".png", ".webp"):
+    if not foto.tipo(blob):
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Formati accettati: JPG, PNG, WebP.")
-    cartella = config.UPLOAD_DIR / CARTELLA_FOTO
-    cartella.mkdir(parents=True, exist_ok=True)
-    _pulisci_foto_vecchie(cartella)
-    nome = secrets.token_hex(16) + tipo
-    (cartella / nome).write_bytes(blob)
+    foto.pulisci(foto.in_uso_nel_catalogo(db))
+    nome = foto.salva(blob, CARTELLA_FOTO)
     audit(db, user.email, "magazzino_foto", f"{site.name} · {nome}")
-    return {"src": f"{config.PUBLIC_URL}/media/foto/{nome}"}
+    return {"src": foto.indirizzo(nome)}
 
 
 @router.post("/{site_id}/magazzino/{product_id}/ripristina")

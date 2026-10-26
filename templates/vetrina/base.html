@@ -1,0 +1,117 @@
+<!doctype html>
+{% from "vetrina/_icone.html" import icona %}
+<html lang="it" data-project="catasync" class="v-html">
+<head>
+<meta charset="utf-8">
+  <script src="/static/i18n/catalog.js?v={{ static_v }}"></script>
+  <script src="/static/i18n/i18n.js?v={{ static_v }}"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#070a12">
+<title>{% block titolo %}{{ app_name }}{% endblock %}</title>
+{% block meta %}{% endblock %}
+{% if portal_favicon %}
+<link rel="icon" href="{{ portal_favicon }}" type="{{ portal_favicon_type }}">
+{% if portal_favicon_raster %}<link rel="apple-touch-icon" href="{{ portal_favicon }}">{% endif %}
+{% else %}
+<link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
+<link rel="icon" href="/static/favicon-32.png?v={{ static_v }}" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ static_v }}">
+{% endif %}
+<script>document.documentElement.classList.add('js');</script>
+<link rel="preload" href="/static/vetrina/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/i18n/i18n.css?v={{ static_v }}">
+<link rel="stylesheet" href="/static/vetrina/vetrina.css?v={{ static_v }}">
+</head>
+<body class="v {{ classe_body }}">
+<a class="v-salta" href="#contenuto">Vai al contenuto</a>
+
+<header class="v-testa" data-testa>
+  <div class="v-testa-dentro">
+    <a class="v-marchio" href="/" aria-label="{{ app_name }}" translate="no">
+      {% if portal_logo %}<img src="{{ portal_logo }}" alt="{{ app_name }}">{% else %}<span class="v-marchio-segno" aria-hidden="true">{{ icona("barre") }}</span><span>{{ app_name }}</span>{% endif %}
+    </a>
+    <nav class="v-nav" aria-label="Menu principale">
+      <a class="v-nav-link v-solo-largo" href="/#come-funziona">Come funziona</a>
+      <a class="v-nav-link v-solo-largo" href="/#funzionalita">Funzionalità</a>
+      <a class="v-nav-link v-solo-largo" href="/#prezzi">Prezzi</a>
+      <a class="v-nav-link v-solo-largo" href="/#domande">Domande</a>
+    </nav>
+    <div class="v-testa-azioni">
+      {% if utente %}
+      <a class="v-nav-link" href="/app">Apri il portale</a>
+      {% else %}
+      <a class="v-nav-link" href="/login">Accedi</a>
+      {% endif %}
+      <a class="v-btn v-btn--piccolo" href="/richiedi-informazioni">
+        <span class="v-solo-largo">Richiedi informazioni</span><span class="v-solo-stretto">Informazioni</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="contenuto">
+{% block corpo %}{% endblock %}
+</main>
+
+<footer class="v-piede">
+  <div class="v-piede-dentro">
+    <div class="v-piede-alto">
+      <div class="v-piede-marca">
+        <a class="v-marchio" href="/" aria-label="{{ app_name }}" translate="no">
+          {% if portal_logo %}<img src="{{ portal_logo }}" alt="{{ app_name }}">{% else %}<span class="v-marchio-segno" aria-hidden="true">{{ icona("barre") }}</span><span>{{ app_name }}</span>{% endif %}
+        </a>
+        <p>Le schede dei tuoi prodotti WooCommerce, partendo dal codice EAN.</p>
+        <a class="v-btn v-btn--piccolo" href="/richiedi-informazioni">Richiedi informazioni</a>
+      </div>
+
+      {% if v.ragione_sociale or legali %}
+      <section class="v-piede-col" aria-label="Dati legali">
+        <p class="v-piede-titolo">{% if v.ragione_sociale %}<span translate="no">{{ v.ragione_sociale }}</span>{% else %}<span>Dati legali</span>{% endif %}</p>
+        <dl>
+          {% for etichetta, valore in legali %}
+          <div><dt>{{ etichetta }}</dt><dd translate="no">{{ valore }}</dd></div>
+          {% endfor %}
+        </dl>
+      </section>
+      {% endif %}
+
+      {% if v.pec or v.email or v.telefono %}
+      <section class="v-piede-col" aria-label="Contatti">
+        <p class="v-piede-titolo">Contatti</p>
+        <dl>
+          {% if v.email %}<div><dt>Email</dt><dd translate="no"><a href="mailto:{{ v.email }}">{{ v.email }}</a></dd></div>{% endif %}
+          {% if v.pec %}<div><dt>PEC</dt><dd translate="no"><a href="mailto:{{ v.pec }}">{{ v.pec }}</a></dd></div>{% endif %}
+          {% if v.telefono %}<div><dt>Telefono</dt><dd translate="no"><a href="tel:{{ v.telefono|replace(' ', '') }}">{{ v.telefono }}</a></dd></div>{% endif %}
+        </dl>
+      </section>
+      {% endif %}
+
+      <nav class="v-piede-col" aria-label="Pagine">
+        <p class="v-piede-titolo">Pagine</p>
+        <ul>
+          <li><a href="/#come-funziona">Come funziona</a></li>
+          <li><a href="/#funzionalita">Funzionalità</a></li>
+          <li><a href="/#prezzi">Prezzi</a></li>
+          <li><a href="/richiedi-informazioni">Richiedi informazioni</a></li>
+          <li>{% if utente %}<a href="/app">Apri il portale</a>{% else %}<a href="/login">Accedi</a>{% endif %}</li>
+          <li><a href="/privacy">Informativa privacy</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="v-piede-fondo">
+      <p>© <span translate="no">{{ anno }} {{ v.ragione_sociale or app_name }}</span></p>
+      <p class="v-piede-sorgente">
+        <span translate="no">{{ app_version }}</span>{% if source_url %} ·
+        <a href="{{ source_url }}" target="_blank" rel="noopener">Codice sorgente</a>
+        <span translate="no">(AGPL-3.0)</span>{% endif %}
+      </p>
+      <div class="v-lingua" data-lingua-qui></div>
+    </div>
+  </div>
+</footer>
+
+<script src="/static/vetrina/vetrina.js?v={{ static_v }}" defer></script>
+</body>
+</html>

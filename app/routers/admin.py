@@ -1101,6 +1101,28 @@ def _esito_riga(item: JobItem) -> str:
     return "in_ricerca"
 
 
+# Perché una scheda trovata non è arrivata sul sito, dal messaggio salvato sulla riga. I testi
+# sono quelli del portale (wc_rest.spiega, _request) e quelli di WooCommerce in inglese e in
+# italiano, così si riconoscono anche gli errori salvati prima che il portale li spiegasse.
+CAUSE_PUBBLICAZIONE = (
+    ("pub_foto", ("scaricare le foto", "remote image", "invalid image", "immagine remota",
+                  "immagine non valida", "image_upload")),
+    ("pub_sku", ("sku",)),
+    ("pub_ean", ("gtin", "l'ean c'è già")),
+    ("pub_chiavi", ("chiavi rest", "chiave rest", "http 401", "http 403")),
+    ("pub_rete", ("non raggiungibile", "timeout", "http 502", "http 503", "http 504")),
+    ("pub_woo", ("endpoint non trovato", "non ha risposto in json", "http 500")),
+)
+
+
+def causa_pubblicazione(errore: str | None) -> str:
+    testo = (errore or "").lower()
+    for causa, segni in CAUSE_PUBBLICAZIONE:
+        if any(s in testo for s in segni):
+            return causa
+    return "pubblicazione"
+
+
 def _riga_registro(item: JobItem, lingua: str) -> dict:
     try:
         d = json.loads(item.diagnosi or "{}")
@@ -1129,8 +1151,9 @@ def _riga_registro(item: JobItem, lingua: str) -> dict:
         causa, mancano = "incompleto", _mancano(item)
     elif esito == "errore":
         # Trovato ma non arrivato sul sito: il guaio è nella pubblicazione, non nella ricerca.
-        # Il messaggio vero non si mostra: può contenere l'indirizzo del sito del cliente.
-        causa = "pubblicazione" if causa in ("", "trovato") else causa
+        # Il messaggio vero non si mostra (può contenere l'indirizzo del sito del cliente):
+        # se ne dice solo il genere.
+        causa = causa_pubblicazione(item.error) if causa in ("", "trovato") else causa
     elif esito == "rimandato" and not causa:
         causa = "motori_bloccati"
     quando = item.updated_at or item.created_at
@@ -1206,6 +1229,12 @@ def registro_csv(esito: str = "tutti", db: Session = Depends(get_db)):
 
     righe = [_riga_registro(item, lingua) for item, lingua in _righe_registro(db, esito, None, 5000)[:5000]]
     testi = {"incompleto": "Trovato ma incompleto", "pubblicazione": "Trovato, non pubblicato sul sito",
+             "pub_foto": "Trovato, non pubblicato: il sito non è riuscito a scaricare le foto",
+             "pub_sku": "Trovato, non pubblicato: lo SKU c'è già su un altro prodotto del sito",
+             "pub_ean": "Trovato, non pubblicato: l'EAN c'è già su un altro prodotto del sito",
+             "pub_chiavi": "Trovato, non pubblicato: il sito ha rifiutato le chiavi REST",
+             "pub_rete": "Trovato, non pubblicato: il sito non ha risposto in tempo",
+             "pub_woo": "Trovato, non pubblicato: WooCommerce non risponde come dovrebbe",
              **diagnosi.CAUSE}
     buf = io.StringIO()
     out = csv.writer(buf, delimiter=";")

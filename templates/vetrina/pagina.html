@@ -1,0 +1,378 @@
+{% extends "vetrina/base.html" %}
+{% from "vetrina/_icone.html" import icona %}
+{% block titolo %}{{ app_name }} · Dall’EAN alla scheda prodotto{% endblock %}
+{% block meta %}<meta name="description" content="Incolli i codici EAN dei prodotti: il portale trova foto, descrizione e specifiche sul web e crea le schede nel tuo negozio WooCommerce.">{% endblock %}
+{% block corpo %}
+
+<!-- ============================================================ EROE -->
+<section class="v-eroe" aria-labelledby="eroe-titolo">
+  <div class="v-sfondo" aria-hidden="true"><span class="v-luce v-luce--1"></span><span class="v-luce v-luce--2"></span><span class="v-luce v-luce--3"></span><span class="v-griglia"></span></div>
+  <div class="v-eroe-testo">
+    <p class="v-pillola" data-rise style="--i:0"><span class="v-punto" aria-hidden="true"></span><span>Per negozi WooCommerce</span></p>
+    <h1 id="eroe-titolo" class="v-righe">
+      <span class="v-riga"><span data-line style="--i:0">Dall’EAN alla scheda</span></span>
+      <span class="v-riga"><span data-line style="--i:1" class="v-sfumato">in automatico</span></span>
+    </h1>
+    <p class="v-eroe-frase" data-rise style="--i:2">
+      Incolli i codici EAN dei prodotti: il portale trova nome, foto, descrizione e specifiche sul web e crea le schede nel tuo negozio WooCommerce. Tu controlli e pubblichi.
+    </p>
+    <div class="v-azioni" data-rise style="--i:3">
+      <a class="v-btn v-btn--grande" href="/richiedi-informazioni"><span>Richiedi informazioni</span>{{ icona("freccia") }}</a>
+      <a class="v-btn v-btn--vuoto v-btn--grande" href="#come-funziona">Guarda come funziona</a>
+    </div>
+    <ul class="v-garanzie" data-rise style="--i:4">
+      <li>{{ icona("check") }}<span>Niente da installare sul negozio</span></li>
+      <li>{{ icona("check") }}<span>Schede in 5 lingue</span></li>
+      <li>{{ icona("check") }}<span>I prezzi dei prodotti li decidi tu</span></li>
+    </ul>
+  </div>
+
+  <div class="v-eroe-scena" data-scena data-rise style="--i:5">
+    <div class="v-finestra v-finestra--eroe" data-inclina>
+      <div class="v-finestra-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+      <img src="/static/vetrina/img/{{ lingua_img }}/eroe.webp" data-img-lingua="eroe.webp" width="2400" height="1500" fetchpriority="high"
+           alt="Il portale: i codici incollati e i prodotti con il loro stato">
+    </div>
+    <div class="v-galleggia v-galleggia--sx" data-ui aria-hidden="true">
+      <div class="v-galleggia-testa"><span class="v-icona-tonda v-icona-tonda--piccola">{{ icona("barre") }}</span><span>Codice letto</span></div>
+      <div class="v-minibarre-box">
+        <svg class="v-minibarre" viewBox="0 0 113 40" preserveAspectRatio="none" focusable="false">
+          {% for b in barre_eroe %}{% if b.acceso %}<rect x="{{ 9 + b.i }}" y="0" width="1.04" height="{{ 40 if b.guardia else 34 }}"/>{% endif %}{% endfor %}
+        </svg>
+        <span class="v-scansione"></span>
+      </div>
+      <p class="v-galleggia-codice" translate="no">{{ ean }}</p>
+      <p class="v-galleggia-nota">{{ icona("check") }}<span>Tre siti confermano il codice</span></p>
+    </div>
+    <div class="v-galleggia v-galleggia--dx" data-ui aria-hidden="true">
+      <div class="v-galleggia-prodotto">
+        <img src="/static/vetrina/img/circolatore.webp" alt="" width="44" height="44">
+        <div><p class="v-galleggia-nome">Circolatore elettronico 25-60</p><p class="v-galleggia-sotto"><span>Pompe e circolatori</span> · <span translate="no">167,00 €</span></p></div>
+      </div>
+      <p class="v-galleggia-ok">{{ icona("check") }}<span>Pubblicato sul sito</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PRIMA E DOPO -->
+<section class="v-sezione v-problema" aria-labelledby="problema-titolo">
+  <div class="v-testa-sezione" data-reveal>
+    <p class="v-occhiello">Il problema</p>
+    <h2 id="problema-titolo">Basta copiare schede a mano</h2>
+    <p>Ogni prodotto nuovo vuol dire cercare il nome giusto, scaricare le foto, sistemare la descrizione e riscrivere le specifiche. Per ogni riga della fattura.</p>
+  </div>
+  <div class="v-confronto">
+    <article class="v-carta v-carta--prima" data-reveal style="--i:1">
+      <h3><span class="v-icona-tonda v-icona-tonda--spenta">{{ icona("orologio") }}</span><span>A mano</span></h3>
+      <ul class="v-lista v-lista--no">
+        <li>{{ icona("x") }}<span>Cerchi il nome esatto del prodotto</span></li>
+        <li>{{ icona("x") }}<span>Trovi foto decenti e le scarichi</span></li>
+        <li>{{ icona("x") }}<span>Copi e sistemi la descrizione</span></li>
+        <li>{{ icona("x") }}<span>Riscrivi le specifiche una per una</span></li>
+        <li>{{ icona("x") }}<span>E ricominci col prodotto dopo</span></li>
+      </ul>
+    </article>
+    <div class="v-confronto-freccia" aria-hidden="true">{{ icona("freccia") }}</div>
+    <article class="v-carta v-carta--dopo" data-reveal style="--i:2">
+      <h3><span class="v-icona-tonda">{{ icona("occhiolino") }}</span><span>Con il portale</span></h3>
+      <ul class="v-lista v-lista--si">
+        <li>{{ icona("check") }}<span>Incolli gli EAN della fattura, anche tutti insieme</span></li>
+        <li>{{ icona("check") }}<span>Il portale li cerca sul web e confronta i siti</span></li>
+        <li>{{ icona("check") }}<span>Ti propone nome, foto, descrizione e specifiche</span></li>
+        <li>{{ icona("check") }}<span>Tu metti prezzo e categoria</span></li>
+        <li>{{ icona("check") }}<span>Pubblichi sul negozio con un clic</span></li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ ESEMPI -->
+<section class="v-sezione v-esempi" aria-labelledby="esempi-titolo" data-esempi>
+  <div class="v-testa-sezione" data-reveal>
+    <p class="v-occhiello">Esempi</p>
+    <h2 id="esempi-titolo">Cinque situazioni di tutti i giorni</h2>
+    <p>Scegline una e guarda cosa fa il portale.</p>
+  </div>
+  {% set esempi = [
+    ("fattura", "Il grossista ti manda 40 articoli nuovi", "Incolli i 40 EAN dalla fattura: il portale cerca le schede una per una e tu controlli quelle pronte.", "es-tabella", "La tabella dei prodotti con lo stato di ogni scheda"),
+    ("codice", "Hai solo il codice del produttore", "Va bene anche quello, per esempio 97924465: se la pagina trovata riporta l’EAN, il portale lo recupera e lo mette sul prodotto.", "es-codici", "I codici incollati, EAN e codici produttore insieme"),
+    ("mondo", "Vendi anche in inglese o in tedesco", "Scegli la lingua delle schede tra italiano, inglese, francese, tedesco e spagnolo: le ricerche si fanno in quella lingua.", "es-lingua", "La scelta della lingua delle schede"),
+    ("domanda", "Un codice che online non c’è", "Il portale non inventa niente: ti dice perché non l’ha trovato, poi la scheda la completi a mano.", "es-introvabile", "Il diario di un codice che nessun sito pubblica"),
+    ("etichetta", "Un prezzo da cambiare su un prodotto già online", "Nel Magazzino lo cerchi per nome, SKU o EAN e cambi prezzo, categoria, foto o descrizione: va subito sul sito.", "es-prezzo", "Prezzo e scorte nella scheda di un prodotto"),
+  ] %}
+  <div class="v-esempi-corpo" data-reveal style="--i:1">
+    <div class="v-esempi-elenco" role="tablist" aria-label="Situazioni" aria-orientation="vertical">
+      {% for icon, frase, effetto, immagine, alt in esempi %}
+      <button type="button" role="tab" id="es-{{ loop.index }}" aria-controls="es-pannello-{{ loop.index }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}"{% if not loop.first %} tabindex="-1"{% endif %} data-esempio="{{ loop.index }}">
+        <span class="v-icona-tonda">{{ icona(icon) }}</span>
+        <span class="v-esempio-titolo">{{ frase }}</span>
+        <span class="v-esempio-barra" aria-hidden="true"><span></span></span>
+      </button>
+      {% endfor %}
+    </div>
+    <div class="v-esempi-pannelli">
+      {% for icon, frase, effetto, immagine, alt in esempi %}
+      <div class="v-esempio{% if loop.first %} is-attivo{% endif %}" role="tabpanel" id="es-pannello-{{ loop.index }}" aria-labelledby="es-{{ loop.index }}" data-pannello-esempio="{{ loop.index }}"{% if not loop.first %} hidden{% endif %}>
+        <p class="v-esempio-effetto"><span class="v-etichetta">{{ icona("occhiolino") }}<span>Con il portale</span></span><span>{{ effetto }}</span></p>
+        <div class="v-finestra">
+          <div class="v-finestra-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img src="/static/vetrina/img/{{ lingua_img }}/{{ immagine }}.webp" data-img-lingua="{{ immagine }}.webp" width="1120" height="732" loading="lazy" alt="{{ alt }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ COME FUNZIONA -->
+<section class="v-sezione v-passi" id="come-funziona" aria-labelledby="passi-titolo">
+  <div class="v-testa-sezione" data-reveal>
+    <p class="v-occhiello">Come funziona</p>
+    <h2 id="passi-titolo">Quattro passi, dal codice al negozio</h2>
+    <p>Sempre la stessa strada, dalla fattura al sito.</p>
+  </div>
+  <ol class="v-passi-elenco">
+    <li class="v-passo" data-reveal style="--i:1">
+      <span class="v-passo-numero" aria-hidden="true">1</span>
+      <span class="v-icona-tonda">{{ icona("carica") }}</span>
+      <h3>Incolli i codici</h3>
+      <p>EAN o codice produttore, uno per riga, oppure un file CSV. Scegli la lingua delle schede.</p>
+    </li>
+    <li class="v-passo" data-reveal style="--i:2">
+      <span class="v-passo-numero" aria-hidden="true">2</span>
+      <span class="v-icona-tonda">{{ icona("cerca") }}</span>
+      <h3>Il portale cerca</h3>
+      <p>Interroga i motori di ricerca, apre le pagine che riportano il codice e confronta i siti che lo confermano.</p>
+    </li>
+    <li class="v-passo" data-reveal style="--i:3">
+      <span class="v-passo-numero" aria-hidden="true">3</span>
+      <span class="v-icona-tonda">{{ icona("occhio") }}</span>
+      <h3>Tu controlli</h3>
+      <p>Ogni scheda arriva con nome, foto, descrizione e specifiche: metti prezzo e categoria, correggi se serve.</p>
+    </li>
+    <li class="v-passo" data-reveal style="--i:4">
+      <span class="v-passo-numero" aria-hidden="true">4</span>
+      <span class="v-icona-tonda">{{ icona("freccia") }}</span>
+      <h3>Pubblichi</h3>
+      <p>Le schede vanno sul tuo negozio WooCommerce; quelle già presenti si aggiornano, senza doppioni.</p>
+    </li>
+  </ol>
+
+  <div class="v-prova" data-reveal style="--i:2">
+    <div class="v-prova-testo">
+      <h3>Prova con un codice</h3>
+      <p>Scrivi le cifre sotto un codice a barre: il codice si disegna mentre scrivi e il portale controlla l’ultima cifra, come fa con i tuoi.</p>
+      <label for="prova-ean">Codice EAN</label>
+      <input id="prova-ean" type="text" inputmode="numeric" autocomplete="off" maxlength="16"
+             placeholder="{{ ean }}" aria-describedby="prova-esito" spellcheck="false">
+      <p id="prova-esito" class="v-prova-esito" aria-live="polite">Il codice qui accanto cambia mentre scrivi.</p>
+    </div>
+    <div class="v-prova-codice" aria-hidden="true">
+      <svg class="v-codice" data-codice-vivo viewBox="0 0 120 100" preserveAspectRatio="none" focusable="false">
+        {% for b in barre_eroe %}<rect x="{{ 11 + b.i }}" y="0" width="1.04" height="{{ 100 if b.guardia else 88 }}" style="--b:{{ b.i }}"{% if b.acceso %} class="on"{% endif %}/>{% endfor %}
+      </svg>
+      <div class="v-cifre" data-cifre translate="no">
+        <span class="v-cifre-prima">{{ ean[0] }}</span>
+        <span class="v-cifre-gruppo">{% for c in ean[1:7] %}<span>{{ c }}</span>{% endfor %}</span>
+        <span class="v-cifre-gruppo v-cifre-gruppo--destra">{% for c in ean[7:13] %}<span>{{ c }}</span>{% endfor %}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FUNZIONALITÀ -->
+<section class="v-sezione v-funzioni" id="funzionalita" aria-labelledby="funzioni-titolo">
+  <div class="v-testa-sezione" data-reveal>
+    <p class="v-occhiello">Funzionalità</p>
+    <h2 id="funzioni-titolo">Tutto quello che serve al catalogo</h2>
+    <p>Non solo i prodotti nuovi: anche quelli che sono già sul sito.</p>
+  </div>
+  <div class="v-bento">
+    <article class="v-tessera v-tessera--larga" data-reveal style="--i:1">
+      <div class="v-tessera-testo">
+        <span class="v-icona-tonda">{{ icona("scheda") }}</span>
+        <h3>Scheda prodotto completa</h3>
+        <p>Nome, prezzi, scorte, categorie, foto, descrizione e specifiche: li cambi qui e vanno subito sul sito.</p>
+        <ul class="v-lista v-lista--si">
+          <li>{{ icona("check") }}<span>Cerchi il prodotto per nome, SKU o EAN</span></li>
+          <li>{{ icona("check") }}<span>Cambi prezzo, scorte e foto dalla stessa scheda</span></li>
+          <li>{{ icona("check") }}<span>Salvi e il negozio è già aggiornato</span></li>
+        </ul>
+      </div>
+      <div class="v-finestra v-finestra--video">
+        <div class="v-finestra-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+        <!-- Una registrazione vera del pannello, senza audio: gira da sola e si ferma fuori schermo. -->
+        <video muted loop playsinline autoplay preload="metadata" width="1040" height="700"
+               poster="/static/vetrina/video/scheda-{{ lingua_img }}.webp" aria-label="Si cerca un prodotto, si apre la scheda, si cambia il prezzo e si salva sul sito" data-video-lingua>
+          <source src="/static/vetrina/video/scheda-{{ lingua_img }}.mp4" type="video/mp4">
+        </video>
+      </div>
+    </article>
+    <article class="v-tessera v-tessera--meta" data-reveal style="--i:1">
+      <div class="v-tessera-testo">
+        <span class="v-icona-tonda">{{ icona("scatola") }}</span>
+        <h3>Magazzino</h3>
+        <p>Li trovi per categoria, nome, SKU o EAN; ne modifichi la scheda intera o li sposti nel cestino del sito.</p>
+      </div>
+      <div class="v-tessera-foto">
+        <img src="/static/vetrina/img/{{ lingua_img }}/magazzino.webp" data-img-lingua="magazzino.webp" width="1560" height="1050" loading="lazy" alt="Il magazzino con le categorie e i prodotti del sito">
+      </div>
+    </article>
+    <article class="v-tessera v-tessera--meta" data-reveal style="--i:2">
+      <div class="v-tessera-testo">
+        <span class="v-icona-tonda">{{ icona("cartella") }}</span>
+        <h3>Categorie del negozio</h3>
+        <p>Le aggiungi, anche dentro un'altra, le rinomini, le elimini e le metti in ordine trascinandole.</p>
+      </div>
+      <div class="v-tessera-foto">
+        <img src="/static/vetrina/img/{{ lingua_img }}/categorie.webp" data-img-lingua="categorie.webp" width="1560" height="1050" loading="lazy" alt="Le categorie del negozio, in ordine">
+      </div>
+    </article>
+    <article class="v-tessera v-tessera--diario" data-reveal style="--i:1">
+      <div class="v-tessera-testo">
+        <span class="v-icona-tonda">{{ icona("domanda") }}</span>
+        <h3>Perché non l’ha trovato</h3>
+        <p>Per ogni codice non trovato c’è il diario della ricerca: cosa si è chiesto ai motori, quali siti sono stati aperti, cosa è successo su ognuno.</p>
+      </div>
+      <div class="v-tessera-foto">
+        <img src="/static/vetrina/img/{{ lingua_img }}/perche.webp" data-img-lingua="perche.webp" width="2360" height="1132" loading="lazy" alt="Il diario di un codice: i siti aperti e cosa è successo su ognuno">
+      </div>
+    </article>
+    <article class="v-tessera v-tessera--piccola" data-reveal style="--i:2">
+      <span class="v-icona-tonda">{{ icona("mondo") }}</span>
+      <h3>Schede in cinque lingue</h3>
+      <p>Italiano, inglese, francese, tedesco e spagnolo: le ricerche si fanno nella lingua scelta.</p>
+      <p class="v-lingue" translate="no"><span>IT</span><span>EN</span><span>FR</span><span>DE</span><span>ES</span></p>
+    </article>
+    <article class="v-tessera v-tessera--piccola" data-reveal style="--i:3">
+      <span class="v-icona-tonda">{{ icona("luna") }}</span>
+      <h3>Aggiornamento notturno</h3>
+      <p>Di notte le schede già pubblicate si ricontrollano e si aggiornano dove serve.</p>
+    </article>
+    <article class="v-tessera v-tessera--piccola" data-reveal style="--i:1">
+      <span class="v-icona-tonda">{{ icona("spina") }}</span>
+      <h3>Niente da installare</h3>
+      <p>Basta una chiave REST di WooCommerce. Le chiavi restano cifrate nel portale.</p>
+    </article>
+    <article class="v-tessera v-tessera--striscia" data-reveal style="--i:2">
+      <div class="v-tessera-testo">
+        <span class="v-icona-tonda">{{ icona("scudo") }}</span>
+        <h3>Legge il web con garbo</h3>
+        <p>Solo quello che i siti pubblicano, senza aggirare le protezioni.</p>
+      </div>
+      <ul class="v-lista v-lista--si">
+        <li>{{ icona("check") }}<span>Rispetta il robots.txt di ogni sito.</span></li>
+        <li>{{ icona("check") }}<span>Una pagina alla volta, con una pausa fra una richiesta e l'altra.</span></li>
+        <li>{{ icona("check") }}<span>Se un sito si protegge dai programmi, lo salta e te lo dice.</span></li>
+        <li>{{ icona("check") }}<span>Prezzi e testi inventati, mai: solo quello che le pagine riportano.</span></li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ PREZZI -->
+{% if prezzi.mostra %}
+<section class="v-sezione v-prezzi" id="prezzi" aria-labelledby="prezzi-titolo">
+  <div class="v-sfondo" aria-hidden="true"><span class="v-luce v-luce--prezzi"></span></div>
+  <div class="v-testa-sezione" data-reveal>
+    <p class="v-occhiello">Prezzi</p>
+    <h2 id="prezzi-titolo">Un prezzo semplice</h2>
+    <p>Mensile o annuale: le funzioni sono le stesse, cambia solo come paghi.</p>
+  </div>
+  <div class="v-piani{% if not (prezzi.mese and prezzi.anno_mese) %} v-piani--uno{% endif %}">
+    {% if prezzi.mese %}
+    <article class="v-piano" aria-labelledby="piano-mese" data-reveal style="--i:1">
+      <h3 id="piano-mese">Mensile</h3>
+      <p class="v-piano-per">Per partire subito, mese per mese.</p>
+      <p class="v-prezzo"><span class="v-prezzo-cifra" translate="no">{{ prezzi.mese }} €</span><span class="v-prezzo-periodo">al mese</span></p>
+      <p class="v-piano-conto" aria-hidden="true"></p>
+      {% if prezzi.nota %}<p class="v-piano-nota">{{ prezzi.nota }}</p>{% endif %}
+      <a class="v-btn v-btn--vuoto v-btn--pieno" href="/richiedi-informazioni?piano=mensile">Richiedi informazioni</a>
+      <ul class="v-lista v-lista--si">
+        <li>{{ icona("check") }}<span>Collegamento al tuo negozio WooCommerce</span></li>
+        <li>{{ icona("check") }}<span>Schede dal codice EAN o dal codice produttore</span></li>
+        <li>{{ icona("check") }}<span>Schede in italiano, inglese, francese, tedesco o spagnolo</span></li>
+        <li>{{ icona("check") }}<span>Magazzino, scheda prodotto e categorie</span></li>
+        <li>{{ icona("check") }}<span>Aggiornamento notturno</span></li>
+      </ul>
+    </article>
+    {% endif %}
+    {% if prezzi.anno_mese %}
+    <article class="v-piano v-piano--evidenza" aria-labelledby="piano-anno" data-reveal style="--i:2">
+      {% if prezzi.mesi_gratis %}<p class="v-piano-badge">{% if prezzi.mesi_gratis == 1 %}<span>1 mese gratis</span>{% else %}<span>{{ prezzi.mesi_gratis }} mesi gratis</span>{% endif %}</p>{% elif prezzi.risparmio %}<p class="v-piano-badge"><span>Conviene di più</span></p>{% endif %}
+      <h3 id="piano-anno">Annuale</h3>
+      <p class="v-piano-per">Per chi carica prodotti tutto l'anno: costa meno.</p>
+      <p class="v-prezzo"><span class="v-prezzo-cifra" translate="no">{{ prezzi.anno_mese }} €</span><span class="v-prezzo-periodo">al mese</span></p>
+      <p class="v-piano-conto">{% if prezzi.risparmio %}<span>{{ prezzi.anno_totale }} € l'anno: risparmi {{ prezzi.risparmio }} €</span>{% else %}<span>{{ prezzi.anno_totale }} € l'anno</span>{% endif %}</p>
+      {% if prezzi.nota %}<p class="v-piano-nota">{{ prezzi.nota }}</p>{% endif %}
+      <a class="v-btn v-btn--pieno" href="/richiedi-informazioni?piano=annuale"><span>Richiedi informazioni</span>{{ icona("freccia") }}</a>
+      <ul class="v-lista v-lista--si">
+        <li>{{ icona("check") }}<span>Tutto quello del piano mensile</span></li>
+        <li>{{ icona("check") }}<span>Un solo pagamento all'anno</span></li>
+        {% if prezzi.risparmio %}<li>{{ icona("check") }}<span>{{ prezzi.risparmio }} € risparmiati ogni anno</span></li>{% endif %}
+      </ul>
+      {% if prezzi.mese_totale %}
+      <div class="v-anno-conto">
+        <p><span>Un anno col mensile</span><strong translate="no">{{ prezzi.mese_totale }} €</strong></p>
+        <span class="v-barra" aria-hidden="true"><span style="--quota:100%"></span></span>
+        <p><span>Un anno con l'annuale</span><strong translate="no">{{ prezzi.anno_totale }} €</strong></p>
+        <span class="v-barra v-barra--anno" aria-hidden="true"><span style="--quota:{{ prezzi.quota_anno }}%"></span></span>
+      </div>
+      {% endif %}
+    </article>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ============================================================ DOMANDE -->
+<section class="v-sezione v-domande" id="domande" aria-labelledby="domande-titolo">
+  <div class="v-domande-lato" data-reveal>
+    <p class="v-occhiello">Domande</p>
+    <h2 id="domande-titolo">Domande frequenti</h2>
+    <p>Non trovi la risposta? Scrivici: ti rispondiamo per email.</p>
+    <a class="v-btn v-btn--vuoto" href="/richiedi-informazioni">Richiedi informazioni</a>
+  </div>
+  <div class="v-domande-elenco" data-reveal style="--i:1">
+    <details open>
+      <summary><span>Devo installare qualcosa sul negozio?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>No. Basta una chiave REST di WooCommerce con permesso di lettura e scrittura, che si crea dal pannello di WordPress. Il plugin per mettere le categorie nel menu è facoltativo.</p>
+    </details>
+    <details>
+      <summary><span>Da dove prende foto e descrizioni?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>Dalle pagine che pubblicano quel codice: negozi, produttori, distributori. Le legge con garbo, rispettando il robots.txt, e quando più siti confermano il codice confronta le informazioni.</p>
+    </details>
+    <details>
+      <summary><span>E se un codice non si trova?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>Te lo dice e ti spiega perché, con il diario della ricerca. Puoi riprovare con il codice produttore o completare la scheda a mano.</p>
+    </details>
+    <details>
+      <summary><span>I prezzi li prende dal web?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>No, mai. Prezzo e categoria li decidi tu, anche su più prodotti insieme.</p>
+    </details>
+    <details>
+      <summary><span>Posso modificare i prodotti già sul sito?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>Sì. Nel Magazzino li cerchi per nome, SKU o EAN, cambi la scheda intera o li sposti nel cestino del sito.</p>
+    </details>
+    <details>
+      <summary><span>In che lingua escono le schede?</span><span class="v-piu" aria-hidden="true"></span></summary>
+      <p>In quella che scegli: italiano, inglese, francese, tedesco o spagnolo. Le ricerche si fanno direttamente in quella lingua.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ============================================================ CHIUSURA -->
+<section class="v-sezione v-chiudi" aria-labelledby="chiudi-titolo">
+  <div class="v-chiudi-pannello" data-reveal>
+    <div class="v-sfondo" aria-hidden="true"><span class="v-luce v-luce--1"></span><span class="v-luce v-luce--2"></span><span class="v-griglia"></span></div>
+    <h2 id="chiudi-titolo">Proviamolo sul tuo negozio</h2>
+    <p>Lasciaci la tua email: ti portiamo al modulo, aggiungi nome e messaggio e ti rispondiamo noi.</p>
+    <form class="v-chiudi-form" action="/richiedi-informazioni" method="get">
+      <label class="v-nascosto" for="chiudi-email">La tua email</label>
+      <input id="chiudi-email" name="email" type="email" autocomplete="email" placeholder="la tua email" required>
+      <button class="v-btn" type="submit"><span>Continua</span>{{ icona("freccia") }}</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
