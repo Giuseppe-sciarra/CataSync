@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.10.1 — 2026-10-27
+
+### Added
+- **Aggiornamento automatico notturno** (`aggiorna-tutto.sh` + `installa-aggiornamento.sh`, come il CRM):
+  librerie Python all'ultima versione, immagine base, Postgres, SearXNG, LibreTranslate e
+  browserless; prova dopo ogni passo e rollback se qualcosa non risponde; email di riepilogo
+  spedita dal portale col suo SMTP. `bash installa-aggiornamento.sh` lo pianifica alle 02:00.
+
+### Security
+- **Browser per le pagine JavaScript: browserless v2 (`ghcr.io/browserless/chromium`).** La v1
+  (`browserless/chrome`) è abbandonata e gira su Node 18, fuori supporto: non riceverà mai le
+  correzioni di sicurezza di Node del 21 ottobre 2026 (CVE-2026-111497, decompressione Brotli,
+  e le altre). La v2 è aggiornata (Node 24.22.1) e accetta user-agent, lingua e risorse escluse
+  pagina per pagina, come già le manda il portale: `DEFAULT_LAUNCH_ARGS` non serve più (nella v2
+  non esiste). Concorrenza e timeout passano a `CONCURRENT` e `TIMEOUT`. L'indirizzo del browser
+  nelle impostazioni resta `http://browser:3000`. Aggiornando:
+  `docker compose pull browser && docker compose up -d --build`, poi `docker rmi browserless/chrome`.
+
 ## 2.10.0 — 2026-10-26
 
 ### Fixed

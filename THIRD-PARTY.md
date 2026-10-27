@@ -40,7 +40,7 @@ and does not redistribute them.
 | [PostgreSQL](https://www.postgresql.org) 17 (`postgres:17-alpine`) | database | PostgreSQL License |
 | [SearXNG](https://github.com/searxng/searxng) (`searxng/searxng`) | metasearch engine used to find product pages | AGPL-3.0 |
 | [LibreTranslate](https://github.com/LibreTranslate/LibreTranslate) (`libretranslate/libretranslate`) | translation into the language of the product sheets — optional | AGPL-3.0 |
-| [Browserless](https://github.com/browserless/browserless) (`browserless/chrome`) | headless Chrome for pages built with JavaScript — optional | check the licence of the image you deploy: recent Browserless releases are SSPL-1.0 or a commercial licence |
+| [Browserless](https://github.com/browserless/browserless) (`ghcr.io/browserless/chromium`) | headless Chrome for pages built with JavaScript — optional | check the licence of the image you deploy: recent Browserless releases are SSPL-1.0 or a commercial licence |
 | [Python](https://www.python.org) 3.12 (`python:3.12-slim`) | base image of the portal | PSF License |
 
 ## Content read from the web

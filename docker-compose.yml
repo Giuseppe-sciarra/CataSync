@@ -103,16 +103,15 @@ services:
       - ./libretranslate:/home/libretranslate/.local
 
   browser:
-    image: browserless/chrome
+    # browserless v2: la v1 (browserless/chrome) è abbandonata, con Node 18 fuori supporto.
+    # User-agent e lingua li manda il portale pagina per pagina (/content li accetta).
+    image: ghcr.io/browserless/chromium:latest
     container_name: td-browser
     restart: unless-stopped
     shm_size: "1gb"
     environment:
-      MAX_CONCURRENT_SESSIONS: "2"
-      CONNECTION_TIMEOUT: "45000"
-      # Lingua del browser quando il portale non riesce a indicarla pagina per
-      # pagina (versioni vecchie di browserless): metti quella dei tuoi clienti.
-      DEFAULT_LAUNCH_ARGS: '["--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36","--lang=it-IT"]'
+      CONCURRENT: "2"
+      TIMEOUT: "45000"
 
 volumes:
   pgdata:
