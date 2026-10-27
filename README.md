@@ -381,6 +381,8 @@ that time, the update starts as soon as it is back on. Then:
 | update right now | `bash aggiorna-tutto.sh` |
 | remove the schedule | `bash installa-aggiornamento.sh --remove` |
 
+The log never goes over 1 MB: when it gets there, the most recent lines are kept.
+
 Optional values in `.env`: `AGG_MAIL_SEMPRE=1` (email even when everything was already up to date)
 and `AGG_TIENI_ROLLBACK=3` (how many previous portal images to keep for rollback, about 0.5 GB
 each).

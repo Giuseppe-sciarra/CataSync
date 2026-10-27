@@ -385,6 +385,8 @@ server era spento, l'aggiornamento parte appena si riaccende. Poi:
 | aggiornare subito | `bash aggiorna-tutto.sh` |
 | togliere la pianificazione | `bash installa-aggiornamento.sh --remove` |
 
+Il log non supera 1 MB: quando ci arriva restano le righe più recenti.
+
 Valori facoltativi nel `.env`: `AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato) e
 `AGG_TIENI_ROLLBACK=3` (quante immagini di prima del portale tenere per tornare indietro, circa
 0,5 GB l'una).

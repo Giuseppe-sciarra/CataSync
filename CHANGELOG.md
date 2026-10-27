@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.10.3 — 2026-10-27
+
+### Changed
+- **`logs/aggiorna-tutto.log` non supera più 1 MB**: a ogni giro, se è più grande, `aggiorna-tutto.sh`
+  tiene l'ultimo mezzo MB (righe intere). Gli altri log di `logs/` si riscrivono già a ogni giro.
+
 ## 2.10.2 — 2026-10-27
 
 ### Fixed
