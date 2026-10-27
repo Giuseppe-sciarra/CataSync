@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.10.2 — 2026-10-27
+
+### Fixed
+- **Il riepilogo dell'aggiornamento notturno andava a `tuo@indirizzo.it`** quando nel `.env` mancava
+  `AGG_MAIL_A` o era rimasto quello di esempio. Ora va ad `AGG_MAIL_A` se c'è, altrimenti ad
+  `ADMIN_EMAIL`. Nel `.env.example` la riga è vuota: chi l'ha copiata con `tuo@indirizzo.it` la
+  svuota o ci mette il suo indirizzo.
+
+### Docs
+- README: l'aggiornamento automatico è il passo 4 dell'installazione, con i comandi per attivarlo
+  su un'installazione che c'è già.
+
 ## 2.10.1 — 2026-10-27
 
 ### Added

@@ -172,6 +172,9 @@ mkdir -p libretranslate && sudo chown -R 1032:1032 libretranslate
 # 3. Start
 docker compose up -d --build
 docker compose logs -f hub
+
+# 4. Nightly automatic update (as root, see "Updates")
+bash installa-aggiornamento.sh
 ```
 
 The secrets:
@@ -351,27 +354,22 @@ new major version of PostgreSQL: do that by hand, with backup and restore.
 It works with the installation made with `git clone` and `docker-compose.yml`. Do not use it with
 a Portainer stack: there, updates are done from Portainer.
 
-What it needs:
+What it needs: the mail server in `.env` (`SMTP_HOST` and the other `SMTP_*`), the same one used for
+two-step verification. The summary goes to `ADMIN_EMAIL`; to send it somewhere else put
+`AGG_MAIL_A=address` in `.env`.
 
-- the mail server in `.env` (`SMTP_HOST` and the other `SMTP_*`), the same one used for two-step
-  verification;
-- in `.env`, the address that gets the summary: `AGG_MAIL_A=you@example.com`. If your `.env` comes
-  from a version before 2.10.1 the line is missing: add it.
-
-First a dry run, which says what it would do without touching anything. From the CataSync folder:
+On a new installation it is turned on by step 4 of the installation. On a CataSync that is already
+installed, from its folder and as root:
 
 ```bash
-bash aggiorna-tutto.sh --dry-run
+git pull --ff-only                  # brings the two scripts, if they are not there yet (since 2.10.1)
+bash aggiorna-tutto.sh --dry-run    # dry run: says what it would do, touches nothing
+bash installa-aggiornamento.sh      # schedules it every night
 ```
 
-**You should see** `── fine ──` at the end. Then schedule it, as root:
-
-```bash
-bash installa-aggiornamento.sh
-```
-
-**You should see:** `✅ Timer systemd installato: ogni notte alle 02:00` (without systemd it uses
-cron: `✅ Cron installato`). 02:00 comes before the nightly shop re-sync (03:00 by default). A
+**You should see** `── fine ──` at the end of the dry run, and after the last command
+`✅ Timer systemd installato: ogni notte alle 02:00` (without systemd it uses cron:
+`✅ Cron installato`). 02:00 comes before the nightly shop re-sync (03:00 by default). A
 number changes the time: `bash installa-aggiornamento.sh 3` for 03:00,
 `bash installa-aggiornamento.sh 1:30` for 01:30. The timer is *Persistent*: if the server was off at
 that time, the update starts as soon as it is back on. Then:

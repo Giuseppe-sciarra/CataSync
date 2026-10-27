@@ -33,7 +33,7 @@ NOME="CataSync"
 APP="hub"                 # il portale: le prove e l'email partono da qui
 SERVIZI_APP="hub"         # i servizi costruiti da questa cartella (gli altri sono immagini scaricate)
 TIENI_DEF=3
-AGG_MAIL_A_DEF="tuo@indirizzo.it"   # chi riceve l'email di riepilogo se nel .env non c'è AGG_MAIL_A
+AGG_MAIL_A_DEF=""   # chi riceve l'email se nel .env non c'è AGG_MAIL_A (vuoto = ADMIN_EMAIL)
 
 dentro() { docker compose exec -T "$APP" curl -fsS --max-time 30 "$@" 2>/dev/null; }
 

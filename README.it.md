@@ -176,6 +176,9 @@ mkdir -p libretranslate && sudo chown -R 1032:1032 libretranslate
 # 3. Avvio
 docker compose up -d --build
 docker compose logs -f hub
+
+# 4. Aggiornamento automatico ogni notte (da root, vedi «Aggiornamenti»)
+bash installa-aggiornamento.sh
 ```
 
 I segreti:
@@ -356,27 +359,21 @@ ripristino.
 Funziona con l'installazione fatta con `git clone` e `docker-compose.yml`. Con uno stack di
 Portainer non va usato: lì gli aggiornamenti si fanno da Portainer.
 
-Cosa serve:
+Cosa serve: il server di posta nel `.env` (`SMTP_HOST` e gli altri `SMTP_*`), lo stesso della
+verifica in due passaggi. Il riepilogo va a `ADMIN_EMAIL`; per mandarlo a un altro indirizzo metti
+`AGG_MAIL_A=indirizzo` nel `.env`.
 
-- il server di posta nel `.env` (`SMTP_HOST` e gli altri `SMTP_*`), lo stesso della verifica in
-  due passaggi;
-- nel `.env` l'indirizzo che riceve il riepilogo: `AGG_MAIL_A=tuo@indirizzo.it`. Se il tuo `.env`
-  viene da una versione prima della 2.10.1 la riga non c'è: aggiungila.
-
-Prima la prova a vuoto, che dice cosa farebbe senza toccare niente. Dalla cartella di CataSync:
+Su un'installazione nuova si attiva col passo 4 dell'installazione. Su un CataSync già installato,
+dalla sua cartella e da root:
 
 ```bash
-bash aggiorna-tutto.sh --dry-run
+git pull --ff-only                  # porta i due script, se non ci sono ancora (dalla 2.10.1)
+bash aggiorna-tutto.sh --dry-run    # prova a vuoto: dice cosa farebbe, non tocca niente
+bash installa-aggiornamento.sh      # lo pianifica ogni notte
 ```
 
-**Deve comparire**, alla fine, `── fine ──`. Poi pianificalo, da root:
-
-```bash
-bash installa-aggiornamento.sh
-```
-
-**Deve comparire:** `✅ Timer systemd installato: ogni notte alle 02:00` (senza systemd usa cron:
-`✅ Cron installato`). Le 02:00 vengono prima della ri-sincronizzazione notturna dei negozi (di
+**Deve comparire**, alla fine della prova a vuoto, `── fine ──`, e dopo l'ultimo comando
+`✅ Timer systemd installato: ogni notte alle 02:00` (senza systemd usa cron: `✅ Cron installato`). Le 02:00 vengono prima della ri-sincronizzazione notturna dei negozi (di
 serie alle 03:00). Con un numero cambia l'ora: `bash installa-aggiornamento.sh 3` per le 03:00,
 `bash installa-aggiornamento.sh 1:30` per l'01:30. Il timer è *Persistent*: se all'ora stabilita il
 server era spento, l'aggiornamento parte appena si riaccende. Poi:
