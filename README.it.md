@@ -334,6 +334,77 @@ Il database si aggiorna da solo all'avvio: niente migrazioni a mano. Tieni aggio
 le versioni vecchie non hanno alcuni motori e al primo CAPTCHA sospendono un motore per un
 giorno intero.
 
+### Aggiornamento automatico ogni notte
+
+`aggiorna-tutto.sh` aggiorna da solo, ogni notte, quello su cui gira CataSync:
+
+- **il portale**: l'ultima versione di Python 3.12 con i pacchetti Debian della sua immagine e
+  tutte le librerie di `requirements.txt` all'ultima versione;
+- **PostgreSQL 17, SearXNG, LibreTranslate e browserless** (Chrome e Node): l'immagine nuova, se è
+  uscita. PostgreSQL resta sulla 17.
+
+Dopo ogni passo prova che tutto risponda: il portale su `/health`, SearXNG, LibreTranslate con
+l'elenco delle lingue, browserless aprendo davvero una pagina. Se qualcosa non va torna da solo ai
+file e alle immagini di prima. Alla fine manda un'email di riepilogo, solo se ha aggiornato
+qualcosa o se qualcosa è andato storto. Il portale resta fermo 10-30 secondi, e solo quando c'è
+qualcosa da aggiornare. Così SearXNG resta sempre aggiornato senza pensarci.
+
+Il codice nuovo di CataSync non arriva da solo: per quello resta `git pull` (qui sopra).
+Il passaggio a una versione maggiore di PostgreSQL non lo fa mai: si fa a mano, con backup e
+ripristino.
+
+Funziona con l'installazione fatta con `git clone` e `docker-compose.yml`. Con uno stack di
+Portainer non va usato: lì gli aggiornamenti si fanno da Portainer.
+
+Cosa serve:
+
+- il server di posta nel `.env` (`SMTP_HOST` e gli altri `SMTP_*`), lo stesso della verifica in
+  due passaggi;
+- nel `.env` l'indirizzo che riceve il riepilogo: `AGG_MAIL_A=tuo@indirizzo.it`. Se il tuo `.env`
+  viene da una versione prima della 2.10.1 la riga non c'è: aggiungila.
+
+Prima la prova a vuoto, che dice cosa farebbe senza toccare niente. Dalla cartella di CataSync:
+
+```bash
+bash aggiorna-tutto.sh --dry-run
+```
+
+**Deve comparire**, alla fine, `── fine ──`. Poi pianificalo, da root:
+
+```bash
+bash installa-aggiornamento.sh
+```
+
+**Deve comparire:** `✅ Timer systemd installato: ogni notte alle 02:00` (senza systemd usa cron:
+`✅ Cron installato`). Le 02:00 vengono prima della ri-sincronizzazione notturna dei negozi (di
+serie alle 03:00). Con un numero cambia l'ora: `bash installa-aggiornamento.sh 3` per le 03:00,
+`bash installa-aggiornamento.sh 1:30` per l'01:30. Il timer è *Persistent*: se all'ora stabilita il
+server era spento, l'aggiornamento parte appena si riaccende. Poi:
+
+| Per | Comando |
+|---|---|
+| vedere se è attivo e com'è andata l'ultima volta | `bash installa-aggiornamento.sh --status` |
+| leggere il log | `tail -f logs/aggiorna-tutto.log` |
+| aggiornare subito | `bash aggiorna-tutto.sh` |
+| togliere la pianificazione | `bash installa-aggiornamento.sh --remove` |
+
+Valori facoltativi nel `.env`: `AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato) e
+`AGG_TIENI_ROLLBACK=3` (quante immagini di prima del portale tenere per tornare indietro, circa
+0,5 GB l'una).
+
+Per tenere ferma una libreria scrivi un limite nella sua riga di `requirements.txt`, con il motivo,
+per esempio `httpx<1  # motivo`: le righe con un limite restano come sono.
+
+Lo script riscrive `requirements.txt`, con una copia di riserva in `backups/`. Se `git pull` si
+ferma perché il file è cambiato sul server, rimettilo come su GitHub, aggiorna e lascia che lo
+script riporti tutto all'ultima versione:
+
+```bash
+git checkout -- requirements.txt
+git pull --ff-only
+bash aggiorna-tutto.sh
+```
+
 Ogni modifica di `main` che passa i controlli esce come
 [release](https://github.com/Giuseppe-sciarra/CataSync/releases). La versione sta in
 `VERSION.txt` e in fondo a ogni pagina: un numero nuovo in `VERSION.txt` si usa così com'è,

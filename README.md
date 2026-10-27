@@ -330,6 +330,76 @@ docker compose ps
 The database updates itself at start-up: no manual migrations. Keep SearXNG up to date: older
 versions lack some engines and suspend an engine for a whole day at the first CAPTCHA.
 
+### Nightly automatic update
+
+Every night `aggiorna-tutto.sh` updates by itself what CataSync runs on:
+
+- **the portal**: the latest Python 3.12 with the Debian packages of its image, and every library
+  in `requirements.txt` at its latest version;
+- **PostgreSQL 17, SearXNG, LibreTranslate and browserless** (Chrome and Node): the new image, when
+  there is one. PostgreSQL stays on 17.
+
+After each step it checks that everything answers: the portal on `/health`, SearXNG, LibreTranslate
+with its list of languages, browserless by actually opening a page. If something breaks it goes
+back to the previous files and images by itself. At the end it emails a summary, only when it
+updated something or something went wrong. The portal is down for 10-30 seconds, and only when
+there is something to update. This also keeps SearXNG up to date without thinking about it.
+
+New CataSync code does not arrive by itself: that is still `git pull` (above). It never moves to a
+new major version of PostgreSQL: do that by hand, with backup and restore.
+
+It works with the installation made with `git clone` and `docker-compose.yml`. Do not use it with
+a Portainer stack: there, updates are done from Portainer.
+
+What it needs:
+
+- the mail server in `.env` (`SMTP_HOST` and the other `SMTP_*`), the same one used for two-step
+  verification;
+- in `.env`, the address that gets the summary: `AGG_MAIL_A=you@example.com`. If your `.env` comes
+  from a version before 2.10.1 the line is missing: add it.
+
+First a dry run, which says what it would do without touching anything. From the CataSync folder:
+
+```bash
+bash aggiorna-tutto.sh --dry-run
+```
+
+**You should see** `── fine ──` at the end. Then schedule it, as root:
+
+```bash
+bash installa-aggiornamento.sh
+```
+
+**You should see:** `✅ Timer systemd installato: ogni notte alle 02:00` (without systemd it uses
+cron: `✅ Cron installato`). 02:00 comes before the nightly shop re-sync (03:00 by default). A
+number changes the time: `bash installa-aggiornamento.sh 3` for 03:00,
+`bash installa-aggiornamento.sh 1:30` for 01:30. The timer is *Persistent*: if the server was off at
+that time, the update starts as soon as it is back on. Then:
+
+| To | Command |
+|---|---|
+| see whether it is active and how the last run went | `bash installa-aggiornamento.sh --status` |
+| read the log | `tail -f logs/aggiorna-tutto.log` |
+| update right now | `bash aggiorna-tutto.sh` |
+| remove the schedule | `bash installa-aggiornamento.sh --remove` |
+
+Optional values in `.env`: `AGG_MAIL_SEMPRE=1` (email even when everything was already up to date)
+and `AGG_TIENI_ROLLBACK=3` (how many previous portal images to keep for rollback, about 0.5 GB
+each).
+
+To hold a library back, write a limit on its line in `requirements.txt`, with the reason, for
+example `httpx<1  # reason`: lines with a limit are left as they are.
+
+The script rewrites `requirements.txt`, with a backup copy in `backups/`. If `git pull` stops
+because the file changed on the server, put it back as it is on GitHub, pull, and let the script
+bring everything up to date again:
+
+```bash
+git checkout -- requirements.txt
+git pull --ff-only
+bash aggiorna-tutto.sh
+```
+
 Every change to `main` that passes the checks is published as a
 [release](https://github.com/Giuseppe-sciarra/CataSync/releases). The version is in
 `VERSION.txt` and at the bottom of every page: a new number in `VERSION.txt` is used as it is,
