@@ -352,12 +352,13 @@ file e alle immagini di prima. Alla fine manda un'email di riepilogo, solo se ha
 qualcosa o se qualcosa è andato storto. Il portale resta fermo 10-30 secondi, e solo quando c'è
 qualcosa da aggiornare. Così SearXNG resta sempre aggiornato senza pensarci.
 
-Il codice nuovo di CataSync non arriva da solo: per quello resta `git pull` (qui sopra).
+Il codice di CataSync non lo tocca e GitHub non lo guarda: la versione nuova la installi tu, con
+`git pull` (qui sopra), quando decidi.
 Il passaggio a una versione maggiore di PostgreSQL non lo fa mai: si fa a mano, con backup e
 ripristino.
 
-Funziona con l'installazione fatta con `git clone` e `docker-compose.yml`. Con uno stack di
-Portainer non va usato: lì gli aggiornamenti si fanno da Portainer.
+Funziona con l'installazione fatta col `docker-compose.yml` in una cartella (qui sopra). Con uno
+stack di Portainer non va usato: lì gli aggiornamenti si fanno da Portainer.
 
 Cosa serve: il server di posta nel `.env` (`SMTP_HOST` e gli altri `SMTP_*`), lo stesso della
 verifica in due passaggi. Il riepilogo va a `ADMIN_EMAIL`; per mandarlo a un altro indirizzo metti

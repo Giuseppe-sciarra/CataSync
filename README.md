@@ -348,11 +348,12 @@ back to the previous files and images by itself. At the end it emails a summary,
 updated something or something went wrong. The portal is down for 10-30 seconds, and only when
 there is something to update. This also keeps SearXNG up to date without thinking about it.
 
-New CataSync code does not arrive by itself: that is still `git pull` (above). It never moves to a
+It never touches the CataSync code and never looks at GitHub: you install a new version yourself,
+with `git pull` (above), when you decide. It never moves to a
 new major version of PostgreSQL: do that by hand, with backup and restore.
 
-It works with the installation made with `git clone` and `docker-compose.yml`. Do not use it with
-a Portainer stack: there, updates are done from Portainer.
+It works with the installation made with `docker-compose.yml` in a folder (above). Do not use it
+with a Portainer stack: there, updates are done from Portainer.
 
 What it needs: the mail server in `.env` (`SMTP_HOST` and the other `SMTP_*`), the same one used for
 two-step verification. The summary goes to `ADMIN_EMAIL`; to send it somewhere else put
