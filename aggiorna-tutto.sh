@@ -33,7 +33,7 @@ NOME="CataSync"
 APP="hub"                 # il portale: le prove e l'email partono da qui
 SERVIZI_APP="hub"         # i servizi costruiti da questa cartella (gli altri sono immagini scaricate)
 TIENI_DEF=3
-AGG_MAIL_A_DEF=""   # chi riceve l'email se nel .env non c'è AGG_MAIL_A (vuoto = ADMIN_EMAIL)
+AGG_MAIL_A_DEF="tuo@indirizzo.it"   # chi riceve l'email di riepilogo se nel .env non c'è AGG_MAIL_A
 
 dentro() { docker compose exec -T "$APP" curl -fsS --max-time 30 "$@" 2>/dev/null; }
 
@@ -52,8 +52,10 @@ versione() {   # $1 servizio → versione leggibile per log ed email
   case "$1" in
     hub)     docker compose exec -T hub python --version 2>/dev/null | tr -d '\r' ;;
     db)      docker compose exec -T db postgres --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 | sed 's/^/PostgreSQL /' ;;
+    searxng) docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "$(id_di searxng)" 2>/dev/null | grep . | sed 's/^/SearXNG /' ;;
     browser) docker compose exec -T browser node --version 2>/dev/null | tr -d '\r' | sed 's/^/Node /' ;;
-    *)       local i; i=$(immagine_di "$1"); [[ -n "$i" ]] && docker image inspect -f '{{.Created}}' "$i" 2>/dev/null | cut -c1-10 | sed 's/^/immagine del /' ;;
+    *)       local id c; id=$(id_di "$1"); [[ -n "$id" ]] || return 0   # data e ora della build: due build dello stesso giorno restano distinguibili
+             c=$(docker image inspect -f '{{.Created}}' "$id" 2>/dev/null) && date -d "$c" '+immagine del %d/%m/%Y %H:%M' ;;
   esac
 }
 
@@ -96,13 +98,6 @@ HEALTH_TRIES="${AGG_HEALTH_TRIES:-36}"                         # x5 s = 3 minuti
 START_TS=$(date +%s)
 STAMP="$(date '+%Y%m%d-%H%M')"
 mkdir -p backups logs
-# Tetto al log: il timer/cron lo allunga a ogni giro (>>). Oltre 1 MB tiene l'ultimo mezzo MB.
-# cat > riscrive lo stesso file, così chi ci sta già scrivendo in coda continua a scriverci.
-if [[ -f logs/aggiorna-tutto.log ]] && (( $(stat -c %s logs/aggiorna-tutto.log) > 1048576 )); then
-  tail -c 524288 logs/aggiorna-tutto.log | tail -n +2 > logs/.aggiorna-tutto.taglio &&
-    cat logs/.aggiorna-tutto.taglio > logs/aggiorna-tutto.log
-  rm -f logs/.aggiorna-tutto.taglio
-fi
 RIEPILOGO=""        # righe dell'email
 ESITO="nessuno"     # nessuno | ok | rollback | errore
 aggiungi() { RIEPILOGO+="$*"$'\n'; }
