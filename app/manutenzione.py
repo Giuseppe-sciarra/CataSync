@@ -5,7 +5,7 @@ nella pagina di accesso, sopra il modulo, finché la manutenzione non è finita.
 fine sparisce da solo, anche se nessuno spegne l'interruttore. Gli orari sono quelli del fuso
 del portale (TZ nel .env, di serie Europe/Rome).
 
-Tutto sta in un'unica impostazione JSON, come la pagina pubblica."""
+Tutto sta in un'unica impostazione JSON."""
 import json
 import re
 from datetime import date, datetime, time, timedelta

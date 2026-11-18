@@ -144,6 +144,56 @@ async def candidates(db: Session, site: Site, limit: int) -> list[str]:
     return gtins[:limit]
 
 
+def dati_del_cliente(db: Session, site_id: int, gtins: list[str]) -> dict[str, dict]:
+    """Per ogni codice, l'ultimo prezzo e l'ultima categoria che il cliente ha dato nel portale.
+
+    Le righe del giro notturno nascono vuote e diventano l'ultima riga del prodotto: senza
+    questi dati il cliente vedeva in Prodotti il prezzo sparito, lo riscriveva e (con i
+    prezzi «Mai» del notturno) non arrivava al sito."""
+    dati: dict[str, dict] = {}
+    if not gtins:
+        return dati
+    righe = db.scalars(
+        select(JobItem).join(Job, Job.id == JobItem.job_id)
+        .where(Job.site_id == site_id, JobItem.gtin.in_(gtins), JobItem.status.notin_(["deleted", "to_delete"]))
+        .order_by(JobItem.id)
+    ).all()
+    for r in righe:      # in ordine: vince l'ultima riga che il dato ce l'ha
+        voce = dati.setdefault(r.gtin, {})
+        if r.regular_price:
+            voce["regular_price"], voce["sale_price"] = r.regular_price, r.sale_price or ""
+        if r.wc_category_id:
+            voce["wc_category_id"] = r.wc_category_id
+    return dati
+
+
+def riprendi_dati_cliente(db: Session) -> int:
+    """Una volta sola: le righe notturne già create senza prezzo e categoria li riprendono
+    dalle righe precedenti dello stesso prodotto. Restituisce quante ne ha sistemate."""
+    from .store import get_setting, set_setting
+
+    if get_setting(db, "notturno_prezzi_ripresi") == "1":
+        return 0
+    sistemate = 0
+    for site_id in db.scalars(select(func.distinct(Job.site_id)).where(Job.kind == "resync")).all():
+        vuote = db.scalars(
+            select(JobItem).join(Job, Job.id == JobItem.job_id)
+            .where(Job.site_id == site_id, Job.kind == "resync",
+                   (JobItem.regular_price == "") | JobItem.wc_category_id.is_(None))
+        ).all()
+        dati = dati_del_cliente(db, site_id, list({r.gtin for r in vuote}))
+        for r in vuote:
+            voce = dati.get(r.gtin) or {}
+            if not r.regular_price and voce.get("regular_price"):
+                r.regular_price, r.sale_price = voce["regular_price"], voce["sale_price"]
+                sistemate += 1
+            if not r.wc_category_id and voce.get("wc_category_id"):
+                r.wc_category_id = voce["wc_category_id"]
+    set_setting(db, "notturno_prezzi_ripresi", "1")
+    db.commit()
+    return sistemate
+
+
 async def build_job(db: Session, site: Site) -> tuple[Job | None, str]:
     """Interroga il sito, crea il job di aggiornamento. Non lo esegue: ci pensa il worker."""
     entitlement = billing.check(db, site.client)
@@ -173,7 +223,9 @@ async def build_job(db: Session, site: Site) -> tuple[Job | None, str]:
     )
     db.add(job)
     db.flush()
-    db.add_all([JobItem(job_id=job.id, gtin=g) for g in gtins])
+    # Prezzo e categoria restano quelli che il cliente ha dato: la riga nuova li riprende.
+    dati = dati_del_cliente(db, site.id, gtins)
+    db.add_all([JobItem(job_id=job.id, gtin=g, **dati.get(g, {})) for g in gtins])
     db.commit()
     return job, f"{len(gtins)} prodotti messi in coda."
 

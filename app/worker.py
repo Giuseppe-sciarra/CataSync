@@ -256,6 +256,13 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
         normalized["images"], _ = await foto.riospita(immagini, referer=normalized.get("origine_url") or "",
                                                      sito=site.base_url)
     politica = scheduler.policy_for(site, job.kind)
+    # Il prezzo l'ha scritto il cliente nel portale: va sul sito anche se la riga è nata dal
+    # giro notturno (che i prezzi non li tocca) o se il sito ha i prezzi «Solo se vuoto».
+    # Solo «Mai» nelle impostazioni del sito lo ferma, e allora lo si dice.
+    prezzo_cliente = bool(item.edited and item.regular_price)
+    prezzi_mai = scheduler.policy_for(site, "manual").get("prices") == "skip"
+    if prezzo_cliente and not prezzi_mai:
+        politica = {**politica, "prices": "overwrite"}
     options = {
         "write_policy": politica,
         # Il sito pretende le foto? Allora senza nessuna foto il prodotto non si crea.
@@ -286,7 +293,10 @@ async def _pubblica(db: Session, item: JobItem, job: Job, site: Site) -> None:
     item.wc_action = result.get("action", "")
     item.status = "pushed"
     item.attempts = 0
-    item.error = "; ".join(result.get("warnings") or [])
+    avvisi = list(result.get("warnings") or [])
+    if prezzo_cliente and prezzi_mai:
+        avvisi.insert(0, "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».")
+    item.error = "; ".join(avvisi)
     if result.get("images"):
         # Ora le foto stanno nella libreria del sito: la scheda punta lì, e le copie del
         # portale (scaricate o caricate dal computer) non servono più.

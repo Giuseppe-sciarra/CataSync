@@ -70,6 +70,18 @@ def pubblica_di_default() -> None:
         db.close()
 
 
+def riprendi_prezzi_notturni() -> None:
+    from . import scheduler
+
+    db = SessionLocal()
+    try:
+        sistemate = scheduler.riprendi_dati_cliente(db)
+        if sistemate:
+            log.info("Righe del giro notturno che hanno ripreso il prezzo del cliente: %s", sistemate)
+    finally:
+        db.close()
+
+
 def check_secrets() -> None:
     if config.SECRET_KEY == "cambiami-in-produzione":
         log.warning("SECRET_KEY è quella di esempio: le sessioni sono falsificabili. Cambiala.")
@@ -87,6 +99,7 @@ async def lifespan(_app: FastAPI):
     ensure_columns()
     migra_dati()        # dopo: servono le colonne nuove
     pubblica_di_default()
+    riprendi_prezzi_notturni()
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     check_secrets()
     bootstrap_admin()

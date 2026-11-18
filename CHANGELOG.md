@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.10.4 — 2026-11-18
+
+### Changed
+- **Aggiornamento notturno più leggero sul disco**: tiene una sola immagine di rollback per
+  servizio invece di tre (`AGG_TIENI_ROLLBACK`, di serie 1) e a fine giro butta tutta la cache di
+  build, che serve solo a ricostruire più in fretta e prima arrivava a qualche GB.
+- **Tornano i controlli e le release automatiche su GitHub**: la cartella `.github` (workflow di
+  verifica, immagine e release) era sparita dal repository con la 2.10.
+
+### Removed
+- **I file della vecchia pagina pubblica**, rientrati per errore con la 2.10: il portale non li usava
+  più dalla 2.9.0 e il loro test falliva.
+
+### Fixed
+- **I prezzi cambiati dal cliente in Prodotti non arrivavano al sito** sui prodotti ripassati dal
+  giro notturno. La riga notturna diventa l'ultima del prodotto e il notturno ha i prezzi su «Mai»:
+  il prezzo nuovo si salvava nel portale, la pubblicazione andava a buon fine e il sito restava col
+  prezzo vecchio, senza nessun avviso. Ora un prezzo scritto dal cliente va sempre sul sito (anche se
+  il negozio ha i prezzi «Solo se vuoto»); se l'amministratore ha messo i prezzi su «Mai», la
+  pubblicazione lo dice invece di tacere.
+- **«Modifica» e «Prezzi in blocco» su un prodotto già sul sito non facevano niente**: la riga
+  restava «Sul sito» e non si ripubblicava. Ora torna «Pronto da pubblicare», come la modifica in
+  tabella.
+- **Le righe del giro notturno nascevano senza prezzo e senza categoria**, e in Prodotti il prezzo
+  sembrava sparito. Ora riprendono l'ultimo prezzo e l'ultima categoria del cliente. Le righe
+  notturne già create si sistemano da sole al primo avvio, una volta sola.
+
 ## 2.10.3 — 2026-10-27
 
 ### Changed

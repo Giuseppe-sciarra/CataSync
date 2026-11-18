@@ -1,4 +1,4 @@
-"""Template Jinja condivisi dalle pagine (pannello, accesso, pagina pubblica)."""
+"""Template Jinja condivisi dalle pagine (pannello e accesso)."""
 from fastapi.templating import Jinja2Templates
 
 from . import config

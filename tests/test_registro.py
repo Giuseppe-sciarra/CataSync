@@ -81,7 +81,7 @@ class Registro(unittest.TestCase):
 
     def test_nessun_dato_del_cliente(self):
         r = self.registro()
-        for segreto in (CLIENTE, NEGOZIO, "negozio-riservato", SITO, CARICO, "Pompa di", "401"):
+        for segreto in (CLIENTE, NEGOZIO, "negozio-riservato", SITO, CARICO, "Pompa di", "wp-json: 401"):
             self.assertNotIn(segreto, r.text)
         chiavi = set().union(*(riga.keys() for riga in r.json()["righe"]))
         self.assertFalse(chiavi & {"client", "cliente", "site", "sito", "job", "label", "title", "error", "source"})

@@ -2292,5 +2292,7 @@
   "il sito non ha risposto in tempo": "the site didn't answer in time",
   "WooCommerce non risponde come dovrebbe": "WooCommerce isn't answering as it should",
   "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} photos not published: the site couldn't download them.",
-  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 photo not published: the site couldn't download it."
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 photo not published: the site couldn't download it.",
+  "«{0}» è sul sito, ma: {1}": "«{0}» is on the site, but: {1}",
+  "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».": "Price not sent to the site: for this shop prices are set to «Never»."
 }

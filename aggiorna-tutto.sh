@@ -17,7 +17,7 @@
 #   4. stesso giro per Postgres / SearXNG / LibreTranslate / browserless: riavvio solo se
 #      l'immagine è cambiata, prova che risponda (browserless apre davvero una pagina),
 #      altrimenti torna all'immagine di prima;
-#   5. pulizia di Docker che non tocca le immagini di rollback;
+#   5. pulizia di Docker: via la cache di build e le immagini di rollback oltre le ultime TIENI;
 #   6. email di riepilogo in testo semplice, solo se qualcosa si è aggiornato o è fallito
 #      (cosa, librerie, cosa no e perché, comandi per tornare indietro), spedita dal portale
 #      col server SMTP del .env (SMTP_*).
@@ -27,13 +27,14 @@
 #
 # Variabili (nel .env oppure davanti al comando):
 #   AGG_MAIL_A=tuo@indirizzo.it   chi riceve l'email (vince su AGG_MAIL_A_DEF qui sotto; vuoto ovunque = ADMIN_EMAIL)
-#   AGG_TIENI_ROLLBACK=3    quante immagini di rollback tenere per servizio (il portale ~0,5 GB l'una)
+#   AGG_TIENI_ROLLBACK=1    quante immagini di rollback tenere per servizio (il portale ~0,5 GB l'una;
+#                           LibreTranslate e browserless qualche GB): 1 = solo quella dell'ultimo aggiornamento
 # ═════════════════════════════════════════════════════════════════════════════
 PROGETTO="catasync"
 NOME="CataSync"
 APP="hub"                 # il portale: le prove e l'email partono da qui
 SERVIZI_APP="hub"         # i servizi costruiti da questa cartella (gli altri sono immagini scaricate)
-TIENI_DEF=3
+TIENI_DEF=1
 AGG_MAIL_A_DEF="tuo@indirizzo.it"   # chi riceve l'email di riepilogo se nel .env non c'è AGG_MAIL_A
 
 dentro() { docker compose exec -T "$APP" curl -fsS --max-time 30 "$@" 2>/dev/null; }
@@ -458,7 +459,9 @@ if [[ $DRY_RUN == 0 ]]; then
     docker image ls --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | sort -r | tail -n +$((TIENI + 1)) | xargs -r docker rmi > /dev/null 2>&1 || true
   done
   docker image prune -f > /dev/null 2>&1 || true
-  docker builder prune -f --filter until=168h > /dev/null 2>&1 || true
+  # La cache di build serve solo a ricostruire più in fretta, e si ricostruisce solo quando è
+  # cambiato qualcosa: tenerla costava GB per niente.
+  docker builder prune -af > /dev/null 2>&1 || true
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -2292,5 +2292,7 @@
   "il sito non ha risposto in tempo": "il sito non ha risposto in tempo",
   "WooCommerce non risponde come dovrebbe": "WooCommerce non risponde come dovrebbe",
   "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} foto non pubblicate: il sito non è riuscito a scaricarle.",
-  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 foto non pubblicata: il sito non è riuscito a scaricarla."
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 foto non pubblicata: il sito non è riuscito a scaricarla.",
+  "«{0}» è sul sito, ma: {1}": "«{0}» è sul sito, ma: {1}",
+  "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».": "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai»."
 }

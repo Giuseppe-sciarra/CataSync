@@ -768,6 +768,9 @@ def edit_item(
     item.edited = True
     if not item.source:
         item.source = "manuale"
+    # Una scheda già pubblicata che viene corretta torna «pronta»: si ripubblica.
+    if item.status == "pushed":
+        item.status = "ready"
 
     _revalidate(db, item, site, job.kind)
     audit(db, user.email, "item_edit", f"{item.gtin} · {item.status}")
@@ -801,9 +804,15 @@ def bulk_prices(
         if not item:
             unknown.append(gtin)
             continue
+        if item.status in ("pushing", "fetching", "pending"):
+            continue
         item.regular_price = _clean_price(parts[1])
         if len(parts) > 2:
             item.sale_price = _clean_price(parts[2])
+        item.edited = True
+        # Già pubblicata: col prezzo nuovo torna «pronta» e si ripubblica.
+        if item.status == "pushed":
+            item.status = "ready"
         _revalidate(db, item, site, job.kind)
         updated += 1
 

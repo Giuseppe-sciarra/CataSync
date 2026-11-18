@@ -1356,7 +1356,8 @@ function hub(isAdmin) {
       this.catalogo.salvando[r.item_id] = 'pubblico…';
       try {
         const d = await this.api('/api/items/' + r.item_id + '/pubblica', { method: 'POST' });
-        if (d.stato === 'pushed') this.say(this.tt('«{0}» è sul sito.', r.title || r.gtin));
+        if (d.stato === 'pushed' && d.errore) this.say(this.tt('«{0}» è sul sito, ma: {1}', r.title || r.gtin, this.t(d.errore)), 'warn');
+        else if (d.stato === 'pushed') this.say(this.tt('«{0}» è sul sito.', r.title || r.gtin));
         else this.fail(this.tt('Non sono riuscito a pubblicare «{0}»: {1}', r.title || r.gtin, d.errore || this.t('riprova fra poco.')));
       } catch (e) { this.fail(e.message); if (e.status === 402) this.loadMe(); }
       this.catalogo.salvando[r.item_id] = false;

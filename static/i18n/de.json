@@ -2292,5 +2292,7 @@
   "il sito non ha risposto in tempo": "die Website hat nicht rechtzeitig geantwortet",
   "WooCommerce non risponde come dovrebbe": "WooCommerce antwortet nicht wie erwartet",
   "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} Fotos nicht veröffentlicht: Die Website konnte sie nicht herunterladen.",
-  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 Foto nicht veröffentlicht: Die Website konnte es nicht herunterladen."
+  "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 Foto nicht veröffentlicht: Die Website konnte es nicht herunterladen.",
+  "«{0}» è sul sito, ma: {1}": "«{0}» ist auf der Website, aber: {1}",
+  "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».": "Preis nicht an die Website gesendet: für diesen Shop sind die Preise auf «Nie» eingestellt."
 }
