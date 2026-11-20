@@ -202,6 +202,12 @@ class Site(Base):
     # sito, di serie 30). Il portale non lo può leggere: serve solo a mostrare le date giuste.
     giorni_cestino: Mapped[int] = mapped_column(Integer, default=30)
 
+    # Svuotamento della cache delle pagine (FastCGI di Nginx) dopo che il portale ha scritto sul
+    # sito. Lo fa il mu-plugin «CataSync – Svuota cache» sul sito, che cancella i file di quel sito
+    # nella cartella indicata: il portale da qui non arriva ai file del server del sito.
+    cache_purge: Mapped[bool] = mapped_column(Boolean, default=False)
+    cache_path: Mapped[str] = mapped_column(String(255), default="/www/server/fastcgi_cache")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     client: Mapped[Client] = relationship(back_populates="sites")

@@ -28,6 +28,18 @@ BASE = "/wp-json/wc/v3"
 # Rotte del mu-plugin «CataSync – Menu delle categorie» (wordpress/catasync-category-menu.php):
 # il prefisso «wc-» fa accettare a WooCommerce le stesse chiavi REST.
 PLUGIN_MENU = "/wp-json/wc-catasync/v1"
+PLUGIN_CACHE = "/wp-json/wc-catasync-cache/v1"
+NOMI_PLUGIN = {PLUGIN_MENU: "CataSync – Menu delle categorie", PLUGIN_CACHE: "CataSync – Svuota cache"}
+# HTTP 403 da un mu-plugin: o la chiave è di un utente senza il permesso giusto, o un firewall o un
+# plugin di sicurezza blocca l'indirizzo prima di WordPress. Da qui non si distingue.
+RIFIUTI_PLUGIN = {
+    PLUGIN_MENU: "Il sito ha rifiutato la richiesta al mu-plugin del menu (HTTP 403): la chiave REST dev'essere "
+                 "di un amministratore o di un gestore del negozio, e nessun firewall o plugin di sicurezza deve "
+                 "bloccare /wp-json/wc-catasync/.",
+    PLUGIN_CACHE: "Il sito ha rifiutato la richiesta al mu-plugin che svuota la cache (HTTP 403): la chiave REST "
+                  "dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o plugin di "
+                  "sicurezza deve bloccare /wp-json/wc-catasync-cache/.",
+}
 PER_PAGE = 100
 BATCH_MAX = 100   # tetto di WooCommerce per le chiamate /batch
 
@@ -142,7 +154,7 @@ async def _request(
         raise SiteError("Chiavi REST rifiutate: controlla che abbiano permesso di lettura e scrittura.")
     if resp.status_code == 404:
         if base != BASE:
-            raise PluginMancante("Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
+            raise PluginMancante(f"Sul sito manca il mu-plugin «{NOMI_PLUGIN.get(base, base)}».")
         raise SiteError("Endpoint non trovato: WooCommerce non risponde o i permalink non sono attivi.")
     if resp.status_code >= 400:
         detail, codice = "", ""
@@ -155,14 +167,15 @@ async def _request(
             detail = resp.text[:200]
         if base != BASE:
             if resp.status_code == 403:
-                # O la chiave è di un utente che non può toccare i menu, o un firewall o un plugin di
-                # sicurezza blocca l'indirizzo prima di WordPress: da qui non si distingue.
-                raise SiteError("Il sito ha rifiutato la richiesta al mu-plugin del menu (HTTP 403): la chiave REST "
-                                "dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o "
-                                "plugin di sicurezza deve bloccare /wp-json/wc-catasync/.")
+                raise SiteError(RIFIUTI_PLUGIN.get(base, f"HTTP 403 dal sito su {base}."))
             if resp.status_code == 400 and detail:
                 raise SiteError(detail, codice)   # il plugin spiega già cosa non va, in italiano
         raise SiteError(f"HTTP {resp.status_code} dal sito. {detail}".strip(), codice)
+
+    if method != "GET" and base != PLUGIN_CACHE:
+        # Il portale ha cambiato qualcosa sul sito: se il sito lo vuole, fra poco se ne svuota la cache.
+        from . import svuota_cache
+        svuota_cache.segna(site)
 
     try:
         return resp.json(), resp.headers
@@ -365,6 +378,15 @@ async def order_categories(site, ordini: list[tuple[int, int]]) -> int:
     if errori:
         raise SiteError("Ordine non salvato per tutte le categorie: " + "; ".join(errori[:3]))
     return cambiate
+
+
+# ------------------------------------------------------ svuota cache (mu-plugin)
+async def svuota_cache(site) -> dict:
+    """Chiede al mu-plugin del sito di cancellare le pagine di quel sito dalla cache FastCGI.
+    Risponde col percorso usato, i file letti e quelli cancellati."""
+    data, _ = await _request(site, "POST", "/svuota", json_body={"percorso": site.cache_path or ""},
+                             base=PLUGIN_CACHE)
+    return data if isinstance(data, dict) else {}
 
 
 # ------------------------------------------------- menu delle categorie (mu-plugin)

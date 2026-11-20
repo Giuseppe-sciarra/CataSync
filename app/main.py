@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, worker
+from . import config, svuota_cache, worker
 from .db import Base, SessionLocal, engine, ensure_columns, get_db, migra_dati, migra_schema
 from .models import Client, Site, User
 from .routers import admin, auth, client, magazzino
@@ -103,7 +103,7 @@ async def lifespan(_app: FastAPI):
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     check_secrets()
     bootstrap_admin()
-    tasks = []
+    tasks = [asyncio.create_task(svuota_cache.run_forever())]
     if config.WORKER_ENABLED:
         tasks.append(asyncio.create_task(worker.run_forever()))
     if config.SCHEDULER_ENABLED:

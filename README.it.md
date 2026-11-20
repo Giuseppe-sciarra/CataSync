@@ -254,6 +254,22 @@ Solo se vuoi le categorie nel menu del sito; senza il mu-plugin il menu non lo t
 Il plugin lavora da solo sul sito: il portale non lo chiama, quindi alla chiave REST non servono
 permessi in più.
 
+## Cache delle pagine di Nginx (facoltativo)
+
+Se il sito ha la cache FastCGI di Nginx, dopo le modifiche fatte dal portale le pagine vecchie
+restano finché non scadono. Per svuotarla da solo:
+
+1. Copia `wordpress/catasync-svuota-cache.php` in `wp-content/mu-plugins/` del negozio. Parte da
+   solo e non fa niente finché il portale non lo chiama.
+2. In *Siti → Modifica → Cache delle pagine* spunta **Svuota la cache FastCGI di Nginx dopo ogni
+   modifica** e scrivi la **cartella della cache** sul server del sito (di serie
+   `/www/server/fastcgi_cache`; è quella di `fastcgi_cache_path`). Salva.
+3. **Svuota adesso** prova subito e dice quante pagine ha cancellato o cosa non va.
+
+Da lì una quindicina di secondi dopo l'ultima modifica il portale fa cancellare le pagine di quel
+sito, una volta sola per tutto il carico. Se la cartella è in comune con altri siti, gli altri non
+si toccano. Si accende e si spegne sito per sito, e la cartella può essere diversa per ognuno.
+
 ## Specifiche e filtri (facoltativo)
 
 Se il negozio mostra le specifiche col plugin **TD Product Specs** (meta `_td_product_specs`,
@@ -470,6 +486,8 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
 - `docs/SICUREZZA.md` — note di sicurezza.
 - `wordpress/catasync-category-menu.php` — il mu-plugin di WordPress, facoltativo, che mette le
   categorie nel menu del sito.
+- `wordpress/catasync-svuota-cache.php` — il mu-plugin di WordPress, facoltativo, che svuota la
+  cache FastCGI di Nginx del sito dopo le modifiche del portale.
 
 ## Licenza
 

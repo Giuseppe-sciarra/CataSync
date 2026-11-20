@@ -2740,6 +2740,38 @@
               </p>
             </div>
 
+            <h3 style="margin:18px 0 8px">Cache delle pagine</h3>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 6px">
+              <input type="checkbox" x-model="modal.data.cache_purge" style="width:auto">
+              Svuota la cache FastCGI di Nginx dopo ogni modifica
+            </label>
+            <p class="hint" style="margin-top:-2px">
+              Con la cache di Nginx il sito mostra le pagine vecchie finché non scadono. Acceso, una
+              quindicina di secondi dopo l'ultima modifica fatta da qui il portale fa cancellare le
+              pagine di questo sito, e solo quelle. Sul sito serve il mu-plugin
+              <strong translate="no">CataSync – Svuota cache</strong> (<code>wordpress/catasync-svuota-cache.php</code>
+              nel pacchetto, da copiare in <code>wp-content/mu-plugins/</code>).
+            </p>
+            <div class="field" style="max-width:420px;margin-top:10px">
+              <label>Cartella della cache sul server del sito</label>
+              <input type="text" x-model="modal.data.cache_path" placeholder="/www/server/fastcgi_cache" translate="no">
+              <p class="hint">
+                La stessa di <code>fastcgi_cache_path</code> in Nginx, o di
+                <code>RT_WP_NGINX_HELPER_CACHE_PATH</code> nel wp-config.php. Se è in comune con altri
+                siti va bene lo stesso.
+              </p>
+            </div>
+            <template x-if="modal.data.id">
+              <div style="margin:4px 0 6px">
+                <button type="button" class="ghost sm" @click="provaCache()" :disabled="!!modal.provaCache">
+                  <span x-text="modal.provaCache ? t('Svuoto…') : t('Svuota adesso')"></span>
+                </button>
+                <span class="hint" style="margin-left:8px" x-show="!modal.esitoCache">Prova con la cartella già salvata.</span>
+                <span class="hint" style="margin-left:8px" x-show="modal.esitoCache" x-text="modal.esitoCache"
+                      :style="modal.esitoCacheOk ? 'color:var(--ok)' : 'color:var(--err)'"></span>
+              </div>
+            </template>
+
             <h3 style="margin:18px 0 8px">Immagini, per l'eliminazione</h3>
             <p class="hint" style="margin-top:-4px;margin-bottom:10px">
               Facoltative. Le chiavi WooCommerce eliminano i prodotti ma non le immagini:

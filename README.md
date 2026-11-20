@@ -251,6 +251,22 @@ Only if you want the categories in the site menu; without the mu-plugin the menu
 The plugin works on the site by itself: the portal does not call it, so it needs no extra
 permissions on the REST key.
 
+## Nginx page cache (optional)
+
+If the site uses the Nginx FastCGI cache, after changes made from the portal the old pages stay
+until they expire. To clear it automatically:
+
+1. Copy `wordpress/catasync-svuota-cache.php` into `wp-content/mu-plugins/` of the shop. It starts
+   by itself and does nothing until the portal calls it.
+2. In *Sites → Edit → Page cache* tick **Clear the Nginx FastCGI cache after every change** and enter
+   the **cache folder** on the site's server (default `/www/server/fastcgi_cache`; it is the one in
+   `fastcgi_cache_path`). Save.
+3. **Clear now** tests it straight away and says how many pages it deleted or what is wrong.
+
+From then on, about fifteen seconds after the last change the portal has that site's pages deleted,
+once for the whole batch. If the folder is shared with other sites, theirs are left alone. It is
+switched on and off site by site, and the folder can differ for each one.
+
 ## Specifications and filters (optional)
 
 If the shop shows its specifications with the **TD Product Specs** plugin (`_td_product_specs`
@@ -465,6 +481,8 @@ the volumes; `docker compose down -v` deletes them.
 - `docs/SICUREZZA.md` — security notes (in Italian).
 - `wordpress/catasync-category-menu.php` — the optional WordPress mu-plugin that puts the categories
   in the site menu.
+- `wordpress/catasync-svuota-cache.php` — the optional WordPress mu-plugin that clears the site's
+  Nginx FastCGI cache after changes made from the portal.
 
 ## Licence
 

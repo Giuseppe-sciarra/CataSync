@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.11.0 — 2026-11-20
+
+### Added
+- **Svuotamento della cache FastCGI di Nginx, sito per sito**: in *Siti → Modifica → Cache delle
+  pagine* si accende «Svuota la cache FastCGI di Nginx dopo ogni modifica» e si scrive la cartella
+  della cache del server del sito (di serie `/www/server/fastcgi_cache`). Una quindicina di secondi
+  dopo l'ultima scrittura del portale sul sito (pubblicazioni, prezzi, Magazzino, categorie,
+  eliminazioni) parte un solo svuotamento per tutto il giro, così i clienti vedono subito i prezzi
+  e le schede nuove anche nelle categorie e nel negozio. **Svuota adesso** lo prova al momento.
+- **Mu-plugin «CataSync – Svuota cache»** (`wordpress/catasync-svuota-cache.php`), da copiare in
+  `wp-content/mu-plugins/` del sito: cancella dalla cartella solo le pagine di quel sito (riga
+  `KEY:` dei file di Nginx), anche se la cartella è in comune con altri siti, e non tocca mai i file
+  che non sono della cache di Nginx.
+
 ## 2.10.4 — 2026-11-18
 
 ### Changed

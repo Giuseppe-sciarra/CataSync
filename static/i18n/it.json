@@ -2294,5 +2294,20 @@
   "{0} foto non pubblicate: il sito non è riuscito a scaricarle.": "{0} foto non pubblicate: il sito non è riuscito a scaricarle.",
   "1 foto non pubblicata: il sito non è riuscito a scaricarla.": "1 foto non pubblicata: il sito non è riuscito a scaricarla.",
   "«{0}» è sul sito, ma: {1}": "«{0}» è sul sito, ma: {1}",
-  "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».": "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai»."
+  "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».": "Prezzo non inviato al sito: per questo negozio i prezzi sono impostati su «Mai».",
+  "Cache delle pagine": "Cache delle pagine",
+  "Svuota la cache FastCGI di Nginx dopo ogni modifica": "Svuota la cache FastCGI di Nginx dopo ogni modifica",
+  "Con la cache di Nginx il sito mostra le pagine vecchie finché non scadono. Acceso, una quindicina di secondi dopo l'ultima modifica fatta da qui il portale fa cancellare le pagine di questo sito, e solo quelle. Sul sito serve il mu-plugin": "Con la cache di Nginx il sito mostra le pagine vecchie finché non scadono. Acceso, una quindicina di secondi dopo l'ultima modifica fatta da qui il portale fa cancellare le pagine di questo sito, e solo quelle. Sul sito serve il mu-plugin",
+  "nel pacchetto, da copiare in": "nel pacchetto, da copiare in",
+  "Cartella della cache sul server del sito": "Cartella della cache sul server del sito",
+  "La stessa di": "La stessa di",
+  "in Nginx, o di": "in Nginx, o di",
+  "nel wp-config.php. Se è in comune con altri siti va bene lo stesso.": "nel wp-config.php. Se è in comune con altri siti va bene lo stesso.",
+  "Prova con la cartella già salvata.": "Prova con la cartella già salvata.",
+  "Svuota adesso": "Svuota adesso",
+  "Svuoto…": "Svuoto…",
+  "Cache svuotata: {0} pagine del sito cancellate.": "Cache svuotata: {0} pagine del sito cancellate.",
+  "Sul sito manca il mu-plugin «CataSync – Svuota cache».": "Sul sito manca il mu-plugin «CataSync – Svuota cache».",
+  "Il sito ha rifiutato la richiesta al mu-plugin che svuota la cache (HTTP 403): la chiave REST dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o plugin di sicurezza deve bloccare /wp-json/wc-catasync-cache/.": "Il sito ha rifiutato la richiesta al mu-plugin che svuota la cache (HTTP 403): la chiave REST dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o plugin di sicurezza deve bloccare /wp-json/wc-catasync-cache/.",
+  "Il percorso della cache dev'essere assoluto, per esempio /www/server/fastcgi_cache.": "Il percorso della cache dev'essere assoluto, per esempio /www/server/fastcgi_cache."
 }

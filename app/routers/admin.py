@@ -93,6 +93,8 @@ class SiteIn(BaseModel):
     resync_min_age_days: int = 25
     resync_policy: dict | None = None
     giorni_cestino: int = 30
+    cache_purge: bool = False
+    cache_path: str = "/www/server/fastcgi_cache"
 
 
 # --------------------------------------------------------------------- clienti
@@ -294,6 +296,8 @@ def _site_json(s: Site) -> dict:
         "specs_meta": s.specs_meta,
         "specs_limit": s.specs_limit,
         "giorni_cestino": s.giorni_cestino or 30,
+        "cache_purge": bool(s.cache_purge),
+        "cache_path": s.cache_path or "",
         "content_lang": s.content_lang or "",
         # Nemmeno nel pannello si mostrano per intero: bastano le ultime cifre per
         # riconoscere quale chiave è. Il cliente non le vede in nessun caso.
@@ -317,6 +321,14 @@ def _site_json(s: Site) -> dict:
         "last_resync_at": s.last_resync_at.isoformat() if s.last_resync_at else None,
         "last_resync_msg": s.last_resync_msg,
     }
+
+
+def _apply_cache(site: Site, data: "SiteIn") -> None:
+    percorso = (data.cache_path or "").strip()
+    if percorso and not percorso.startswith("/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Il percorso della cache dev'essere assoluto, per esempio /www/server/fastcgi_cache.")
+    site.cache_purge = bool(data.cache_purge)
+    site.cache_path = percorso.rstrip("/")[:255] or "/www/server/fastcgi_cache"
 
 
 def _apply_resync(site: Site, data: "SiteIn") -> None:
@@ -360,6 +372,7 @@ def create_site(data: SiteIn, db: Session = Depends(get_db), admin: User = Depen
     site.specs_meta = data.specs_meta
     site.specs_limit = max(0, min(80, data.specs_limit))
     site.giorni_cestino = max(1, min(365, data.giorni_cestino))
+    _apply_cache(site, data)
     site.content_lang = lingue.normalizza(data.content_lang, "") if data.content_lang else ""
     if data.required_fields is not None:
         site.required_fields = json.dumps([f for f in data.required_fields if f in quality.FIELDS])
@@ -398,6 +411,7 @@ def update_site(site_id: int, data: SiteIn, db: Session = Depends(get_db), admin
     site.specs_meta = data.specs_meta
     site.specs_limit = max(0, min(80, data.specs_limit))
     site.giorni_cestino = max(1, min(365, data.giorni_cestino))
+    _apply_cache(site, data)
     site.content_lang = lingue.normalizza(data.content_lang, "") if data.content_lang else ""
     if data.required_fields is not None:
         site.required_fields = json.dumps([f for f in data.required_fields if f in quality.FIELDS])
@@ -428,6 +442,19 @@ async def ping_site(site_id: int, db: Session = Depends(get_db)):
         site.last_ping_ok = False
         site.last_ping_msg = str(exc)
         db.commit()
+        return {"ok": False, "error": str(exc)}
+
+
+@router.post("/sites/{site_id}/svuota-cache")
+async def svuota_cache_ora(site_id: int, db: Session = Depends(get_db)):
+    """Prova lo svuotamento adesso, anche se in automatico è spento: dice se il mu-plugin c'è e
+    quanti file del sito ha trovato nella cartella."""
+    site = db.get(Site, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sito non trovato.")
+    try:
+        return {"ok": True, **await wc_rest.svuota_cache(site)}
+    except wc_rest.SiteError as exc:
         return {"ok": False, "error": str(exc)}
 
 

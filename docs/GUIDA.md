@@ -418,6 +418,37 @@ solo l'amministratore (mascherate) e non compaiono in nessuna risposta dell'area
 grassetti e tabelle, senza attributi) al salvataggio, alla correzione a mano, prima di
 scrivere su WooCommerce e prima di mostrarlo nel portale.
 
+**Cache delle pagine (FastCGI di Nginx).** Con la cache di Nginx il sito continua a mostrare le
+pagine vecchie (categorie, negozio, home) finché non scadono, anche se WooCommerce ha già il prezzo
+nuovo. In *Siti → Modifica → Cache delle pagine*, sito per sito:
+
+- **Svuota la cache FastCGI di Nginx dopo ogni modifica**: acceso, ogni scrittura riuscita del
+  portale sul sito (pubblicare, prezzi, Magazzino, categorie, eliminazioni) segna il sito; quando
+  per una quindicina di secondi non ne arrivano altre, il portale chiede **una volta sola** al sito
+  di cancellare le sue pagine dalla cache. Un carico da cinquanta prodotti fa uno svuotamento, non
+  cinquanta. Di serie è spento.
+- **Cartella della cache sul server del sito**: quella di `fastcgi_cache_path` in Nginx (o di
+  `RT_WP_NGINX_HELPER_CACHE_PATH` nel `wp-config.php`), di serie `/www/server/fastcgi_cache`. Può
+  essere diversa da sito a sito.
+- **Svuota adesso** prova subito, con la cartella già salvata, e dice quante pagine ha cancellato
+  o cosa non va (plugin mancante, cartella sbagliata o fuori da `open_basedir`, file di un altro
+  utente).
+
+Il portale non arriva ai file del server del sito, quindi a cancellarli è il mu-plugin
+`wordpress/catasync-svuota-cache.php` («CataSync – Svuota cache»), da copiare in
+`wp-content/mu-plugins/` del sito: parte da solo e non fa niente finché il portale non lo chiama,
+su `POST /wp-json/wc-catasync-cache/v1/svuota` con le stesse chiavi REST del negozio
+(amministratore o gestore). La cartella può essere in comune con altri siti dello stesso server:
+il plugin legge la riga `KEY:` che Nginx scrive in ogni file e cancella solo quelli il cui nome
+del sito è all'inizio della chiave (con o senza `www`, qualunque schema). I file senza quella riga
+non li tocca mai: con una cartella sbagliata risponde con un errore e non cancella niente. PHP deve
+poter leggere e cancellare nella cartella: se il sito ha `open_basedir`, la cartella dev'esserci
+dentro.
+
+Il plugin `td-purge-prodotti.php` (pagina del prodotto, categorie e negozio al salvataggio, con
+Nginx Helper) resta valido e lavora anche per le modifiche fatte dal sito; quello del portale copre
+tutto il sito dopo le modifiche fatte da qui.
+
 ## 11. Struttura del codice
 
 ```
@@ -446,12 +477,14 @@ app/
   posta.py       posta in uscita (SMTP del .env): codici di verifica
   due_fattori.py verifica in due passaggi: TOTP, codice via email, passkey, codici di riserva
   manutenzione.py avviso di manutenzione nella pagina di accesso
+  svuota_cache.py svuotamento della cache FastCGI dei siti, una volta finite le scritture
   web.py         template Jinja condivisi
   routers/       auth, admin, client, magazzino
 templates/       accesso, pannello (dashboard.html)
 static/          CSS, Alpine, logica UI, passkey.js, favicon, traduzioni dell'interfaccia (i18n/)
 searxng/         settings.yml del motore di ricerca
-wordpress/       mu-plugin facoltativo per il menu delle categorie (catasync-category-menu.php)
+wordpress/       mu-plugin facoltativi: menu delle categorie (catasync-category-menu.php),
+                 svuotamento della cache FastCGI (catasync-svuota-cache.php)
 tests/           test automatici (python -m unittest discover -s tests; node --test tests/i18n.test.cjs)
 .github/         controlli e release automatiche
 ```
@@ -474,6 +507,7 @@ tests/           test automatici (python -m unittest discover -s tests; node --t
 | Magazzino: nel cestino, ripristino | `DELETE /products/{id}` senza `force`; `PUT /products/{id}` con `status` e `slug` di prima |
 | Magazzino: per sempre, svuota | `DELETE /products/{id}?force=true`; `POST /products/batch` (`delete`, a lotti da cento) |
 | Ordine delle categorie | `POST /products/categories/batch` (`menu_order`, a lotti da cento) |
+| Svuotare la cache FastCGI (mu-plugin, facoltativo) | `POST /wp-json/wc-catasync-cache/v1/svuota` con `percorso`: risponde con i file letti e quelli cancellati |
 
 Autenticazione Basic su HTTPS. Se il server mangia l'intestazione `Authorization` — capita
 con certe configurazioni Apache — il portale riprova da solo con le chiavi nell'indirizzo,

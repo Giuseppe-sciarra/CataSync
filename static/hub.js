@@ -2090,6 +2090,7 @@ function hub(isAdmin) {
                     content_lang: '',
                     resync_enabled: false, resync_hour: 3, resync_minute: 0, resync_days: '',
                     resync_scope: 'hub', resync_batch: 200, resync_min_age_days: 25, specs_limit: 6, giorni_cestino: 30,
+                    cache_purge: false, cache_path: '/www/server/fastcgi_cache',
                     required_fields: ['title', 'description', 'images', 'category', 'regular_price'],
                     resync_policy: { title: 'skip', description: 'overwrite', short_description: 'overwrite',
                                      images: 'fill', attributes: 'overwrite', brand: 'fill',
@@ -2159,6 +2160,8 @@ function hub(isAdmin) {
             specs_meta: d.specs_meta !== false,
             specs_limit: d.specs_limit === undefined ? 6 : d.specs_limit,
             giorni_cestino: d.giorni_cestino || 30,
+            cache_purge: !!d.cache_purge,
+            cache_path: (d.cache_path || '').trim() || '/www/server/fastcgi_cache',
             content_lang: d.content_lang || '',
             resync_enabled: !!d.resync_enabled,
             resync_hour: d.resync_hour ?? 3,
@@ -2245,6 +2248,21 @@ function hub(isAdmin) {
       const r = await this.api('/api/admin/sites/' + s.id + '/ping', { method: 'POST' });
       this.say(r.ok ? 'Sito raggiunto correttamente.' : r.error, r.ok ? 'ok' : 'err');
       this.loadAllSites();
+    },
+
+    async provaCache() {
+      // L'esito va accanto al pulsante: il messaggio in alto resterebbe dietro la finestra.
+      this.modal.provaCache = true;
+      this.modal.esitoCache = '';
+      try {
+        const r = await this.api('/api/admin/sites/' + this.modal.data.id + '/svuota-cache', { method: 'POST' });
+        this.modal.esitoCacheOk = !!r.ok;
+        this.modal.esitoCache = r.ok ? this.tt('Cache svuotata: {0} pagine del sito cancellate.', r.svuotati || 0) : r.error;
+      } catch (e) {
+        this.modal.esitoCacheOk = false;
+        this.modal.esitoCache = e.message;
+      }
+      this.modal.provaCache = false;
     },
 
 
