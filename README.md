@@ -114,7 +114,7 @@ in English, Italian, French and German.
   “Uncategorized”) and moves its subcategories up one level; in the portal, the products that used
   it go back to incomplete.
 - The portal never touches the site menu. If you want the categories there, the optional
-  **mu-plugin** (`wordpress/catasync-category-menu.php`) puts every category under the **menu item
+  **mu-plugin** (`wordpress/catasync.php`) puts every category under the **menu item
   you choose** on the site, in the same order.
 
 **Portal**
@@ -240,8 +240,8 @@ The web search is set once in **Settings** and applies to every client.
 
 Only if you want the categories in the site menu; without the mu-plugin the menu is never touched.
 
-1. Copy `wordpress/catasync-category-menu.php` from this repository into `wp-content/mu-plugins/`
-   of the shop. It starts by itself: nothing to activate.
+1. Copy `wordpress/catasync.php` from this repository into `wp-content/mu-plugins/` of the shop
+   (the same file as for the cache, below). It starts by itself: nothing to activate.
 2. On the site open *Appearance → Menu categorie*, pick under **Voce del menu** the item the
    categories go under (for example “Products” in the main menu), tick **Attivo** and press **Salva**.
 3. From then on every category created, deleted, renamed or moved — in the portal or on the site —
@@ -256,8 +256,8 @@ permissions on the REST key.
 If the site uses the Nginx FastCGI cache, after changes made from the portal the old pages stay
 until they expire. To clear it automatically:
 
-1. Copy `wordpress/catasync-svuota-cache.php` into `wp-content/mu-plugins/` of the shop. It starts
-   by itself and does nothing until the portal calls it.
+1. Copy `wordpress/catasync.php` into `wp-content/mu-plugins/` of the shop (the same file as for
+   the menu). This part does nothing until the portal calls it.
 2. In *Sites → Edit → Page cache* tick **Clear the Nginx FastCGI cache after every change** and enter
    the **cache folder** on the site's server (default `/www/server/fastcgi_cache`; it is the one in
    `fastcgi_cache_path`). Save.
@@ -479,10 +479,10 @@ the volumes; `docker compose down -v` deletes them.
 - `docs/GUIDA.md` — the complete guide (in Italian): search, prices, nightly update, deleting
   batches, subscriptions, WooCommerce calls.
 - `docs/SICUREZZA.md` — security notes (in Italian).
-- `wordpress/catasync-category-menu.php` — the optional WordPress mu-plugin that puts the categories
-  in the site menu.
-- `wordpress/catasync-svuota-cache.php` — the optional WordPress mu-plugin that clears the site's
-  Nginx FastCGI cache after changes made from the portal.
+- `wordpress/catasync.php` — the optional WordPress mu-plugin, all in one file: categories in the
+  site menu, clearing the Nginx FastCGI cache after changes made from the portal and, with Nginx
+  Helper, when a product is saved. It replaces `catasync-category-menu.php`,
+  `catasync-svuota-cache.php` and `td-purge-prodotti.php`, which should be removed from the site.
 
 ## Licence
 

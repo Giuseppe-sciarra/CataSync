@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name:       CataSync – Menu delle categorie
+ * Plugin Name:       CataSync
  * Plugin URI:        https://github.com/Giuseppe-sciarra/CataSync
- * Description:       Mette le categorie dei prodotti WooCommerce sotto la voce di menu che scegli e le tiene nello stesso ordine delle categorie, anche quando le crea o le riordina CataSync.
- * Version:           1.0.0
+ * Description:       Il plugin di CataSync per il negozio: categorie nel menu del sito, svuotamento della cache FastCGI di Nginx quando CataSync cambia qualcosa e, con Nginx Helper, anche quando un prodotto si salva dal sito.
+ * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Tastiere Digitali
@@ -12,9 +12,11 @@
  * License URI:       https://www.gnu.org/licenses/agpl-3.0.html
  * Text Domain:       catasync
  *
- * Va in wp-content/mu-plugins/ (oppure in plugins/ e si attiva come gli altri).
+ * Va in wp-content/mu-plugins/ (oppure in plugins/ e si attiva come gli altri). Sostituisce
+ * catasync-category-menu.php, catasync-svuota-cache.php e td-purge-prodotti.php: quei file vanno
+ * tolti (se restano non si rompe niente, ma lavorano loro al posto di queste parti).
  *
- * Come lavora
+ * 1. Menu delle categorie (spento finché non lo attivi)
  * - Il menu e la voce sotto cui mettere le categorie si scelgono in Aspetto → Menu categorie.
  *   Per esempio «Prodotti» nel menu principale.
  * - Ogni categoria creata, dal sito o da CataSync, finisce sotto quella voce; le sottocategorie
@@ -26,6 +28,26 @@
  * - CataSync non lo chiama: crea, elimina e ordina le categorie con le REST di WooCommerce e il
  *   plugin se ne accorge da solo. Le impostazioni si leggono e si cambiano anche via REST
  *   (/wp-json/wc-catasync/v1/menu) con le chiavi WooCommerce di un amministratore o gestore.
+ *
+ * 2. Svuota cache, chiamato da CataSync
+ * - Non fa niente da solo: lo chiama CataSync, poco dopo aver scritto sul sito, se nelle
+ *   impostazioni del sito su CataSync lo svuotamento è acceso.
+ * - CataSync manda la cartella della cache (per esempio /www/server/fastcgi_cache). Se non la
+ *   manda, si usa RT_WP_NGINX_HELPER_CACHE_PATH del wp-config.php, se c'è.
+ * - La cartella può essere in comune con altri siti dello stesso server: si cancellano solo i
+ *   file la cui chiave (la riga «KEY:» che Nginx scrive in ogni file) è di questo sito. I file
+ *   senza quella riga non si toccano mai, anche se la cartella è sbagliata.
+ * - PHP deve poter leggere e cancellare nella cartella: se il sito ha open_basedir, la cartella
+ *   dev'esserci dentro.
+ * - Rotta: POST /wp-json/wc-catasync-cache/v1/svuota, con le chiavi WooCommerce di un
+ *   amministratore o gestore del negozio.
+ *
+ * 3. Svuota le pagine di un prodotto quando si salva (era «TD Purge Prodotti»)
+ * - Quando un prodotto WooCommerce si crea o si aggiorna (dal sito, da CataSync o da altri via
+ *   REST) svuota con Nginx Helper la pagina del prodotto e quelle che lo elencano: categorie con
+ *   le sovracategorie, tag, marche, negozio e home, con le loro pagine successive. Nginx Helper da
+ *   solo svuota solo la pagina del prodotto.
+ * - Serve Nginx Helper attivo con lo svuotamento acceso; senza, questa parte non fa niente.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -37,7 +59,7 @@ if ( ! class_exists( 'CataSync_Menu_Categorie' ) ) :
 	 */
 	final class CataSync_Menu_Categorie {
 
-		const VERSIONE   = '1.0.0';
+		const VERSIONE   = '2.0.0';
 		const OPZIONE    = 'catasync_menu_categorie';
 		const ESITO      = 'catasync_menu_categorie_esito';
 		const TASSONOMIA = 'product_cat';
@@ -665,7 +687,7 @@ if ( ! class_exists( 'CataSync_Menu_Categorie' ) ) :
 			}
 			$ultimo = get_option( self::ESITO, array() );
 			return array(
-				'plugin'         => 'catasync-category-menu',
+				'plugin'         => 'catasync',
 				'versione'       => self::VERSIONE,
 				'attivo'         => $impostazioni['attivo'],
 				'menu_id'        => $impostazioni['menu_id'],
@@ -985,5 +1007,277 @@ if ( ! class_exists( 'CataSync_Menu_Categorie' ) ) :
 	}
 
 	CataSync_Menu_Categorie::avvia();
+
+endif;
+
+if ( ! class_exists( 'CataSync_Svuota_Cache' ) ) :
+
+	/**
+	 * Cancella dalla cache FastCGI di Nginx le pagine di questo sito.
+	 */
+	final class CataSync_Svuota_Cache {
+
+		const VERSIONE = '2.0.0';
+		const SPAZIO   = 'wc-catasync-cache/v1';
+		const TESTA    = 8192; // byte letti di ogni file: l'intestazione di Nginx con la chiave sta lì.
+
+		public static function avvia() {
+			add_action( 'rest_api_init', array( __CLASS__, 'rotte' ) );
+			add_filter( 'woocommerce_rest_is_request_to_rest_api', array( __CLASS__, 'chiavi_woocommerce' ) );
+		}
+
+		public static function rotte() {
+			register_rest_route(
+				self::SPAZIO,
+				'/svuota',
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'rest_svuota' ),
+					'permission_callback' => array( __CLASS__, 'puo' ),
+					'args'                => array(
+						'percorso' => array(
+							'type'    => 'string',
+							'default' => '',
+						),
+					),
+				)
+			);
+		}
+
+		public static function puo() {
+			return current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
+		}
+
+		/**
+		 * Le chiavi WooCommerce valgono per le rotte che iniziano con wc-: con i permalink lo
+		 * vede WooCommerce dall'indirizzo, con ?rest_route= no, e lo si dice qui.
+		 */
+		public static function chiavi_woocommerce( $vale ) {
+			if ( $vale ) {
+				return $vale;
+			}
+			$indirizzo = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$rotta     = isset( $_GET['rest_route'] ) ? (string) wp_unslash( $_GET['rest_route'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			return false !== strpos( $indirizzo, '/' . self::SPAZIO . '/' ) || 0 === strpos( $rotta, '/' . self::SPAZIO . '/' );
+		}
+
+		public static function rest_svuota( WP_REST_Request $richiesta ) {
+			$percorso = trim( (string) $richiesta->get_param( 'percorso' ) );
+			if ( '' === $percorso && defined( 'RT_WP_NGINX_HELPER_CACHE_PATH' ) ) {
+				$percorso = (string) RT_WP_NGINX_HELPER_CACHE_PATH;
+			}
+			$esito = self::svuota( $percorso, self::host() );
+			if ( is_wp_error( $esito ) ) {
+				return $esito;
+			}
+			return rest_ensure_response( $esito );
+		}
+
+		/**
+		 * Il nome del sito com'è nelle chiavi di Nginx ($host è sempre minuscolo), senza www.
+		 */
+		public static function host() {
+			$host = strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+			return 0 === strpos( $host, 'www.' ) ? substr( $host, 4 ) : $host;
+		}
+
+		/**
+		 * Cancella i file della cache la cui chiave è di $host. Restituisce i conteggi o un errore.
+		 *
+		 * @param string $percorso Cartella della cache FastCGI.
+		 * @param string $host     Nome del sito, minuscolo e senza www.
+		 * @return array|WP_Error
+		 */
+		public static function svuota( $percorso, $host ) {
+			if ( '' === $percorso ) {
+				return self::errore( 'Cartella della cache non indicata: impostala su CataSync, nelle impostazioni del sito.' );
+			}
+			if ( '/' !== $percorso[0] || false !== strpos( $percorso, '..' ) ) {
+				return self::errore( sprintf( 'Il percorso della cache «%s» dev\'essere assoluto, senza «..».', $percorso ) );
+			}
+			$cartella = @realpath( $percorso ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- open_basedir avvisa e basta
+			if ( false === $cartella || ! @is_dir( $cartella ) || ! @is_readable( $cartella ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				return self::errore( sprintf( 'La cartella della cache «%s» non esiste o PHP non la può leggere: controlla il percorso e che sia dentro open_basedir del sito.', $percorso ) );
+			}
+			if ( '/' === $cartella ) {
+				return self::errore( 'La cartella della cache non può essere la radice del disco.' );
+			}
+			if ( '' === $host ) {
+				return self::errore( 'Non riesco a ricavare il nome del sito da home_url.' );
+			}
+
+			ignore_user_abort( true );
+			if ( function_exists( 'set_time_limit' ) ) {
+				@set_time_limit( 300 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+
+			// Il nome sta all'inizio della chiave, dopo schema e metodo se ci sono, e prima della porta
+			// o della pagina: «httpsGETesempio.it/…», «GEThttpsesempio.it/…», «https://esempio.it/…»,
+			// «esempio.it/…». Ancorato all'inizio, perché «altro.it/esempio.it/» non è di questo sito.
+			$schema = '~^(?:[A-Z]+)?(?:https?)?(?:://)?(?:[A-Z]+)?(?:www\.)?' . preg_quote( $host, '~' ) . '(?::\d+)?(?:[/?]|$)~';
+			$conti  = array(
+				'percorso'       => $cartella,
+				'host'           => $host,
+				'file'           => 0,
+				'letti'          => 0,
+				'svuotati'       => 0,
+				'non_cancellati' => 0,
+			);
+
+			try {
+				$giro = new RecursiveIteratorIterator(
+					new RecursiveDirectoryIterator( $cartella, FilesystemIterator::SKIP_DOTS ),
+					RecursiveIteratorIterator::LEAVES_ONLY,
+					RecursiveIteratorIterator::CATCH_GET_CHILD
+				);
+				foreach ( $giro as $file ) {
+					if ( ! $file->isFile() || $file->isLink() ) {
+						continue;
+					}
+					++$conti['file'];
+					$chiave = self::chiave( $file->getPathname() );
+					if ( null === $chiave ) {
+						continue;
+					}
+					++$conti['letti'];
+					if ( ! preg_match( $schema, $chiave ) ) {
+						continue;
+					}
+					if ( @unlink( $file->getPathname() ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+						++$conti['svuotati'];
+					} elseif ( file_exists( $file->getPathname() ) ) {
+						++$conti['non_cancellati']; // se nel frattempo l'ha tolto Nginx, va bene così
+					}
+				}
+			} catch ( Exception $e ) {
+				return self::errore( sprintf( 'Non riesco a leggere la cartella della cache «%s»: %s', $percorso, $e->getMessage() ) );
+			}
+
+			if ( $conti['file'] > 0 && 0 === $conti['letti'] ) {
+				return self::errore( sprintf( 'In «%s» non ci sono file della cache di Nginx (manca la riga KEY): il percorso è sbagliato? Non ho cancellato niente.', $percorso ) );
+			}
+			if ( $conti['non_cancellati'] > 0 && 0 === $conti['svuotati'] ) {
+				return self::errore( sprintf( 'Ho trovato %d pagine del sito nella cache ma PHP non le può cancellare: i file sono di un altro utente.', $conti['non_cancellati'] ) );
+			}
+			return $conti;
+		}
+
+		/**
+		 * La chiave di un file della cache di Nginx (la riga «KEY: …»), o null se non è un file di Nginx.
+		 */
+		private static function chiave( $nome ) {
+			$f = @fopen( $nome, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+			if ( ! $f ) {
+				return null;
+			}
+			$testa = (string) fread( $f, self::TESTA ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
+			fclose( $f ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			$da = strpos( $testa, "\nKEY: " );
+			if ( false === $da ) {
+				return null;
+			}
+			$da += 6;
+			$a   = strpos( $testa, "\n", $da );
+			return false === $a ? null : substr( $testa, $da, $a - $da );
+		}
+
+		private static function errore( $messaggio ) {
+			return new WP_Error( 'catasync_cache', $messaggio, array( 'status' => 400 ) );
+		}
+	}
+
+	CataSync_Svuota_Cache::avvia();
+
+endif;
+
+if ( ! class_exists( 'CataSync_Svuota_Prodotti' ) ) :
+
+	/**
+	 * Quando un prodotto WooCommerce viene creato o aggiornato (anche via REST, per esempio da
+	 * CataSync) svuota dalla cache FastCGI anche le pagine che lo elencano. Era il mu-plugin
+	 * «TD Purge Prodotti» (td-purge-prodotti.php), uguale.
+	 */
+	final class CataSync_Svuota_Prodotti {
+
+		/** Pagine di ogni elenco da svuotare: una pagina che non è in cache non costa niente. */
+		const PAGINE = 10;
+
+		/** Prodotti già svuotati in questa richiesta: WooCommerce può salvare due volte. */
+		private static $fatti = array();
+
+		public static function avvia() {
+			// Se td-purge-prodotti.php è ancora sul sito lo fa già lui: niente lavoro doppio.
+			if ( class_exists( 'TD_Purge_Prodotti' ) ) {
+				return;
+			}
+			add_action( 'woocommerce_new_product', array( __CLASS__, 'prodotto' ), 20, 1 );
+			add_action( 'woocommerce_update_product', array( __CLASS__, 'prodotto' ), 20, 1 );
+			add_action( 'woocommerce_update_product_variation', array( __CLASS__, 'variante' ), 20, 1 );
+		}
+
+		public static function variante( $id ) {
+			$padre = wp_get_post_parent_id( (int) $id );
+			if ( $padre ) {
+				self::prodotto( $padre );
+			}
+		}
+
+		public static function prodotto( $id ) {
+			global $nginx_purger, $nginx_helper_admin;
+
+			$id = (int) $id;
+			if ( ! $id || isset( self::$fatti[ $id ] ) ) {
+				return;
+			}
+			// Serve Nginx Helper attivo, con lo svuotamento acceso nelle sue impostazioni.
+			if ( empty( $nginx_purger ) || ! method_exists( $nginx_purger, 'purge_url' )
+				|| empty( $nginx_helper_admin->options['enable_purge'] ) ) {
+				return;
+			}
+			self::$fatti[ $id ] = true;
+
+			$nginx_purger->purge_url( get_permalink( $id ), false );
+
+			$elenchi = array( home_url( '/' ) );
+			$negozio = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : '';
+			if ( $negozio ) {
+				$elenchi[] = $negozio;
+			}
+
+			// Categorie (con le sovracategorie, che di solito mostrano anche i prodotti delle figlie),
+			// tag, marche e attributi con archivio pubblico.
+			foreach ( get_object_taxonomies( 'product', 'objects' ) as $tassonomia ) {
+				if ( empty( $tassonomia->public ) || empty( $tassonomia->publicly_queryable ) ) {
+					continue;
+				}
+				$termini = get_the_terms( $id, $tassonomia->name );
+				if ( empty( $termini ) || is_wp_error( $termini ) ) {
+					continue;
+				}
+				foreach ( $termini as $termine ) {
+					$ids = array_merge( array( $termine->term_id ), get_ancestors( $termine->term_id, $tassonomia->name, 'taxonomy' ) );
+					foreach ( $ids as $term_id ) {
+						$link = get_term_link( (int) $term_id, $tassonomia->name );
+						if ( ! is_wp_error( $link ) ) {
+							$elenchi[] = $link;
+						}
+					}
+				}
+			}
+
+			foreach ( array_unique( $elenchi ) as $i => $link ) {
+				$nginx_purger->purge_url( $link, false );
+				if ( 0 === $i ) {
+					continue; // la home non ha pagine successive di prodotti
+				}
+				for ( $n = 2; $n <= self::PAGINE; $n++ ) {
+					$nginx_purger->purge_url( trailingslashit( $link ) . 'page/' . $n . '/', false );
+				}
+			}
+		}
+	}
+
+	// A plugins_loaded, quando td-purge-prodotti.php, se c'è ancora, è già caricato.
+	add_action( 'plugins_loaded', array( 'CataSync_Svuota_Prodotti', 'avvia' ) );
 
 endif;

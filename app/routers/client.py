@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api", tags=["client"])
 
 MAX_EAN_PER_JOB = 5000
 # Il mu-plugin di WordPress per il menu delle categorie (cartella wordpress/ del progetto).
-MU_PLUGIN = Path(__file__).resolve().parents[2] / "wordpress" / "catasync-category-menu.php"
+MU_PLUGIN = Path(__file__).resolve().parents[2] / "wordpress" / "catasync.php"
 
 
 def _visible_site(db: Session, site_id: int, user: User) -> Site:
@@ -1048,7 +1048,7 @@ async def salva_menu_del_sito(
     try:
         stato = await wc_rest.menu_salva(site, data.model_dump(exclude_none=True))
     except wc_rest.PluginMancante:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync».")
     except wc_rest.SiteError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
     audit(db, user.email, "menu_set", f"{site.name} · menu {data.menu_id} voce {data.voce_id} attivo {data.attivo}")
@@ -1062,14 +1062,15 @@ async def allinea_menu_del_sito(site_id: int, db: Session = Depends(get_db), use
     try:
         stato = await wc_rest.menu_allinea(site)
     except wc_rest.PluginMancante:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync – Menu delle categorie».")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sul sito manca il mu-plugin «CataSync».")
     except wc_rest.SiteError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
     audit(db, user.email, "menu_align", site.name)
     return {**stato, "plugin": True}
 
 
-@router.get("/wordpress/catasync-category-menu.php")
+@router.get("/wordpress/catasync.php")
+@router.get("/wordpress/catasync-category-menu.php")   # il nome di prima della 2.11.1
 def scarica_mu_plugin(user: User = Depends(require_user)):
     """Il mu-plugin da mettere in wp-content/mu-plugins/ del negozio."""
     return FileResponse(MU_PLUGIN, media_type="application/x-httpd-php", filename=MU_PLUGIN.name)

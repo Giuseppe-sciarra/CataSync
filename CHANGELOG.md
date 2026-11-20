@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.11.1 — 2026-11-20
+
+### Changed
+- **Un solo mu-plugin sul sito**: `wordpress/catasync.php` («CataSync» 2.0.0) mette insieme il menu
+  delle categorie, lo svuotamento della cache chiamato dal portale e lo svuotamento delle pagine di
+  un prodotto al salvataggio con Nginx Helper (era `td-purge-prodotti.php`). Le tre parti lavorano
+  come prima. Sostituisce `catasync-category-menu.php`, `catasync-svuota-cache.php` e
+  `td-purge-prodotti.php`, da togliere dal sito; se restano non si rompe niente, quella parte la
+  fa il file vecchio. Si scarica anche da `/api/wordpress/catasync.php` (il vecchio indirizzo
+  del menu dà il file nuovo).
+
 ## 2.11.0 — 2026-11-20
 
 ### Added

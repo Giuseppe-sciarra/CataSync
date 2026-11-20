@@ -157,7 +157,7 @@ class SvuotaCache(unittest.TestCase):
         self.sito.cache = 404
         with self.assertLogs("catasync.cache", "WARNING") as log:
             self.assertEqual(self.dopo_la_quiete(), [sid])
-        self.assertIn("CataSync – Svuota cache", log.output[0])
+        self.assertIn("mu-plugin «CataSync»", log.output[0])
 
     def test_prova_da_siti(self):
         sid = self.nuovo_sito(cache_purge=False, cache_path="/srv/cache")
@@ -167,7 +167,7 @@ class SvuotaCache(unittest.TestCase):
 
         self.sito.cache = 404
         r = self.c.post(f"/api/admin/sites/{sid}/svuota-cache").json()
-        self.assertEqual(r, {"ok": False, "error": "Sul sito manca il mu-plugin «CataSync – Svuota cache»."})
+        self.assertEqual(r, {"ok": False, "error": "Sul sito manca il mu-plugin «CataSync»."})
 
         self.sito.cache = 400
         r = self.c.post(f"/api/admin/sites/{sid}/svuota-cache").json()

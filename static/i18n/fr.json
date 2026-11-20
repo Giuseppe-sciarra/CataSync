@@ -1334,7 +1334,7 @@
   "Su questo dispositivo c'è già una passkey per il tuo account.": "Cet appareil a déjà une clé d’accès pour votre compte.",
   "Sul negozio": "Sur la boutique",
   "Sul sito": "Sur le site",
-  "Sul sito manca il mu-plugin «CataSync – Menu delle categorie».": "Le mu-plugin « CataSync – Menu delle categorie » manque sur le site.",
+  "Sul sito manca il mu-plugin «CataSync».": "Le mu-plugin «CataSync» est absent du site.",
   "Svuota i tentativi a vuoto": "Vider les recherches sans résultat",
   "Svuota il cestino": "Vider la corbeille",
   "Svuota tutta la cache": "Vider tout le cache",
@@ -2307,7 +2307,6 @@
   "Svuota adesso": "Vider maintenant",
   "Svuoto…": "Vidage…",
   "Cache svuotata: {0} pagine del sito cancellate.": "Cache vidé : {0} pages du site supprimées.",
-  "Sul sito manca il mu-plugin «CataSync – Svuota cache».": "Le mu-plugin «CataSync – Svuota cache» est absent du site.",
   "Il sito ha rifiutato la richiesta al mu-plugin che svuota la cache (HTTP 403): la chiave REST dev'essere di un amministratore o di un gestore del negozio, e nessun firewall o plugin di sicurezza deve bloccare /wp-json/wc-catasync-cache/.": "Le site a refusé la requête au mu-plugin qui vide le cache (HTTP 403) : la clé REST doit appartenir à un administrateur ou à un gestionnaire de boutique, et aucun pare-feu ni plugin de sécurité ne doit bloquer /wp-json/wc-catasync-cache/.",
   "Il percorso della cache dev'essere assoluto, per esempio /www/server/fastcgi_cache.": "Le chemin du cache doit être absolu, par exemple /www/server/fastcgi_cache."
 }

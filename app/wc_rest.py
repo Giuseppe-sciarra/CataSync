@@ -25,11 +25,10 @@ from .security import decrypt
 log = logging.getLogger("catasync.wc")
 
 BASE = "/wp-json/wc/v3"
-# Rotte del mu-plugin «CataSync – Menu delle categorie» (wordpress/catasync-category-menu.php):
+# Rotte del mu-plugin «CataSync» (wordpress/catasync.php), menu delle categorie e svuota cache:
 # il prefisso «wc-» fa accettare a WooCommerce le stesse chiavi REST.
 PLUGIN_MENU = "/wp-json/wc-catasync/v1"
 PLUGIN_CACHE = "/wp-json/wc-catasync-cache/v1"
-NOMI_PLUGIN = {PLUGIN_MENU: "CataSync – Menu delle categorie", PLUGIN_CACHE: "CataSync – Svuota cache"}
 # HTTP 403 da un mu-plugin: o la chiave è di un utente senza il permesso giusto, o un firewall o un
 # plugin di sicurezza blocca l'indirizzo prima di WordPress. Da qui non si distingue.
 RIFIUTI_PLUGIN = {
@@ -154,7 +153,7 @@ async def _request(
         raise SiteError("Chiavi REST rifiutate: controlla che abbiano permesso di lettura e scrittura.")
     if resp.status_code == 404:
         if base != BASE:
-            raise PluginMancante(f"Sul sito manca il mu-plugin «{NOMI_PLUGIN.get(base, base)}».")
+            raise PluginMancante("Sul sito manca il mu-plugin «CataSync».")
         raise SiteError("Endpoint non trovato: WooCommerce non risponde o i permalink non sono attivi.")
     if resp.status_code >= 400:
         detail, codice = "", ""

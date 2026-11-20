@@ -23,8 +23,7 @@ jobs:
       - run: node --check static/hub.js && node --check static/i18n/i18n.js
       - run: node --test tests/i18n.test.cjs
       - run: python -m py_compile .github/scripts/rilascio.py
-      - run: php -l wordpress/catasync-category-menu.php
-      - run: php -l wordpress/catasync-svuota-cache.php
+      - run: php -l wordpress/catasync.php
   docker:
     runs-on: ubuntu-latest
     steps:
