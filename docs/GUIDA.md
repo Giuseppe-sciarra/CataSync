@@ -435,7 +435,7 @@ nuovo. In *Siti → Modifica → Cache delle pagine*, sito per sito:
   utente).
 
 Il portale non arriva ai file del server del sito, quindi a cancellarli è il mu-plugin
-`wordpress/catasync.php` («CataSync», vedi [Il plugin del sito](#il-plugin-del-sito)), da copiare in
+`wordpress/connettore-catasync.php` («Connettore CataSync», vedi [Il plugin del sito](#il-plugin-del-sito)), da copiare in
 `wp-content/mu-plugins/` del sito: questa parte non fa niente finché il portale non la chiama,
 su `POST /wp-json/wc-catasync-cache/v1/svuota` con le stesse chiavi REST del negozio
 (amministratore o gestore). La cartella può essere in comune con altri siti dello stesso server:
@@ -452,8 +452,8 @@ Quello chiamato dal portale copre tutto il sito dopo le modifiche fatte da qui.
 
 ### Il plugin del sito
 
-Tutto quello che CataSync vuole sul sito sta in un solo mu-plugin, `wordpress/catasync.php`
-(«CataSync»), scaricabile anche da `/api/wordpress/catasync.php` con l'accesso al portale. Va in
+Tutto quello che CataSync vuole sul sito sta in un solo mu-plugin, `wordpress/connettore-catasync.php`
+(«Connettore CataSync»), scaricabile anche da `/api/wordpress/connettore-catasync.php` con l'accesso al portale. Va in
 `wp-content/mu-plugins/` e parte da solo. Dentro ci sono tre parti indipendenti:
 
 - **Menu delle categorie**: spento finché non lo attivi in *Aspetto → Menu categorie* (vedi
@@ -463,8 +463,8 @@ Tutto quello che CataSync vuole sul sito sta in un solo mu-plugin, `wordpress/ca
 - **Svuota le pagine di un prodotto al salvataggio**: lavora solo con Nginx Helper attivo e lo
   svuotamento acceso nelle sue impostazioni.
 
-Sostituisce `catasync-category-menu.php`, `catasync-svuota-cache.php` e `td-purge-prodotti.php`,
-che vanno tolti. Se restano non si rompe niente: quella parte la fa il file vecchio e quella del
+Sostituisce `catasync.php`, `catasync-category-menu.php`, `catasync-svuota-cache.php` e
+`td-purge-prodotti.php`, che vanno tolti. Se restano non si rompe niente: quella parte la fa il file vecchio e quella del
 plugin unico sta ferma.
 
 ## 11. Struttura del codice
@@ -501,7 +501,7 @@ app/
 templates/       accesso, pannello (dashboard.html)
 static/          CSS, Alpine, logica UI, passkey.js, favicon, traduzioni dell'interfaccia (i18n/)
 searxng/         settings.yml del motore di ricerca
-wordpress/       il mu-plugin del sito (catasync.php): menu delle categorie e svuotamento della cache
+wordpress/       il mu-plugin del sito (connettore-catasync.php): menu delle categorie e svuotamento della cache
 tests/           test automatici (python -m unittest discover -s tests; node --test tests/i18n.test.cjs)
 .github/         controlli e release automatiche
 ```
@@ -615,7 +615,7 @@ WooCommerce li manda come «&amp;», il portale li rimette in chiaro.
 ### Il menu del sito (facoltativo)
 
 CataSync non tocca mai il menu del sito. Se le categorie nel menu le vuoi, c'è il mu-plugin
-`wordpress/catasync.php` («CataSync»): le mette sotto una voce del menu e le tiene allineate. Va in
+`wordpress/connettore-catasync.php` («Connettore CataSync»): le mette sotto una voce del menu e le tiene allineate. Va in
 `wp-content/mu-plugins/`; finché non lo attivi, il menu resta com'è.
 
 - **Dove**: sul sito, in *Aspetto → Menu categorie*: si sceglie la voce (per esempio «Prodotti» nel

@@ -34,7 +34,7 @@ class WooFinto:
         self.menu = {"attivo": False, "menu_id": 0, "voce_id": 0, "sottocategorie": True}
 
     def stato(self) -> dict:
-        return {**self.menu, "plugin": "catasync", "versione": "2.0.0", "problema": "",
+        return {**self.menu, "plugin": "connettore-catasync", "versione": "2.0.1", "problema": "",
                 "menus": [{"id": 5, "nome": "Menu principale",
                            "voci": [{"id": 9, "titolo": "Prodotti", "livello": 0, "categoria": False}]}],
                 "ultimo": None}
@@ -42,7 +42,7 @@ class WooFinto:
     async def __call__(self, site, method, path, params=None, json_body=None, base=wc_rest.BASE):
         if base == wc_rest.PLUGIN_MENU:
             if not self.plugin:
-                raise wc_rest.PluginMancante("Sul sito manca il mu-plugin «CataSync».")
+                raise wc_rest.PluginMancante("Sul sito manca il mu-plugin «Connettore CataSync».")
             esito = {"aggiunte": 1, "spostate": 0, "tolte": 0, "riordinate": 2, "errore": "", "quando": "2026-10-15T10:00:00+00:00"}
             if path == "/menu" and method == "GET":
                 return self.stato(), {}
@@ -220,13 +220,14 @@ class Categorie(unittest.TestCase):
             self.assertEqual(self.c.put(f"/api/sites/{self.sito}/menu", json={"attivo": False}).status_code, 409)
         finally:
             self.woo.plugin = True
-        with open(os.path.join(_ambiente.RADICE, "wordpress", "catasync.php"), encoding="utf-8") as f:
+        with open(os.path.join(_ambiente.RADICE, "wordpress", "connettore-catasync.php"), encoding="utf-8") as f:
             sorgente = f.read()
-        for indirizzo in ("/api/wordpress/catasync.php", "/api/wordpress/catasync-category-menu.php"):
+        for indirizzo in ("/api/wordpress/connettore-catasync.php", "/api/wordpress/catasync.php",
+                          "/api/wordpress/catasync-category-menu.php"):
             r = self.c.get(indirizzo)
             self.assertEqual(r.status_code, 200)
-            self.assertIn('filename="catasync.php"', r.headers.get("content-disposition", ""))
-            self.assertIn("Plugin Name:       CataSync\n", r.text)
+            self.assertIn('filename="connettore-catasync.php"', r.headers.get("content-disposition", ""))
+            self.assertIn("Plugin Name:       Connettore CataSync\n", r.text)
             self.assertEqual(r.text, sorgente)
 
     def test_5_account_sospeso_non_scrive(self):

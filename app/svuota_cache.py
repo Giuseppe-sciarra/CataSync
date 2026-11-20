@@ -1,7 +1,7 @@
 """Svuota la cache delle pagine dei siti (FastCGI di Nginx) dopo che il portale ci ha scritto.
 
 Ogni scrittura riuscita sul sito (wc_rest._request) segna il sito. Quando per QUIETE secondi non
-ne arrivano altre, si chiede una volta sola al mu-plugin «CataSync» (wordpress/catasync.php) di cancellare
+ne arrivano altre, si chiede una volta sola al mu-plugin «Connettore CataSync» (wordpress/connettore-catasync.php) di cancellare
 le pagine di quel sito: un carico da cinquanta prodotti fa uno svuotamento, non cinquanta.
 Solo per i siti con lo svuotamento acceso nelle impostazioni.
 """

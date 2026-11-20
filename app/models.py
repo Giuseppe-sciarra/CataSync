@@ -203,7 +203,7 @@ class Site(Base):
     giorni_cestino: Mapped[int] = mapped_column(Integer, default=30)
 
     # Svuotamento della cache delle pagine (FastCGI di Nginx) dopo che il portale ha scritto sul
-    # sito. Lo fa il mu-plugin «CataSync» sul sito, che cancella i file di quel sito
+    # sito. Lo fa il mu-plugin «Connettore CataSync» sul sito, che cancella i file di quel sito
     # nella cartella indicata: il portale da qui non arriva ai file del server del sito.
     cache_purge: Mapped[bool] = mapped_column(Boolean, default=False)
     cache_path: Mapped[str] = mapped_column(String(255), default="/www/server/fastcgi_cache")

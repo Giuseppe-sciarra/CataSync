@@ -118,7 +118,7 @@ inglese, francese e tedesco.
   «Senza categoria») e le sottocategorie salgono di un livello; nel portale i prodotti che la
   usavano tornano da completare.
 - Il portale non tocca mai il menu del sito. Se le categorie le vuoi lì, il **mu-plugin**
-  facoltativo (`wordpress/catasync.php`) mette ogni categoria sotto la **voce di menu
+  facoltativo (`wordpress/connettore-catasync.php`) mette ogni categoria sotto la **voce di menu
   che scegli** sul sito, nello stesso ordine.
 
 **Portale**
@@ -244,7 +244,7 @@ La ricerca sul web si imposta una volta sola in **Impostazioni** e vale per tutt
 
 Solo se vuoi le categorie nel menu del sito; senza il mu-plugin il menu non lo tocca nessuno.
 
-1. Copia `wordpress/catasync.php` da questo repository in `wp-content/mu-plugins/` del negozio
+1. Copia `wordpress/connettore-catasync.php` da questo repository in `wp-content/mu-plugins/` del negozio
    (è lo stesso file della cache, qui sotto). Parte da solo: non va attivato.
 2. Sul sito apri *Aspetto → Menu categorie*, scegli in **Voce del menu** la voce sotto cui mettere
    le categorie (per esempio «Prodotti» nel menu principale), spunta **Attivo** e premi **Salva**.
@@ -259,7 +259,7 @@ permessi in più.
 Se il sito ha la cache FastCGI di Nginx, dopo le modifiche fatte dal portale le pagine vecchie
 restano finché non scadono. Per svuotarla da solo:
 
-1. Copia `wordpress/catasync.php` in `wp-content/mu-plugins/` del negozio (è lo stesso file del
+1. Copia `wordpress/connettore-catasync.php` in `wp-content/mu-plugins/` del negozio (è lo stesso file del
    menu). Questa parte non fa niente finché il portale non la chiama.
 2. In *Siti → Modifica → Cache delle pagine* spunta **Svuota la cache FastCGI di Nginx dopo ogni
    modifica** e scrivi la **cartella della cache** sul server del sito (di serie
@@ -484,9 +484,9 @@ immagini) e il file `.env`: senza `FERNET_KEY` le chiavi REST salvate non si dec
 - `docs/GUIDA.md` — la guida completa: ricerca, prezzi, aggiornamento notturno, eliminazione dei
   carichi, abbonamenti, chiamate a WooCommerce.
 - `docs/SICUREZZA.md` — note di sicurezza.
-- `wordpress/catasync.php` — il mu-plugin di WordPress, facoltativo, tutto in un file: categorie
+- `wordpress/connettore-catasync.php` — il mu-plugin di WordPress, facoltativo, tutto in un file: categorie
   nel menu del sito, svuotamento della cache FastCGI di Nginx dopo le modifiche del portale e, con
-  Nginx Helper, al salvataggio di un prodotto. Sostituisce `catasync-category-menu.php`,
+  Nginx Helper, al salvataggio di un prodotto. Sostituisce `catasync.php`, `catasync-category-menu.php`,
   `catasync-svuota-cache.php` e `td-purge-prodotti.php`, da togliere dal sito.
 
 ## Licenza

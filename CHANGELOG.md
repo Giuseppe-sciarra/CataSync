@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.2 — 2026-11-20
+
+### Changed
+- **Il plugin del sito si chiama «Connettore CataSync»**: il file è `wordpress/connettore-catasync.php`
+  (versione 2.0.1, dentro identico alla 2.0.0). Se sul sito c'è già `catasync.php` va tolto; se resta
+  non si rompe niente, lavora lui al posto del connettore. Si scarica da
+  `/api/wordpress/connettore-catasync.php`; i due indirizzi di prima danno il file nuovo.
+
 ## 2.11.1 — 2026-11-20
 
 ### Changed

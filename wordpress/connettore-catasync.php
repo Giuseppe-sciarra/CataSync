@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name:       CataSync
+ * Plugin Name:       Connettore CataSync
  * Plugin URI:        https://github.com/Giuseppe-sciarra/CataSync
  * Description:       Il plugin di CataSync per il negozio: categorie nel menu del sito, svuotamento della cache FastCGI di Nginx quando CataSync cambia qualcosa e, con Nginx Helper, anche quando un prodotto si salva dal sito.
- * Version:           2.0.0
+ * Version:           2.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Tastiere Digitali
@@ -13,8 +13,8 @@
  * Text Domain:       catasync
  *
  * Va in wp-content/mu-plugins/ (oppure in plugins/ e si attiva come gli altri). Sostituisce
- * catasync-category-menu.php, catasync-svuota-cache.php e td-purge-prodotti.php: quei file vanno
- * tolti (se restano non si rompe niente, ma lavorano loro al posto di queste parti).
+ * catasync.php, catasync-category-menu.php, catasync-svuota-cache.php e td-purge-prodotti.php:
+ * quei file vanno tolti (se restano non si rompe niente, ma lavorano loro al posto di queste parti).
  *
  * 1. Menu delle categorie (spento finché non lo attivi)
  * - Il menu e la voce sotto cui mettere le categorie si scelgono in Aspetto → Menu categorie.
@@ -59,7 +59,7 @@ if ( ! class_exists( 'CataSync_Menu_Categorie' ) ) :
 	 */
 	final class CataSync_Menu_Categorie {
 
-		const VERSIONE   = '2.0.0';
+		const VERSIONE   = '2.0.1';
 		const OPZIONE    = 'catasync_menu_categorie';
 		const ESITO      = 'catasync_menu_categorie_esito';
 		const TASSONOMIA = 'product_cat';
@@ -687,7 +687,7 @@ if ( ! class_exists( 'CataSync_Menu_Categorie' ) ) :
 			}
 			$ultimo = get_option( self::ESITO, array() );
 			return array(
-				'plugin'         => 'catasync',
+				'plugin'         => 'connettore-catasync',
 				'versione'       => self::VERSIONE,
 				'attivo'         => $impostazioni['attivo'],
 				'menu_id'        => $impostazioni['menu_id'],
@@ -1017,7 +1017,7 @@ if ( ! class_exists( 'CataSync_Svuota_Cache' ) ) :
 	 */
 	final class CataSync_Svuota_Cache {
 
-		const VERSIONE = '2.0.0';
+		const VERSIONE = '2.0.1';
 		const SPAZIO   = 'wc-catasync-cache/v1';
 		const TESTA    = 8192; // byte letti di ogni file: l'intestazione di Nginx con la chiave sta lì.
 
